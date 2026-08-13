@@ -1,0 +1,27 @@
+name: hospital-amr
+mode: simulation
+namespace: /hospital_amr
+frames:
+  base: base_link
+  odom: odom
+adapter:
+  kind: hospital_delivery
+interfaces:
+  command:
+    topic: /cmd_vel
+    type: geometry_msgs/msg/Twist
+  odometry:
+    topic: /odom
+    type: nav_msgs/msg/Odometry
+limits:
+  max_linear_velocity: 0.50
+  max_angular_velocity: 1.00
+  max_linear_acceleration: 0.50
+  max_angular_acceleration: 1.00
+safety:
+  heartbeat_timeout: 1.0
+  estop_topic: /emergency_stop
+observation_sources:
+  - odometry
+  - camera
+  - scan

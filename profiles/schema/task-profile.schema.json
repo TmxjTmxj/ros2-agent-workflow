@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent ROS Task Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "robot_profile", "stages", "required_sensors", "evidence", "recovery_policy"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "robot_profile": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "stages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"$ref": "#/$defs/stage"}
+    },
+    "required_sensors": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources"],
+      "properties": {"sources": {"type": "array", "items": {"type": "string", "minLength": 1}}}
+    },
+    "recovery_policy": {"enum": ["stop", "cancel_and_stop"]}
+  },
+  "$defs": {
+    "stage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "goal", "tolerance", "timeout"],
+      "properties": {
+        "name": {"type": "string", "minLength": 1},
+        "goal": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["frame", "x", "y", "yaw"],
+          "properties": {
+            "frame": {"type": "string", "minLength": 1},
+            "x": {"type": "number"},
+            "y": {"type": "number"},
+            "yaw": {"type": "number"}
+          }
+        },
+        "tolerance": {"type": "number", "exclusiveMinimum": 0},
+        "timeout": {"type": "number", "exclusiveMinimum": 0}
+      }
+    }
+  }
+}

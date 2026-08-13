@@ -1,0 +1,12 @@
+# Copy this block into the repository's trusted `.codex/config.toml`.
+# Replace every `<REPOSITORY_ABSOLUTE_PATH>` token once with the absolute path
+# of this checkout. Create `.venv` there and install the project before use:
+#   python3 -m venv .venv
+#   .venv/bin/python -m pip install -e .
+
+[mcp_servers.agent_ros]
+command = "<REPOSITORY_ABSOLUTE_PATH>/.venv/bin/python"
+args = ["-m", "mcp_server.ros2_mcp_server"]
+cwd = "<REPOSITORY_ABSOLUTE_PATH>"
+startup_timeout_sec = 15
+tool_timeout_sec = 30
