@@ -106,6 +106,14 @@ class Observation:
 class RobotAdapter(ABC):
     """The only runtime-facing contract implemented by robot integrations."""
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, _exc_type, _exc, _traceback) -> bool:
+        if not self.close(timeout=1.0):
+            raise AdapterError("CLEANUP_FAILED")
+        return False
+
     @abstractmethod
     def probe(self) -> AdapterProbe:
         raise NotImplementedError

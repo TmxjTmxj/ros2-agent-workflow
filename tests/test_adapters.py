@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import subprocess
 import threading
 import time
 from types import ModuleType, SimpleNamespace
@@ -25,6 +26,7 @@ from agent_ros.profiles.models import RobotProfile
 from agent_ros.profiles.models import PoseGoal, TaskStage
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.sequencer import _ActivationRejected, _SafetySequencer
+from tests.support.runtime_owners import adapter_owner
 
 
 def robot_profile(kind: str = "twist", *, mode: str = "simulation") -> RobotProfile:
@@ -120,11 +122,80 @@ def stage(*, timeout: float = 30.0) -> TaskStage:
     return TaskStage("destination", PoseGoal("odom", 2.0, 2.0, 0.0), 0.1, timeout)
 
 
-def valid_permit(adapter):
+def bind_permit(adapter):
     issuer = _ActivationIssuer()
     adapter._bind_runtime_safety(issuer)
     adapter._validate_runtime_safety("simulation")
     return issuer._issue()
+
+
+def valid_permit(adapter, owner):
+    owner(adapter)
+    return bind_permit(adapter)
+
+
+def test_direct_adapter_context_management_closes_bound_workers():
+    transport = TwistTransport()
+
+    with TwistAdapter(robot_profile(), transport, clock=lambda: 0.0) as adapter:
+        bind_permit(adapter)
+        assert adapter._safety_sequencer.worker_alive
+
+    assert not adapter._safety_sequencer.worker_alive
+
+
+def test_adapter_close_before_start_is_successful():
+    adapter = TwistAdapter(robot_profile(), TwistTransport(), clock=lambda: 0.0)
+
+    assert adapter.close(timeout=0.1)
+
+
+def test_started_adapter_close_is_idempotent():
+    adapter = TwistAdapter(robot_profile(), TwistTransport(), clock=lambda: 0.0)
+    bind_permit(adapter)
+
+    assert adapter.close(timeout=0.2)
+    assert adapter.close(timeout=0.2)
+
+
+def test_adapter_context_manager_exposes_close_failure():
+    class FailingCloseAdapter(TwistAdapter):
+        def close(self, timeout: float = 1.0) -> bool:
+            return False
+
+    with pytest.raises(AdapterError, match="CLEANUP_FAILED"):
+        with FailingCloseAdapter(
+            robot_profile(), TwistTransport(), clock=lambda: 0.0
+        ):
+            pass
+
+
+def test_caller_omitting_adapter_close_remains_alive_until_harness_termination():
+    program = """
+from tests.test_adapters import TwistAdapter, TwistTransport, bind_permit, robot_profile
+
+adapter = TwistAdapter(robot_profile(), TwistTransport(), clock=lambda: 0.0)
+bind_permit(adapter)
+print("READY", flush=True)
+"""
+    process = subprocess.Popen(
+        [sys.executable, "-c", program],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert process.stdout is not None
+        assert process.stdout.readline().strip() == "READY"
+        with pytest.raises(subprocess.TimeoutExpired):
+            process.wait(timeout=0.1)
+    finally:
+        process.terminate()
+        try:
+            process.wait(timeout=1.0)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=1.0)
 
 
 class CallbackFuture:
@@ -262,11 +333,11 @@ def real_nav2_transport(monkeypatch, *, clock=lambda: 0.0, cancel_timeout=1.0):
     return transport
 
 
-def test_twist_start_accepts_only_a_reviewed_stage():
+def test_twist_start_accepts_only_a_reviewed_stage(adapter_owner):
     transport = TwistTransport()
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
 
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
 
     assert transport.started_waypoints == [stage()]
 
@@ -278,10 +349,10 @@ def _wait_until(predicate, timeout=1.0):
     return predicate()
 
 
-def test_twist_emergency_stop_idempotently_accepts_a_fresh_zero_enqueue():
+def test_twist_emergency_stop_idempotently_accepts_a_fresh_zero_enqueue(adapter_owner):
     transport = TwistTransport()
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    valid_permit(adapter)
+    valid_permit(adapter, adapter_owner)
 
     adapter._emergency_stop()
     adapter._emergency_stop()
@@ -290,11 +361,11 @@ def test_twist_emergency_stop_idempotently_accepts_a_fresh_zero_enqueue():
     assert transport.commands == [TwistCommand.zero()] * 2
 
 
-def test_twist_stale_odometry_stops_with_a_zero_burst_and_reports_stable_code():
+def test_twist_stale_odometry_stops_with_a_zero_burst_and_reports_stable_code(adapter_owner):
     now = [0.0]
     transport = TwistTransport()
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: now[0], stale_after=1.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     now[0] = 1.01
     transport.waypoint_status = lambda: (_ for _ in ()).throw(AdapterError("STALE_FEEDBACK"))
 
@@ -305,21 +376,21 @@ def test_twist_stale_odometry_stops_with_a_zero_burst_and_reports_stable_code():
 
 
 @pytest.mark.parametrize("timestamp", [-2.0, 0.2])
-def test_twist_stage_refuses_stale_or_future_odometry_before_any_nonzero_motion(timestamp):
+def test_twist_stage_refuses_stale_or_future_odometry_before_any_nonzero_motion(timestamp, adapter_owner):
     transport = TwistTransport()
     transport.odometry = OdometrySample(timestamp=timestamp, x=1.0, y=2.0, yaw=0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0, stale_after=1.0, future_skew=0.05)
 
     with pytest.raises(AdapterError, match="STALE_FEEDBACK"):
-        adapter.start(stage(), valid_permit(adapter))
+        adapter.start(stage(), valid_permit(adapter, adapter_owner))
 
     assert all(command == TwistCommand.zero() for command in transport.commands)
 
 
-def test_twist_stage_delegates_feedback_control_to_transport_and_status_never_publishes():
+def test_twist_stage_delegates_feedback_control_to_transport_and_status_never_publishes(adapter_owner):
     transport = TwistTransport()
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     published = list(transport.commands)
 
     adapter.status()
@@ -328,12 +399,12 @@ def test_twist_stage_delegates_feedback_control_to_transport_and_status_never_pu
     assert transport.commands == published
 
 
-def test_twist_rejects_direct_command_as_a_public_authority_bypass():
+def test_twist_rejects_direct_command_as_a_public_authority_bypass(adapter_owner):
     transport = TwistTransport()
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
 
     with pytest.raises(AdapterError, match="PROFILE_INVALID"):
-        adapter.start(TwistCommand(0.1, 0.0), valid_permit(adapter))
+        adapter.start(TwistCommand(0.1, 0.0), valid_permit(adapter, adapter_owner))
 
     assert transport.commands == []
 
@@ -350,9 +421,10 @@ def test_standard_adapter_start_requires_a_controller_owned_internal_permit():
     assert not hasattr(adapters_package, "SafetyToken")
 
 
-def test_permit_from_a_different_issuer_is_rejected():
+def test_permit_from_a_different_issuer_is_rejected(adapter_owner):
     transport = TwistTransport()
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
+    adapter_owner(adapter)
     owner = _ActivationIssuer()
     foreign = _ActivationIssuer()
     adapter._bind_runtime_safety(owner)
@@ -364,13 +436,14 @@ def test_permit_from_a_different_issuer_is_rejected():
     assert transport.started_waypoints == []
 
 
-def test_hardware_adapter_rejects_an_unverified_emergency_channel():
+def test_hardware_adapter_rejects_an_unverified_emergency_channel(adapter_owner):
     transport = TwistTransport()
     transport.safety_channel = RecordingEmergencyChannel(
         transport._enqueue_emergency_stop,
         hardware_verified=False,
     )
     adapter = TwistAdapter(robot_profile(mode="hardware"), transport, clock=lambda: 0.0)
+    adapter_owner(adapter)
     issuer = _ActivationIssuer()
     adapter._bind_runtime_safety(issuer)
 
@@ -378,11 +451,11 @@ def test_hardware_adapter_rejects_an_unverified_emergency_channel():
         adapter._validate_runtime_safety("hardware")
 
 
-def test_twist_runtime_timer_limits_first_command_acceleration_from_zero(monkeypatch):
+def test_twist_runtime_timer_limits_first_command_acceleration_from_zero(monkeypatch, adapter_owner):
     transport = real_twist_transport(monkeypatch)
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     commands = []
     transport.publish = commands.append
 
@@ -393,12 +466,12 @@ def test_twist_runtime_timer_limits_first_command_acceleration_from_zero(monkeyp
 
 @pytest.mark.parametrize("permit_kind", ["missing", "invalid", "foreign"])
 def test_twist_timer_without_exact_owned_permit_fails_closed(
-    monkeypatch, permit_kind
+    monkeypatch, permit_kind, adapter_owner
 ):
     transport = real_twist_transport(monkeypatch)
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     foreign = None
     if permit_kind == "missing":
         transport._stage_permit = None
@@ -484,11 +557,11 @@ def test_adapter_close_latches_before_emergency_close_and_shares_one_deadline():
         assert channel.finish()
 
 
-def test_twist_timer_snapshot_before_estop_cannot_publish_nonzero_after_estop_returns(monkeypatch):
+def test_twist_timer_snapshot_before_estop_cannot_publish_nonzero_after_estop_returns(monkeypatch, adapter_owner):
     transport = real_twist_transport(monkeypatch)
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     commands = []
     transport.publish = commands.append
     snapshot = threading.Event()
@@ -508,10 +581,10 @@ def test_twist_timer_snapshot_before_estop_cannot_publish_nonzero_after_estop_re
     assert all(command == TwistCommand.zero() for command in commands[first_zero:])
 
 
-def test_twist_emergency_enqueue_never_waits_for_a_blocked_ros_publish(monkeypatch):
+def test_twist_emergency_enqueue_never_waits_for_a_blocked_ros_publish(monkeypatch, adapter_owner):
     transport = real_twist_transport(monkeypatch)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    valid_permit(adapter)
+    valid_permit(adapter, adapter_owner)
     entered = threading.Event()
     release = threading.Event()
     errors = []
@@ -532,11 +605,11 @@ def test_twist_emergency_enqueue_never_waits_for_a_blocked_ros_publish(monkeypat
     assert not errors
 
 
-def test_twist_estop_success_waits_for_blocked_nonzero_publish(monkeypatch):
+def test_twist_estop_success_waits_for_blocked_nonzero_publish(monkeypatch, adapter_owner):
     transport = real_twist_transport(monkeypatch)
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     entered = threading.Event()
     release = threading.Event()
     commands = []
@@ -572,11 +645,11 @@ def test_twist_estop_success_waits_for_blocked_nonzero_publish(monkeypatch):
         assert adapter.close(0.2)
 
 
-def test_twist_estop_degrades_when_publish_does_not_quiesce(monkeypatch):
+def test_twist_estop_degrades_when_publish_does_not_quiesce(monkeypatch, adapter_owner):
     transport = real_twist_transport(monkeypatch)
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     entered = threading.Event()
     release = threading.Event()
 
@@ -648,11 +721,11 @@ class Nav2Transport:
         return self.safety_channel
 
 
-def test_nav2_emits_fixed_action_type_with_structured_goal_values():
+def test_nav2_emits_fixed_action_type_with_structured_goal_values(adapter_owner):
     transport = Nav2Transport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
 
-    adapter.start(NavigationGoal(frame="map", x=1.25, y=-2.5, yaw=0.75), valid_permit(adapter))
+    adapter.start(NavigationGoal(frame="map", x=1.25, y=-2.5, yaw=0.75), valid_permit(adapter, adapter_owner))
 
     request = transport.requests[0]
     assert request.action_type == "nav2_msgs/action/NavigateToPose"
@@ -660,10 +733,10 @@ def test_nav2_emits_fixed_action_type_with_structured_goal_values():
     assert (request.frame, request.x, request.y, request.yaw) == ("map", 1.25, -2.5, 0.75)
 
 
-def test_nav2_emergency_stop_publishes_independent_zero_and_initiates_cancel():
+def test_nav2_emergency_stop_publishes_independent_zero_and_initiates_cancel(adapter_owner):
     transport = Nav2Transport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    valid_permit(adapter)
+    valid_permit(adapter, adapter_owner)
 
     adapter._emergency_stop()
 
@@ -678,7 +751,7 @@ def test_nav2_emergency_stop_publishes_independent_zero_and_initiates_cancel():
     assert transport.cancel_count == 1
 
 
-def test_nav2_estop_success_waits_for_send_goal_boundary():
+def test_nav2_estop_success_waits_for_send_goal_boundary(adapter_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -690,7 +763,7 @@ def test_nav2_estop_success_waits_for_send_goal_boundary():
 
     transport = BlockingNav2Transport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    permit = valid_permit(adapter)
+    permit = valid_permit(adapter, adapter_owner)
     errors = []
     starter = threading.Thread(
         target=lambda: _capture(errors, adapter.start, stage(), permit)
@@ -718,7 +791,7 @@ def test_nav2_estop_success_waits_for_send_goal_boundary():
         assert adapter.close(0.2)
 
 
-def test_nav2_estop_degrades_when_send_goal_does_not_quiesce():
+def test_nav2_estop_degrades_when_send_goal_does_not_quiesce(adapter_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -730,7 +803,7 @@ def test_nav2_estop_degrades_when_send_goal_does_not_quiesce():
 
     transport = BlockingNav2Transport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    permit = valid_permit(adapter)
+    permit = valid_permit(adapter, adapter_owner)
     errors = []
     starter = threading.Thread(
         target=lambda: _capture(errors, adapter.start, stage(), permit)
@@ -753,11 +826,11 @@ def test_nav2_estop_degrades_when_send_goal_does_not_quiesce():
         assert adapter.close(0.2)
 
 
-def test_no_stale_timer_publish_after_successful_estop(monkeypatch):
+def test_no_stale_timer_publish_after_successful_estop(monkeypatch, adapter_owner):
     transport = real_twist_transport(monkeypatch)
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     snapshot = threading.Event()
     release = threading.Event()
     commands = []
@@ -782,7 +855,7 @@ def test_no_stale_timer_publish_after_successful_estop(monkeypatch):
         assert adapter.close(0.2)
 
 
-def test_late_nav2_goal_response_is_best_effort_cancelled(monkeypatch):
+def test_late_nav2_goal_response_is_best_effort_cancelled(monkeypatch, adapter_owner):
     class Handle:
         accepted = True
 
@@ -800,7 +873,7 @@ def test_late_nav2_goal_response_is_best_effort_cancelled(monkeypatch):
 
     transport = real_nav2_transport(monkeypatch)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     try:
         result = adapter._emergency_stop(0.2)
         handle = Handle()
@@ -814,12 +887,12 @@ def test_late_nav2_goal_response_is_best_effort_cancelled(monkeypatch):
         assert adapter.close(0.2)
 
 
-def test_nav2_estop_between_reservation_and_goal_enqueue_rejects_late_start():
+def test_nav2_estop_between_reservation_and_goal_enqueue_rejects_late_start(adapter_owner):
     entered = threading.Event()
     release = threading.Event()
     transport = Nav2Transport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    permit = valid_permit(adapter)
+    permit = valid_permit(adapter, adapter_owner)
     adapter._before_activation = lambda: (entered.set(), release.wait(1.0))
     errors = []
     worker = threading.Thread(
@@ -838,7 +911,7 @@ def test_nav2_estop_between_reservation_and_goal_enqueue_rejects_late_start():
     assert any(isinstance(error, AdapterError) and error.code == "ESTOP_LATCHED" for error in errors)
 
 
-def test_nav2_goal_callback_registration_happens_after_atomic_enqueue_lock():
+def test_nav2_goal_callback_registration_happens_after_atomic_enqueue_lock(adapter_owner):
     class ImmediateCompletionTransport(Nav2Transport):
         def send_goal(self, goal, _permit=None):
             self.requests.append(goal)
@@ -849,7 +922,7 @@ def test_nav2_goal_callback_registration_happens_after_atomic_enqueue_lock():
 
     transport = ImmediateCompletionTransport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    permit = valid_permit(adapter)
+    permit = valid_permit(adapter, adapter_owner)
 
     with pytest.raises(AdapterError, match="ESTOP_LATCHED"):
         adapter.start(stage(), permit)
@@ -859,11 +932,11 @@ def test_nav2_goal_callback_registration_happens_after_atomic_enqueue_lock():
     assert transport.zeros == 1
 
 
-def test_nav2_maps_a_reviewed_task_stage_to_the_fixed_goal_shape():
+def test_nav2_maps_a_reviewed_task_stage_to_the_fixed_goal_shape(adapter_owner):
     transport = Nav2Transport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
 
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
 
     request = transport.requests[0]
     assert (request.frame, request.x, request.y, request.yaw) == ("odom", 2.0, 2.0, 0.0)
@@ -879,10 +952,10 @@ def test_nav2_cancellation_calls_cancel_once_then_sends_a_zero_burst():
     assert transport.zeros == 3
 
 
-def test_nav2_repeated_fail_closed_stop_cancels_a_pending_goal_only_once():
+def test_nav2_repeated_fail_closed_stop_cancels_a_pending_goal_only_once(adapter_owner):
     transport = Nav2Transport()
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(NavigationGoal(frame="map", x=1.0, y=0.0, yaw=0.0), valid_permit(adapter))
+    adapter.start(NavigationGoal(frame="map", x=1.0, y=0.0, yaw=0.0), valid_permit(adapter, adapter_owner))
 
     adapter.stop()
     adapter.stop()
@@ -909,14 +982,14 @@ def test_adapter_physical_estop_subscription_is_wired_to_runtime_handler():
     assert assertions == [True]
 
 
-def test_hospital_adapter_accepts_only_fixed_actions_on_owned_simulation_runtime():
+def test_hospital_adapter_accepts_only_fixed_actions_on_owned_simulation_runtime(adapter_owner):
     runtime = HospitalSimulationRuntime()
     adapter = HospitalDeliveryAdapter(runtime)
-    assert adapter.start(HospitalAction.START, valid_permit(adapter)).state == "running"
+    assert adapter.start(HospitalAction.START, valid_permit(adapter, adapter_owner)).state == "running"
     assert runtime.commands == (HospitalAction.START,)
 
     with pytest.raises(AdapterError, match="PROFILE_INVALID"):
-        adapter.start("start", valid_permit(adapter))
+        adapter.start("start", valid_permit(adapter, adapter_owner))
 
 
 def test_hospital_adapter_rejects_an_arbitrary_callable_runner_at_construction():
@@ -924,12 +997,12 @@ def test_hospital_adapter_rejects_an_arbitrary_callable_runner_at_construction()
         HospitalDeliveryAdapter(lambda _action: {"state": "running"})
 
 
-def test_hospital_simulation_rejects_late_start_after_permit_invalidation():
+def test_hospital_simulation_rejects_late_start_after_permit_invalidation(adapter_owner):
     entered = threading.Event()
     release = threading.Event()
     runtime = HospitalSimulationRuntime()
     adapter = HospitalDeliveryAdapter(runtime)
-    permit = valid_permit(adapter)
+    permit = valid_permit(adapter, adapter_owner)
     adapter._before_activation = lambda: (entered.set(), release.wait(1.0))
     errors = []
     worker = threading.Thread(
@@ -946,10 +1019,10 @@ def test_hospital_simulation_rejects_late_start_after_permit_invalidation():
     assert any(isinstance(error, AdapterError) and error.code == "ESTOP_LATCHED" for error in errors)
 
 
-def test_hospital_start_never_waits_then_dispatches_late_behind_runtime_lock():
+def test_hospital_start_never_waits_then_dispatches_late_behind_runtime_lock(adapter_owner):
     runtime = HospitalSimulationRuntime()
     adapter = HospitalDeliveryAdapter(runtime)
-    permit = valid_permit(adapter)
+    permit = valid_permit(adapter, adapter_owner)
     errors = []
     runtime._lock.acquire()
     worker = threading.Thread(
@@ -974,7 +1047,7 @@ def _capture(errors, function, *args):
         errors.append(exc)
 
 
-def test_nav2_late_goal_acceptance_is_cancelled_without_returning_to_running(monkeypatch):
+def test_nav2_late_goal_acceptance_is_cancelled_without_returning_to_running(monkeypatch, adapter_owner):
     class Handle:
         accepted = True
 
@@ -992,7 +1065,7 @@ def test_nav2_late_goal_acceptance_is_cancelled_without_returning_to_running(mon
 
     transport = real_nav2_transport(monkeypatch)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     transport.cancel_goal()
     handle = Handle()
 
@@ -1007,7 +1080,7 @@ def test_nav2_late_goal_acceptance_is_cancelled_without_returning_to_running(mon
 
 
 @pytest.mark.parametrize("mode", ["rejected", "exception"])
-def test_nav2_cancel_rejection_or_exception_faults_instead_of_claiming_stopped(mode, monkeypatch):
+def test_nav2_cancel_rejection_or_exception_faults_instead_of_claiming_stopped(mode, monkeypatch, adapter_owner):
     class Future:
         def add_done_callback(self, callback): self.callback = callback
         def result(self):
@@ -1021,7 +1094,7 @@ def test_nav2_cancel_rejection_or_exception_faults_instead_of_claiming_stopped(m
 
     transport = real_nav2_transport(monkeypatch)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     handle = Handle()
     transport._client.goal_future.resolve(handle)
     transport.cancel_goal()
@@ -1030,18 +1103,18 @@ def test_nav2_cancel_rejection_or_exception_faults_instead_of_claiming_stopped(m
     assert transport.goal_status() == {"state": "faulted"}
 
 
-def test_nav2_cancel_timeout_faults_while_confirmation_is_missing(monkeypatch):
+def test_nav2_cancel_timeout_faults_while_confirmation_is_missing(monkeypatch, adapter_owner):
     now = [0.0]
     transport = real_nav2_transport(monkeypatch, clock=lambda: now[0], cancel_timeout=0.1)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     transport.cancel_goal()
     now[0] = 0.11
 
     assert transport.goal_status() == {"state": "faulted"}
 
 
-def test_nav2_cancel_timeout_remains_active_after_cancel_acceptance_until_terminal_result(monkeypatch):
+def test_nav2_cancel_timeout_remains_active_after_cancel_acceptance_until_terminal_result(monkeypatch, adapter_owner):
     now = [0.0]
 
     class Handle:
@@ -1053,7 +1126,7 @@ def test_nav2_cancel_timeout_remains_active_after_cancel_acceptance_until_termin
 
     transport = real_nav2_transport(monkeypatch, clock=lambda: now[0], cancel_timeout=0.1)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     handle = Handle()
     transport._client.goal_future.resolve(handle)
     transport.cancel_goal()
@@ -1063,11 +1136,11 @@ def test_nav2_cancel_timeout_remains_active_after_cancel_acceptance_until_termin
     assert transport.goal_status() == {"state": "faulted"}
 
 
-def test_nav2_status_exception_is_stable_and_does_not_recurse_through_normal_stop():
+def test_nav2_status_exception_is_stable_and_does_not_recurse_through_normal_stop(adapter_owner):
     transport = Nav2Transport()
     transport.goal_status = lambda: (_ for _ in ()).throw(RuntimeError("raw"))
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    valid_permit(adapter)
+    valid_permit(adapter, adapter_owner)
 
     with pytest.raises(AdapterError, match="STALE_FEEDBACK"):
         adapter.status()
@@ -1076,7 +1149,7 @@ def test_nav2_status_exception_is_stable_and_does_not_recurse_through_normal_sto
     assert transport.zeros == 1
 
 
-def test_nav2_cancelled_goal_result_exception_is_faulted_not_cancelled(monkeypatch):
+def test_nav2_cancelled_goal_result_exception_is_faulted_not_cancelled(monkeypatch, adapter_owner):
     class Handle:
         accepted = True
         def __init__(self):
@@ -1087,7 +1160,7 @@ def test_nav2_cancelled_goal_result_exception_is_faulted_not_cancelled(monkeypat
 
     transport = real_nav2_transport(monkeypatch)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     handle = Handle()
     transport._client.goal_future.resolve(handle)
     transport.cancel_goal()
@@ -1096,7 +1169,7 @@ def test_nav2_cancelled_goal_result_exception_is_faulted_not_cancelled(monkeypat
     assert transport.goal_status() == {"state": "faulted"}
 
 
-def test_nav2_emergency_enqueue_never_waits_for_blocked_action_cancel(monkeypatch):
+def test_nav2_emergency_enqueue_never_waits_for_blocked_action_cancel(monkeypatch, adapter_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -1113,7 +1186,7 @@ def test_nav2_emergency_enqueue_never_waits_for_blocked_action_cancel(monkeypatc
 
     transport = real_nav2_transport(monkeypatch)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
-    adapter.start(stage(), valid_permit(adapter))
+    adapter.start(stage(), valid_permit(adapter, adapter_owner))
     transport._client.goal_future.resolve(Handle())
     errors = []
     worker = threading.Thread(target=lambda: _capture(errors, adapter._emergency_stop))

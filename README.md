@@ -6,7 +6,9 @@
 
 > 本项目展示了如何让 AI Agent 通过 **MCP 协议** 连接并操控 **ROS2（lyrical 发行版）** 与 **Gazebo 仿真**，实现"启动仿真 → 查询状态 → 发布指令 → 读取反馈"的完整闭环。环境由 Claude Code 通过官方源安装，本项目在其上构建了 Agent 可用的桥接层。
 
-> **硬件安全边界：** 本项目是研究与教学软件，不能替代认证的工业安全系统。真机 profile 只有在框架拥有的有界 emergency worker 成功启动并通过本地控制面检查后才可验证；`emergency_stop` 返回仅表示本地框架队列已接受 zero/disable 意图，不保证 ROS middleware 或硬件已执行。队列满、worker 死亡或有界关闭失败时会 fail closed 并返回故障。Hospital adapter 是封闭的进程内仿真队列，不能连接或控制硬件。
+> **硬件安全边界：** 本项目是研究与教学软件，不能替代认证的工业安全系统。真机必须配备经审查的物理急停端点；软件进程隔离、ROS action 取消请求和 zero velocity 消息都不能提供物理安全证明。只有三个布尔字段均为 `true` 的成功 `EmergencyStopResult`，才证明本地控制面已经闩锁急停 generation、拒绝后续 activation、等待已跨过执行边界的 activation 调用返回，并让本地有界安全队列接受 zero/disable 意图。这仍不证明 DDS 已交付消息、ROS action server 已接受或完成取消，也不证明执行器已经停止；这些是需要独立观测的结果。
+>
+> `code="TRANSPORT_UNQUIESCED"` 表示本地急停已经闩锁，但某个已启动的第三方 transport 调用未在期限内静止，因此不能声称返回后不存在该调用的迟到效果。`safety_command_accepted=true` 仅表示本地 emergency 队列接受了安全意图，不表示 ROS/DDS 或硬件已经执行。队列满、worker 死亡、安全命令失败或有界关闭超时都会显式 fail closed。Hospital adapter 是封闭的进程内仿真队列，不能连接或控制硬件。
 
 ---
 

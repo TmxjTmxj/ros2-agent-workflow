@@ -28,6 +28,7 @@ from agent_ros.runtime.evidence import EvidenceError, EvidenceStore
 from agent_ros.safety.gateway import SafetyTransition
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
+from tests.support.runtime_owners import runtime_owner
 
 
 class Probe:
@@ -154,12 +155,18 @@ def write_profiles(
     (root / "tasks" / "delivery.yaml").write_text(yaml.safe_dump(task), encoding="utf-8")
 
 
-def controller(tmp_path: Path, adapter: RecordingAdapter, **kwargs) -> RuntimeController:
+def controller(
+    tmp_path: Path,
+    adapter: RecordingAdapter,
+    *,
+    owner=None,
+    **kwargs,
+) -> RuntimeController:
     profiles = tmp_path / "profiles"
     if not profiles.exists():
         write_profiles(profiles)
     runtime = tmp_path / "runtime"
-    return RuntimeController(
+    runtime_controller = RuntimeController(
         profiles_root=profiles,
         evidence_dir=tmp_path / "evidence",
         runtime_dir=runtime,
@@ -168,6 +175,7 @@ def controller(tmp_path: Path, adapter: RecordingAdapter, **kwargs) -> RuntimeCo
         audit_writer=AuditWriter(runtime / "audit.jsonl"),
         **kwargs,
     )
+    return runtime_controller if owner is None else owner(runtime_controller)
 
 
 def prepare(active: RuntimeController) -> None:
@@ -175,8 +183,8 @@ def prepare(active: RuntimeController) -> None:
     active.validate_profile("robot")
 
 
-def test_register_transition_rejects_a_forged_equal_gateway_receipt(tmp_path):
-    active = controller(tmp_path, RecordingAdapter())
+def test_register_transition_rejects_a_forged_equal_gateway_receipt(tmp_path, runtime_owner):
+    active = controller(tmp_path, RecordingAdapter(), owner=runtime_owner)
     active.discover_robot("robot")
     transition = active._gateway.latest_transition
     assert transition is not None
@@ -194,16 +202,16 @@ def test_register_transition_rejects_a_forged_equal_gateway_receipt(tmp_path):
     assert active._pending_audit == {}
 
 
-def test_runtime_refuses_motion_before_profile_is_discovered_validated_and_armed(tmp_path):
-    active = controller(tmp_path, RecordingAdapter())
+def test_runtime_refuses_motion_before_profile_is_discovered_validated_and_armed(tmp_path, runtime_owner):
+    active = controller(tmp_path, RecordingAdapter(), owner=runtime_owner)
 
     with pytest.raises(RuntimeControllerError, match="UNSAFE_STATE"):
         active.run_task("delivery")
 
 
-def test_dry_run_checks_compatibility_without_starting_motion(tmp_path):
+def test_dry_run_checks_compatibility_without_starting_motion(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.005)
     prepare(active)
 
     result = active.run_task("delivery", dry_run=True)
@@ -213,10 +221,10 @@ def test_dry_run_checks_compatibility_without_starting_motion(tmp_path):
     assert active.state is SafetyState.ARMED
 
 
-def test_safe_execution_starts_typed_task_and_refreshes_heartbeat_during_status(tmp_path):
+def test_safe_execution_starts_typed_task_and_refreshes_heartbeat_during_status(tmp_path, runtime_owner):
     now = [0.0]
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, clock=lambda: now[0])
+    active = controller(tmp_path, adapter, owner=runtime_owner, clock=lambda: now[0])
     prepare(active)
 
     assert active.run_task("delivery") == {"state": "RUNNING", "task": "delivery"}
@@ -229,10 +237,10 @@ def test_safe_execution_starts_typed_task_and_refreshes_heartbeat_during_status(
     active.stop_runtime()
 
 
-def test_task_requires_profile_sensor_compatibility_before_gateway_start(tmp_path):
+def test_task_requires_profile_sensor_compatibility_before_gateway_start(tmp_path, runtime_owner):
     write_profiles(tmp_path / "profiles", required_sensors=["medical_lidar"])
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
 
     with pytest.raises(RuntimeControllerError, match="PROFILE_INVALID"):
@@ -242,9 +250,9 @@ def test_task_requires_profile_sensor_compatibility_before_gateway_start(tmp_pat
     assert adapter.started == []
 
 
-def test_adapter_fault_is_propagated_as_stable_code_and_latches_estop(tmp_path):
+def test_adapter_fault_is_propagated_as_stable_code_and_latches_estop(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
     active.run_task("delivery")
     adapter.status_error = AdapterError("STALE_FEEDBACK")
@@ -264,9 +272,9 @@ def test_adapter_fault_is_propagated_as_stable_code_and_latches_estop(tmp_path):
     assert operations[-1] == "estop"
 
 
-def test_unexpected_adapter_failure_is_sanitized_and_stops_motion(tmp_path):
+def test_unexpected_adapter_failure_is_sanitized_and_stops_motion(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.005)
     prepare(active)
     active.run_task("delivery")
     adapter.status_error = RuntimeError("secret transport path /home/operator")
@@ -277,9 +285,9 @@ def test_unexpected_adapter_failure_is_sanitized_and_stops_motion(tmp_path):
     assert active.state is SafetyState.ESTOPPED
 
 
-def test_physical_estop_monitor_is_bound_directly_to_gateway_latch(tmp_path):
+def test_physical_estop_monitor_is_bound_directly_to_gateway_latch(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
     active.run_task("delivery")
 
@@ -291,7 +299,7 @@ def test_physical_estop_monitor_is_bound_directly_to_gateway_latch(tmp_path):
     assert adapter.stop_count >= 3
 
 
-def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_path):
+def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_path, runtime_owner):
     transport = type("Transport", (), {})()
     transport.commands = []
     transport.odometry = __import__("agent_ros.adapters.base", fromlist=["OdometrySample"]).OdometrySample(
@@ -321,6 +329,7 @@ def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_pat
         audit_writer=AuditWriter(runtime / "audit.jsonl"),
         clock=lambda: 0.0,
     )
+    runtime_owner(active)
     prepare(active)
 
     active.run_task("delivery")
@@ -330,7 +339,7 @@ def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_pat
     active.stop_runtime()
 
 
-def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path):
+def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     robot_path = profiles / "robots" / "robot.yaml"
@@ -370,6 +379,7 @@ def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path
         adapter_factory=lambda profile: Nav2Adapter(profile, transport),
         audit_writer=AuditWriter(runtime / "audit.jsonl"),
     )
+    runtime_owner(active)
     prepare(active)
 
     active.run_task("delivery")
@@ -379,9 +389,9 @@ def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path
     active.stop_runtime()
 
 
-def test_real_hospital_adapter_uses_only_fixed_start_action_through_runtime(tmp_path):
+def test_real_hospital_adapter_uses_only_fixed_start_action_through_runtime(tmp_path, runtime_owner):
     runtime = HospitalSimulationRuntime()
-    active = controller(tmp_path, HospitalDeliveryAdapter(runtime))
+    active = controller(tmp_path, HospitalDeliveryAdapter(runtime), owner=runtime_owner)
     prepare(active)
 
     active.run_task("delivery")
@@ -390,7 +400,7 @@ def test_real_hospital_adapter_uses_only_fixed_start_action_through_runtime(tmp_
     active.stop_runtime()
 
 
-def test_hospital_hardware_profile_is_rejected_during_adapter_validation(tmp_path):
+def test_hospital_hardware_profile_is_rejected_during_adapter_validation(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     robot_path = profiles / "robots" / "robot.yaml"
@@ -407,6 +417,7 @@ def test_hospital_hardware_profile_is_rejected_during_adapter_validation(tmp_pat
         adapter_factory=lambda _profile: adapter,
         audit_writer=AuditWriter(runtime / "audit.jsonl"),
     )
+    runtime_owner(active)
 
     discovered = active.discover_robot("robot")
 
@@ -419,7 +430,7 @@ def test_hospital_hardware_profile_is_rejected_during_adapter_validation(tmp_pat
     active.stop_runtime()
 
 
-def test_hardware_profile_cannot_validate_without_a_verified_nonblocking_safety_channel(tmp_path):
+def test_hardware_profile_cannot_validate_without_a_verified_nonblocking_safety_channel(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     robot_path = profiles / "robots" / "robot.yaml"
@@ -434,6 +445,7 @@ def test_hardware_profile_cannot_validate_without_a_verified_nonblocking_safety_
         graph_probe=Probe(),
         adapter_factory=lambda _profile: adapter,
     )
+    runtime_owner(active)
     discovered = active.discover_robot("robot")
 
     assert discovered["hardware_safety_channel"] == "unverified"
@@ -445,7 +457,7 @@ def test_hardware_profile_cannot_validate_without_a_verified_nonblocking_safety_
     active.stop_runtime()
 
 
-def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_path):
+def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -456,7 +468,7 @@ def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_
             return self._activate_start(safety_token, lambda: self._record_start(task))
 
     adapter = BlockingAdapter()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
     errors = []
     starter = threading.Thread(target=lambda: _capture(errors, active.run_task, "delivery"))
@@ -473,7 +485,7 @@ def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_
     assert adapter.stop_count >= 3
 
 
-def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
+def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -484,7 +496,7 @@ def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
             return self._activate_start(safety_token, lambda: AdapterStatus("running"))
 
     adapter = HungStart()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
     starter = threading.Thread(target=lambda: _capture([], active.run_task, "delivery"))
     starter.start()
@@ -501,7 +513,7 @@ def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
     starter.join(1.0)
 
 
-def test_estop_between_start_reservation_and_transport_activation_rejects_start(tmp_path):
+def test_estop_between_start_reservation_and_transport_activation_rejects_start(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -512,7 +524,7 @@ def test_estop_between_start_reservation_and_transport_activation_rejects_start(
             return self._activate_start(safety_token, lambda: self._record_start(task))
 
     adapter = ReservedStart()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
     errors = []
     worker = threading.Thread(target=lambda: _capture(errors, active.run_task, "delivery"))
@@ -528,7 +540,7 @@ def test_estop_between_start_reservation_and_transport_activation_rejects_start(
     assert any(isinstance(error, RuntimeControllerError) for error in errors)
 
 
-def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path):
+def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     task_path = profiles / "tasks" / "delivery.yaml"
@@ -554,7 +566,7 @@ def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path
             return AdapterStatus("succeeded" if self.status_calls == 1 else "running")
 
     adapter = TwoStageAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.001)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.001)
     prepare(active)
     active.run_task("delivery")
 
@@ -567,13 +579,13 @@ def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path
     active.stop_runtime()
 
 
-def test_start_transition_is_audited_before_adapter_activation_and_failure_is_continuous(tmp_path):
+def test_start_transition_is_audited_before_adapter_activation_and_failure_is_continuous(tmp_path, runtime_owner):
     class FailedStart(RecordingAdapter):
         def start(self, task, safety_token=None):
             raise AdapterError("STALE_FEEDBACK")
 
     adapter = FailedStart()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
 
     with pytest.raises(RuntimeControllerError, match="STALE_FEEDBACK"):
@@ -585,7 +597,7 @@ def test_start_transition_is_audited_before_adapter_activation_and_failure_is_co
     assert records[-1]["state"] == {"from": "RUNNING", "to": "ESTOPPED"}
 
 
-def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_continuous(tmp_path):
+def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_continuous(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
     runtime = tmp_path / "runtime"
@@ -608,6 +620,7 @@ def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_c
         adapter_factory=lambda _profile: adapter,
         audit_writer=BlockingStartWriter(runtime / "audit.jsonl"),
     )
+    runtime_owner(active)
     prepare(active)
     start_errors = []
     starter = threading.Thread(target=lambda: _capture(start_errors, active.run_task, "delivery"))
@@ -640,6 +653,7 @@ def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_c
         graph_probe=Probe(),
         adapter_factory=lambda _profile: RecordingAdapter(),
     )
+    runtime_owner(restarted)
     assert restarted.discover_robot("robot")["state"] == "DISCOVERED"
     restarted.stop_runtime()
 
@@ -700,8 +714,8 @@ def test_stop_runtime_times_out_waiting_for_concurrent_audit_durability(tmp_path
     )
 
 
-def test_higher_sequence_append_waits_for_delayed_lower_receipt(tmp_path):
-    active = controller(tmp_path, RecordingAdapter(), cleanup_timeout=0.2)
+def test_higher_sequence_append_waits_for_delayed_lower_receipt(tmp_path, runtime_owner):
+    active = controller(tmp_path, RecordingAdapter(), owner=runtime_owner, cleanup_timeout=0.2)
     prepare(active)
     gateway = active._gateway
     lower = gateway.start_task()
@@ -772,7 +786,7 @@ def test_stop_runtime_waits_to_entry_deadline_for_pending_sequence_gap(tmp_path)
     ) == "AUDIT_INTEGRITY_COMPROMISED\n"
 
 
-def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_sequence(tmp_path):
+def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_sequence(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
     profiles = tmp_path / "profiles"
@@ -794,6 +808,7 @@ def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_s
         graph_probe=Probe(),
         adapter_factory=lambda _profile: adapter,
     )
+    runtime_owner(active)
     prepare(active)
     active.run_task("delivery")
     canceler = threading.Thread(target=active.cancel_task)
@@ -818,7 +833,7 @@ def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_s
     assert records[-1]["state"] == {"from": "STOPPED", "to": "ESTOPPED"}
 
 
-def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_sequence(tmp_path):
+def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_sequence(tmp_path, runtime_owner):
     now = [0.0]
 
     class ExpiringStart(RecordingAdapter):
@@ -828,7 +843,7 @@ def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_seq
             return result
 
     adapter = ExpiringStart()
-    active = controller(tmp_path, adapter, clock=lambda: now[0])
+    active = controller(tmp_path, adapter, owner=runtime_owner, clock=lambda: now[0])
     prepare(active)
     errors = []
     worker = threading.Thread(
@@ -854,10 +869,10 @@ def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_seq
     assert records[-1]["operation_data"] == expected_stop_result
 
 
-def test_physical_estop_drains_unobserved_watchdog_fault_without_waiting_for_monitor(tmp_path):
+def test_physical_estop_drains_unobserved_watchdog_fault_without_waiting_for_monitor(tmp_path, runtime_owner):
     now = [0.0]
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, clock=lambda: now[0], monitor_interval=10.0)
+    active = controller(tmp_path, adapter, owner=runtime_owner, clock=lambda: now[0], monitor_interval=10.0)
     prepare(active)
     active.run_task("delivery")
     now[0] = 2.0
@@ -881,7 +896,7 @@ def test_physical_estop_drains_unobserved_watchdog_fault_without_waiting_for_mon
     assert records[-1]["state"] == {"from": "FAULTED", "to": "ESTOPPED"}
 
 
-def test_monitor_never_mistakes_a_newer_estop_for_the_watchdog_fault(tmp_path):
+def test_monitor_never_mistakes_a_newer_estop_for_the_watchdog_fault(tmp_path, runtime_owner):
     now = [0.0]
     entered = threading.Event()
     release = threading.Event()
@@ -905,6 +920,7 @@ def test_monitor_never_mistakes_a_newer_estop_for_the_watchdog_fault(tmp_path):
         clock=lambda: now[0],
         monitor_interval=0.001,
     )
+    runtime_owner(active)
     prepare(active)
     active.run_task("delivery")
     now[0] = 2.0
@@ -986,7 +1002,7 @@ def test_full_emergency_queue_fails_closed_without_blocking_caller(tmp_path):
         active.stop_runtime()
 
 
-def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(tmp_path):
+def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -997,7 +1013,7 @@ def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(
             return AdapterStatus("running")
 
     adapter = HungStatus()
-    active = controller(tmp_path, adapter, monitor_interval=0.001, cleanup_timeout=0.02)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.001, cleanup_timeout=0.02)
     prepare(active)
     active.run_task("delivery")
     assert entered.wait(1.0)
@@ -1007,9 +1023,10 @@ def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(
 
     assert active.state is not SafetyState.RUNNING
     release.set()
+    assert active.stop_runtime() == {"state": "ESTOPPED"}
 
 
-def test_stop_runtime_uses_bounded_tracked_task_cleanup_after_nonblocking_safety_enqueue(tmp_path):
+def test_stop_runtime_uses_bounded_tracked_task_cleanup_after_nonblocking_safety_enqueue(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -1019,7 +1036,7 @@ def test_stop_runtime_uses_bounded_tracked_task_cleanup_after_nonblocking_safety
             release.wait()
 
     adapter = HungStop()
-    active = controller(tmp_path, adapter, cleanup_timeout=0.02)
+    active = controller(tmp_path, adapter, owner=runtime_owner, cleanup_timeout=0.02)
     prepare(active)
     active.run_task("delivery")
 
@@ -1105,7 +1122,7 @@ def test_stop_runtime_shares_one_entry_deadline_across_owned_components(tmp_path
     assert offered == [("estop", 0.5), ("gateway", 0.0), ("adapter", 0.0)]
 
 
-def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_path):
+def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
 
@@ -1116,7 +1133,7 @@ def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_pat
             return AdapterStatus("running")
 
     adapter = HungStatus()
-    active = controller(tmp_path, adapter, monitor_interval=0.001, cleanup_timeout=0.02)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.001, cleanup_timeout=0.02)
     prepare(active)
     active.run_task("delivery")
     assert entered.wait(1.0)
@@ -1132,12 +1149,12 @@ def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_pat
     active.stop_runtime()
 
 
-def test_monitor_thread_start_failure_latches_stop_and_never_leaks_running(tmp_path):
+def test_monitor_thread_start_failure_latches_stop_and_never_leaks_running(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
     class FailedThread:
         def start(self): raise RuntimeError("raw")
         def join(self, timeout=None): raise AssertionError("unstarted monitor joined")
-    active = controller(tmp_path, adapter, monitor_thread_factory=lambda **_kwargs: FailedThread())
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_thread_factory=lambda **_kwargs: FailedThread())
     prepare(active)
 
     with pytest.raises(RuntimeControllerError, match="UNSAFE_STATE"):
@@ -1174,9 +1191,9 @@ def _capture(errors, function, *args):
         errors.append(exc)
 
 
-def test_owned_monitor_keeps_healthy_runtime_alive_without_mcp_polling(tmp_path):
+def test_owned_monitor_keeps_healthy_runtime_alive_without_mcp_polling(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.005)
     prepare(active)
     active.run_task("delivery")
 
@@ -1186,9 +1203,9 @@ def test_owned_monitor_keeps_healthy_runtime_alive_without_mcp_polling(tmp_path)
     active.stop_runtime()
 
 
-def test_owned_monitor_latches_stale_adapter_without_mcp_polling(tmp_path):
+def test_owned_monitor_latches_stale_adapter_without_mcp_polling(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.005)
     prepare(active)
     active.run_task("delivery")
     adapter.status_error = AdapterError("STALE_FEEDBACK")
@@ -1250,7 +1267,7 @@ class CompromisedWriter:
         raise AuditIntegrityError()
 
 
-def test_audit_integrity_compromise_persists_quarantine_across_controller_restart(tmp_path):
+def test_audit_integrity_compromise_persists_quarantine_across_controller_restart(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     runtime = tmp_path / "runtime"
@@ -1276,11 +1293,14 @@ def test_audit_integrity_compromise_persists_quarantine_across_controller_restar
         adapter_factory=lambda _profile: RecordingAdapter(),
         audit_writer=AuditWriter(runtime / "audit.jsonl"),
     )
+    runtime_owner(restarted)
     with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
         restarted.discover_robot("robot")
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        compromised.stop_runtime()
 
 
-def test_restart_quarantines_schema_invalid_but_parseable_audit_record(tmp_path):
+def test_restart_quarantines_schema_invalid_but_parseable_audit_record(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     runtime = tmp_path / "runtime"
@@ -1304,6 +1324,7 @@ def test_restart_quarantines_schema_invalid_but_parseable_audit_record(tmp_path)
         graph_probe=Probe(),
         adapter_factory=lambda _profile: RecordingAdapter(),
     )
+    runtime_owner(active)
 
     with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
         active.discover_robot("robot")
@@ -1311,7 +1332,7 @@ def test_restart_quarantines_schema_invalid_but_parseable_audit_record(tmp_path)
 
 
 @pytest.mark.parametrize("mutation", ["oversized", "discontinuous", "bad-first"])
-def test_restart_quarantines_bounded_but_impossible_audit_history(tmp_path, mutation):
+def test_restart_quarantines_bounded_but_impossible_audit_history(tmp_path, mutation, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     runtime = tmp_path / "runtime"
@@ -1336,14 +1357,15 @@ def test_restart_quarantines_bounded_but_impossible_audit_history(tmp_path, muta
         profiles_root=profiles, evidence_dir=tmp_path / "evidence", runtime_dir=runtime,
         graph_probe=Probe(), adapter_factory=lambda _profile: RecordingAdapter(),
     )
+    runtime_owner(active)
 
     with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
         active.discover_robot("robot")
 
 
-def test_clean_stopped_session_allows_new_controller_session_from_new(tmp_path):
+def test_clean_stopped_session_allows_new_controller_session_from_new(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    first = controller(tmp_path, adapter)
+    first = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(first)
     first.run_task("delivery")
     first.cancel_task()
@@ -1356,6 +1378,7 @@ def test_clean_stopped_session_allows_new_controller_session_from_new(tmp_path):
         graph_probe=Probe(),
         adapter_factory=lambda _profile: RecordingAdapter(),
     )
+    runtime_owner(second)
     result = second.discover_robot("robot")
 
     records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
@@ -1363,9 +1386,9 @@ def test_clean_stopped_session_allows_new_controller_session_from_new(tmp_path):
     assert records[-1]["session_id"] != records[0]["session_id"]
 
 
-def test_restart_quarantines_a_previous_running_session(tmp_path):
+def test_restart_quarantines_a_previous_running_session(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    first = controller(tmp_path, adapter)
+    first = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(first)
     first.run_task("delivery")
 
@@ -1376,15 +1399,16 @@ def test_restart_quarantines_a_previous_running_session(tmp_path):
         graph_probe=Probe(),
         adapter_factory=lambda _profile: RecordingAdapter(),
     )
+    runtime_owner(restarted)
 
     with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
         restarted.discover_robot("robot")
     first.stop_runtime()
 
 
-def test_restart_quarantines_interleaved_or_replayed_audit_session(tmp_path):
+def test_restart_quarantines_interleaved_or_replayed_audit_session(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, owner=runtime_owner)
     prepare(active)
     path = tmp_path / "runtime" / "audit.jsonl"
     records = path.read_text().splitlines()
@@ -1395,17 +1419,18 @@ def test_restart_quarantines_interleaved_or_replayed_audit_session(tmp_path):
         runtime_dir=tmp_path / "runtime", graph_probe=Probe(),
         adapter_factory=lambda _profile: RecordingAdapter(),
     )
+    runtime_owner(restarted)
 
     with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
         restarted.discover_robot("robot")
 
 
-def test_physical_binding_failure_is_estopped_and_audited_once(tmp_path):
+def test_physical_binding_failure_is_estopped_and_audited_once(tmp_path, runtime_owner):
     class BrokenBinding(RecordingAdapter):
         def bind_physical_estop(self, handler):
             raise RuntimeError("raw device path")
 
-    active = controller(tmp_path, BrokenBinding())
+    active = controller(tmp_path, BrokenBinding(), owner=runtime_owner)
 
     with pytest.raises(RuntimeControllerError, match="UNSAFE_STATE"):
         active.discover_robot("robot")
@@ -1415,9 +1440,9 @@ def test_physical_binding_failure_is_estopped_and_audited_once(tmp_path):
     active.stop_runtime()
 
 
-def test_quarantined_runtime_still_allows_owned_cleanup_and_join(tmp_path):
+def test_quarantined_runtime_still_allows_owned_cleanup_and_join(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.005)
     prepare(active)
     active.run_task("delivery")
     (tmp_path / "runtime" / "audit.quarantine").write_text("AUDIT_INTEGRITY_COMPROMISED\n")
@@ -1428,11 +1453,11 @@ def test_quarantined_runtime_still_allows_owned_cleanup_and_join(tmp_path):
     assert adapter.stop_count >= 3
 
 
-def test_owned_monitor_enforces_stage_timeout_without_mcp_polling(tmp_path):
+def test_owned_monitor_enforces_stage_timeout_without_mcp_polling(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles, stage_timeout=0.02)
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.005)
     prepare(active)
     active.run_task("delivery")
 
@@ -1444,11 +1469,11 @@ def test_owned_monitor_enforces_stage_timeout_without_mcp_polling(tmp_path):
     active.stop_runtime()
 
 
-def test_watchdog_fault_transition_is_audited_once_by_owned_monitor(tmp_path):
+def test_watchdog_fault_transition_is_audited_once_by_owned_monitor(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_profiles(profiles, heartbeat_timeout=0.02)
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter, monitor_interval=0.08)
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.08)
     prepare(active)
     active.run_task("delivery")
     time.sleep(0.16)
