@@ -6,7 +6,14 @@ import stat
 
 import pytest
 
-from agent_ros.runtime.audit import AuditError, AuditEvent, AuditOperation, AuditOutcome, AuditWriter
+from agent_ros.runtime.audit import (
+    AuditError,
+    AuditEvent,
+    AuditIntegrityError,
+    AuditOperation,
+    AuditOutcome,
+    AuditWriter,
+)
 from agent_ros.safety.state import SafetyState
 
 
@@ -136,20 +143,9 @@ def test_append_rolls_back_a_partial_write_when_the_following_write_fails(tmp_pa
     ]
 
 
-@pytest.mark.parametrize(
-    "operation,state",
-    [
-        (AuditOperation.DISCOVER, SafetyState.NEW),
-        (AuditOperation.VALIDATE, SafetyState.DISCOVERED),
-        (AuditOperation.ARM, SafetyState.VALIDATED),
-        (AuditOperation.START_TASK, SafetyState.ARMED),
-        (AuditOperation.HEARTBEAT, SafetyState.RUNNING),
-        (AuditOperation.CANCEL, SafetyState.RUNNING),
-        (AuditOperation.ESTOP, SafetyState.ESTOPPED),
-        (AuditOperation.OPERATOR_RESET, SafetyState.ESTOPPED),
-    ],
-)
-def test_each_operation_can_record_a_rejected_same_state_transition(tmp_path, operation, state):
+@pytest.mark.parametrize("operation", list(AuditOperation))
+@pytest.mark.parametrize("state", list(SafetyState))
+def test_each_operation_can_record_rejection_at_every_same_safety_state(tmp_path, operation, state):
     audit_path = tmp_path / "audit.jsonl"
 
     AuditWriter(audit_path).append(AuditEvent(operation, state, state, AuditOutcome.REJECTED))
@@ -160,14 +156,65 @@ def test_each_operation_can_record_a_rejected_same_state_transition(tmp_path, op
     assert record["state"] == {"from": state.value, "to": state.value}
 
 
-def test_rejected_outcome_cannot_forge_an_impossible_cross_state_transition(tmp_path):
+@pytest.mark.parametrize(
+    "operation,before,after",
+    [
+        (AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED),
+        (AuditOperation.VALIDATE, SafetyState.DISCOVERED, SafetyState.ARMED),
+        (AuditOperation.ARM, SafetyState.VALIDATED, SafetyState.ARMED),
+        (AuditOperation.START_TASK, SafetyState.ARMED, SafetyState.RUNNING),
+        (AuditOperation.HEARTBEAT, SafetyState.RUNNING, SafetyState.FAULTED),
+        (AuditOperation.CANCEL, SafetyState.RUNNING, SafetyState.STOPPED),
+        (AuditOperation.ESTOP, SafetyState.RUNNING, SafetyState.ESTOPPED),
+        (AuditOperation.OPERATOR_RESET, SafetyState.ESTOPPED, SafetyState.NEW),
+    ],
+)
+def test_rejected_outcome_cannot_forge_any_cross_state_transition(tmp_path, operation, before, after):
     audit_path = tmp_path / "audit.jsonl"
 
     with pytest.raises(AuditError, match="invalid audit transition"):
         AuditWriter(audit_path).append(AuditEvent(
-            AuditOperation.START_TASK,
-            SafetyState.ARMED,
-            SafetyState.RUNNING,
+            operation,
+            before,
+            after,
             AuditOutcome.REJECTED,
         ))
     assert not audit_path.exists()
+
+
+@pytest.mark.parametrize("rollback_failure", ["truncate", "fsync"])
+def test_rollback_failure_locks_writer_and_never_exposes_raw_error_data(tmp_path, rollback_failure):
+    audit_path = tmp_path / "audit.jsonl"
+    initial = AuditWriter(audit_path)
+    initial.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
+    calls = [0]
+
+    def partial_then_fail(descriptor: int, data: bytes) -> int:
+        calls[0] += 1
+        if calls[0] == 1:
+            return os.write(descriptor, data[:4])
+        raise OSError("super-secret /unsafe/path")
+
+    def fail_truncate(_descriptor: int, _offset: int) -> None:
+        raise OSError("super-secret /unsafe/path")
+
+    def fail_fsync(_descriptor: int) -> None:
+        raise OSError("super-secret /unsafe/path")
+
+    writer = AuditWriter(
+        audit_path,
+        write=partial_then_fail,
+        truncate=fail_truncate if rollback_failure == "truncate" else os.ftruncate,
+        fsync=os.fsync if rollback_failure == "truncate" else fail_fsync,
+    )
+    event = AuditEvent(AuditOperation.VALIDATE, SafetyState.DISCOVERED, SafetyState.ARMED, AuditOutcome.OK)
+
+    with pytest.raises(AuditIntegrityError) as captured:
+        writer.append(event)
+    assert str(captured.value) == "AUDIT_INTEGRITY_COMPROMISED"
+    assert "secret" not in str(captured.value)
+    assert "path" not in str(captured.value)
+    writes_after_integrity_failure = calls[0]
+    with pytest.raises(AuditIntegrityError):
+        writer.append(event)
+    assert calls[0] == writes_after_integrity_failure

@@ -30,6 +30,15 @@ class AuditError(ValueError):
     """A stable failure that leaves unsafe audit input unwritten."""
 
 
+class AuditIntegrityError(AuditError):
+    """The append rollback was not durable; this writer must never be reused."""
+
+    code = "AUDIT_INTEGRITY_COMPROMISED"
+
+    def __init__(self) -> None:
+        super().__init__(self.code)
+
+
 class AuditOperation(str, Enum):
     DISCOVER = "discover"
     VALIDATE = "validate"
@@ -69,16 +78,6 @@ _SUCCESS_TRANSITIONS = {
     AuditOperation.ESTOP: {(state, SafetyState.ESTOPPED) for state in SafetyState if state is not SafetyState.ESTOPPED},
     AuditOperation.OPERATOR_RESET: {(SafetyState.ESTOPPED, SafetyState.NEW)},
 }
-_REJECTED_STATES = {
-    AuditOperation.DISCOVER: SafetyState.NEW,
-    AuditOperation.VALIDATE: SafetyState.DISCOVERED,
-    AuditOperation.ARM: SafetyState.VALIDATED,
-    AuditOperation.START_TASK: SafetyState.ARMED,
-    AuditOperation.HEARTBEAT: SafetyState.RUNNING,
-    AuditOperation.CANCEL: SafetyState.RUNNING,
-    AuditOperation.ESTOP: SafetyState.ESTOPPED,
-    AuditOperation.OPERATOR_RESET: SafetyState.ESTOPPED,
-}
 _FAULTED_TRANSITIONS = {
     AuditOperation.HEARTBEAT: {(SafetyState.RUNNING, SafetyState.FAULTED)},
 }
@@ -94,13 +93,20 @@ class AuditWriter:
         wall_clock: Callable[[], float] = time.time,
         monotonic_clock: Callable[[], float] = time.monotonic,
         write: Callable[[int, bytes], int] = os.write,
+        truncate: Callable[[int, int], None] = os.ftruncate,
+        fsync: Callable[[int], None] = os.fsync,
     ) -> None:
         self._path = Path(path)
         self._wall_clock = wall_clock
         self._monotonic_clock = monotonic_clock
         self._write = write
+        self._truncate = truncate
+        self._fsync = fsync
+        self._integrity_compromised = False
 
     def append(self, event: AuditEvent) -> None:
+        if self._integrity_compromised:
+            raise AuditIntegrityError()
         encoded = self._encode(event)
         self._path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         os.chmod(self._path.parent, 0o700)
@@ -116,7 +122,7 @@ class AuditWriter:
                     try:
                         os.fchmod(data_fd, 0o600)
                         self._write_all(data_fd, encoded)
-                        os.fsync(data_fd)
+                        self._fsync(data_fd)
                     except (AuditError, OSError):
                         self._rollback(data_fd, offset)
                         raise AuditError("audit write failed") from None
@@ -174,14 +180,13 @@ class AuditWriter:
                 raise AuditError("audit write failed")
             offset += written
 
-    @staticmethod
-    def _rollback(descriptor: int, offset: int) -> None:
+    def _rollback(self, descriptor: int, offset: int) -> None:
         try:
-            os.ftruncate(descriptor, offset)
-            os.fsync(descriptor)
+            self._truncate(descriptor, offset)
+            self._fsync(descriptor)
         except OSError:
-            # The original write failure remains the only safe public error.
-            pass
+            self._integrity_compromised = True
+            raise AuditIntegrityError() from None
 
 
 def _finite_clock(value: object) -> float:
@@ -193,7 +198,7 @@ def _finite_clock(value: object) -> float:
 def _validate_transition(event: AuditEvent) -> None:
     transition = (event.state_before, event.state_after)
     if event.outcome is AuditOutcome.REJECTED:
-        if transition != (_REJECTED_STATES[event.operation], _REJECTED_STATES[event.operation]):
+        if event.state_before is not event.state_after:
             raise AuditError("invalid audit transition")
         return
     if event.outcome is AuditOutcome.FAULTED:
