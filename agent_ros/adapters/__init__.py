@@ -9,7 +9,6 @@ from agent_ros.adapters.base import (
     Observation,
     OdometrySample,
     RobotAdapter,
-    SafetyToken,
     TwistCommand,
     create_adapter,
 )
@@ -28,7 +27,6 @@ __all__ = (
     "Observation",
     "OdometrySample",
     "RobotAdapter",
-    "SafetyToken",
     "TwistAdapter",
     "TwistCommand",
     "create_adapter",

@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 import yaml
 
+from agent_ros.adapters._safety import _EmergencyStopChannel
 from agent_ros.adapters.base import (
     AdapterError,
     AdapterProbe,
@@ -37,13 +38,31 @@ class Probe:
         )
 
 
+class RecordingEmergencyChannel(_EmergencyStopChannel):
+    def __init__(self, adapter, *, hardware_verified: bool = True, available: bool = True) -> None:
+        super().__init__(hardware_verified=hardware_verified)
+        self._adapter = adapter
+        self._available = available
+
+    def _preflight(self) -> bool:
+        return self._available
+
+    def _enqueue_zero_disable(self) -> None:
+        self._adapter.stop_count += 1
+
+
 class RecordingAdapter(RobotAdapter):
-    def __init__(self) -> None:
+    def __init__(self, *, hardware_verified: bool = True, channel_available: bool = True) -> None:
         self.started = []
         self.stop_count = 0
         self.cancel_count = 0
         self.estop_handler = None
         self.status_error: BaseException | None = None
+        self.safety_channel = RecordingEmergencyChannel(
+            self,
+            hardware_verified=hardware_verified,
+            available=channel_available,
+        )
 
     def probe(self) -> AdapterProbe:
         return AdapterProbe(True, ("mobile_base.twist",))
@@ -52,8 +71,9 @@ class RecordingAdapter(RobotAdapter):
         return None
 
     def start(self, task: object, safety_token=None) -> AdapterStatus:
-        if safety_token is not None and not safety_token.is_valid():
-            raise AdapterError("ESTOP_LATCHED")
+        return self._activate_start(safety_token, lambda: self._record_start(task))
+
+    def _record_start(self, task: object) -> AdapterStatus:
         self.started.append(task)
         return AdapterStatus("running")
 
@@ -69,15 +89,15 @@ class RecordingAdapter(RobotAdapter):
     def stop(self) -> None:
         self.stop_count += 1
 
-    def emergency_stop(self) -> None:
-        self.stop_count += 1
-
     def observe(self, source: str) -> Observation:
         return Observation(source, 1.0, {"ok": True})
 
     def bind_physical_estop(self, handler) -> bool:
         self.estop_handler = handler
         return True
+
+    def _emergency_stop_channel(self):
+        return self.safety_channel
 
 
 def write_profiles(
@@ -252,10 +272,14 @@ def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_pat
     transport.read_odometry = lambda: transport.odometry
     transport.subscribe_estop = lambda handler: setattr(transport, "estop", handler)
     transport.start_waypoint = lambda stage, token=None: setattr(transport, "stage", stage)
+    transport.preflight_activation = lambda: True
     transport.waypoint_status = lambda: AdapterStatus("running")
     transport.cancel_waypoint = lambda: transport.commands.extend([TwistCommand.zero()] * 3)
     transport.stop_waypoint = lambda: transport.commands.extend([TwistCommand.zero()] * 3)
-    transport.emergency_stop = transport.stop_waypoint
+    transport.safety_channel = RecordingEmergencyChannel(
+        type("Counter", (), {"stop_count": 0})(),
+    )
+    transport.emergency_channel = lambda: transport.safety_channel
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     runtime = tmp_path / "runtime"
@@ -295,12 +319,17 @@ def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path
     class Transport:
         def __init__(self):
             self.requests = []
-        def send_goal(self, request, token=None): self.requests.append(request)
+            self.stop_count = 0
+            self.safety_channel = RecordingEmergencyChannel(self)
+        def preflight_activation(self): return True
+        def prepare_goal(self, request): return request
+        def send_goal(self, goal, token=None): self.requests.append(goal)
+        def track_goal(self, future, permit): return None
         def goal_status(self): return {"state": "running"}
         def cancel_goal(self): return None
         def publish_zero(self): return None
         def subscribe_estop(self, handler): self.estop = handler
-        def emergency_stop(self): return None
+        def emergency_channel(self): return self.safety_channel
 
     transport = Transport()
     runtime = tmp_path / "runtime"
@@ -337,7 +366,7 @@ def test_real_hospital_adapter_uses_only_fixed_start_action_through_runtime(tmp_
     active.stop_runtime()
 
 
-def test_hospital_hardware_profile_requires_a_real_physical_estop_binding(tmp_path):
+def test_hospital_hardware_profile_is_rejected_during_adapter_validation(tmp_path):
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     robot_path = profiles / "robots" / "robot.yaml"
@@ -355,8 +384,38 @@ def test_hospital_hardware_profile_requires_a_real_physical_estop_binding(tmp_pa
         audit_writer=AuditWriter(runtime / "audit.jsonl"),
     )
 
+    discovered = active.discover_robot("robot")
+
+    assert discovered["hardware_safety_channel"] == "unverified"
+
     with pytest.raises(RuntimeControllerError, match="PROFILE_INVALID"):
-        active.discover_robot("robot")
+        active.validate_profile("robot")
+
+    assert active.state is SafetyState.ESTOPPED
+    active.stop_runtime()
+
+
+def test_hardware_profile_cannot_validate_without_a_verified_nonblocking_safety_channel(tmp_path):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    robot_path = profiles / "robots" / "robot.yaml"
+    robot = yaml.safe_load(robot_path.read_text())
+    robot["mode"] = "hardware"
+    robot_path.write_text(yaml.safe_dump(robot), encoding="utf-8")
+    adapter = RecordingAdapter(hardware_verified=False)
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: adapter,
+    )
+    discovered = active.discover_robot("robot")
+
+    assert discovered["hardware_safety_channel"] == "unverified"
+
+    with pytest.raises(RuntimeControllerError, match="PROFILE_INVALID"):
+        active.validate_profile("robot")
 
     assert active.state is SafetyState.ESTOPPED
     active.stop_runtime()
@@ -370,10 +429,7 @@ def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_
         def start(self, task, safety_token=None):
             entered.set()
             release.wait(1.0)
-            if not safety_token.is_valid():
-                raise AdapterError("ESTOP_LATCHED")
-            self.started.append(task)
-            return AdapterStatus("running")
+            return self._activate_start(safety_token, lambda: self._record_start(task))
 
     adapter = BlockingAdapter()
     active = controller(tmp_path, adapter)
@@ -400,9 +456,7 @@ def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
         def start(self, task, safety_token=None):
             entered.set()
             release.wait()
-            if not safety_token.is_valid():
-                raise AdapterError("ESTOP_LATCHED")
-            return AdapterStatus("running")
+            return self._activate_start(safety_token, lambda: AdapterStatus("running"))
 
     adapter = HungStart()
     active = controller(tmp_path, adapter)
@@ -428,10 +482,7 @@ def test_estop_between_start_reservation_and_transport_activation_rejects_start(
         def start(self, task, safety_token=None):
             entered.set()
             release.wait(1.0)
-            if not safety_token.is_valid():
-                raise AdapterError("ESTOP_LATCHED")
-            self.started.append(task)
-            return AdapterStatus("running")
+            return self._activate_start(safety_token, lambda: self._record_start(task))
 
     adapter = ReservedStart()
     active = controller(tmp_path, adapter)
@@ -469,8 +520,6 @@ def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path
             self.status_calls = 0
 
         def start(self, task, safety_token=None):
-            if safety_token is None or not safety_token.is_valid():
-                raise AdapterError("ESTOP_LATCHED")
             return super().start(task, safety_token)
 
         def status(self):
@@ -509,6 +558,137 @@ def test_start_transition_is_audited_before_adapter_activation_and_failure_is_co
     assert records[-1]["state"] == {"from": "RUNNING", "to": "ESTOPPED"}
 
 
+def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_continuous(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+    runtime = tmp_path / "runtime"
+
+    class BlockingStartWriter(AuditWriter):
+        def append(self, event):
+            if event.operation.value == "start_task":
+                entered.set()
+                release.wait(1.0)
+            return super().append(event)
+
+    adapter = RecordingAdapter()
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: adapter,
+        audit_writer=BlockingStartWriter(runtime / "audit.jsonl"),
+    )
+    prepare(active)
+    start_errors = []
+    starter = threading.Thread(target=lambda: _capture(start_errors, active.run_task, "delivery"))
+    starter.start()
+    assert entered.wait(1.0)
+
+    estopper = threading.Thread(target=lambda: adapter.estop_handler(True))
+    estopper.start()
+    deadline = time.monotonic() + 1.0
+    while active.state is not SafetyState.ESTOPPED and time.monotonic() < deadline:
+        time.sleep(0.001)
+    assert active.state is SafetyState.ESTOPPED
+    assert adapter.stop_count >= 3
+    release.set()
+    starter.join(1.0)
+    estopper.join(1.0)
+
+    records = [json.loads(line) for line in (runtime / "audit.jsonl").read_text().splitlines()]
+    assert [record["operation"] for record in records[-2:]] == ["start_task", "estop"]
+    assert records[-2]["state"] == {"from": "ARMED", "to": "RUNNING"}
+    assert records[-1]["state"] == {"from": "RUNNING", "to": "ESTOPPED"}
+
+    restarted = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence-2",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: RecordingAdapter(),
+    )
+    assert restarted.discover_robot("robot")["state"] == "DISCOVERED"
+    restarted.stop_runtime()
+
+
+def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_sequence(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+    profiles = tmp_path / "profiles"
+    runtime = tmp_path / "runtime"
+    write_profiles(profiles)
+
+    class PausedCancelAuditController(RuntimeController):
+        def _append_transition(self, operation, transition, **kwargs):
+            if operation.value == "cancel":
+                entered.set()
+                release.wait(1.0)
+            return super()._append_transition(operation, transition, **kwargs)
+
+    adapter = RecordingAdapter()
+    active = PausedCancelAuditController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: adapter,
+    )
+    prepare(active)
+    active.run_task("delivery")
+    canceler = threading.Thread(target=active.cancel_task)
+    canceler.start()
+    assert entered.wait(1.0)
+
+    estopper = threading.Thread(target=lambda: adapter.estop_handler(True))
+    estopper.start()
+    deadline = time.monotonic() + 1.0
+    while active.state is not SafetyState.ESTOPPED and time.monotonic() < deadline:
+        time.sleep(0.001)
+    assert active.state is SafetyState.ESTOPPED
+    release.set()
+    canceler.join(1.0)
+    estopper.join(1.0)
+    assert not canceler.is_alive(), active._pending_audit
+    assert not estopper.is_alive(), active._pending_audit
+
+    records = [json.loads(line) for line in (runtime / "audit.jsonl").read_text().splitlines()]
+    assert [record["operation"] for record in records[-2:]] == ["cancel", "estop"]
+    assert records[-2]["state"] == {"from": "RUNNING", "to": "STOPPED"}
+    assert records[-1]["state"] == {"from": "STOPPED", "to": "ESTOPPED"}
+
+
+def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_sequence(tmp_path):
+    now = [0.0]
+
+    class ExpiringStart(RecordingAdapter):
+        def start(self, task, activation_permit=None):
+            result = super().start(task, activation_permit)
+            now[0] = 2.0
+            return result
+
+    adapter = ExpiringStart()
+    active = controller(tmp_path, adapter, clock=lambda: now[0])
+    prepare(active)
+    errors = []
+    worker = threading.Thread(
+        target=lambda: _capture(errors, active.run_task, "delivery"),
+        daemon=True,
+    )
+    worker.start()
+    worker.join(0.5)
+
+    assert not worker.is_alive(), active._pending_audit
+    assert any(isinstance(error, RuntimeControllerError) for error in errors)
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
+    assert [record["operation"] for record in records[-2:]] == ["heartbeat", "estop"]
+    assert records[-2]["outcome"] == "faulted"
+    assert records[-2]["state"] == {"from": "RUNNING", "to": "FAULTED"}
+    assert records[-1]["state"] == {"from": "FAULTED", "to": "ESTOPPED"}
+
+
 def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(tmp_path):
     entered = threading.Event()
     release = threading.Event()
@@ -530,6 +710,51 @@ def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(
 
     assert active.state is not SafetyState.RUNNING
     release.set()
+
+
+def test_stop_runtime_uses_bounded_tracked_task_cleanup_after_nonblocking_safety_enqueue(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class HungStop(RecordingAdapter):
+        def stop(self):
+            entered.set()
+            release.wait()
+
+    adapter = HungStop()
+    active = controller(tmp_path, adapter, cleanup_timeout=0.02)
+    prepare(active)
+    active.run_task("delivery")
+
+    began = time.monotonic()
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
+
+    assert time.monotonic() - began < 0.2
+    assert entered.is_set()
+    assert active.state is SafetyState.ESTOPPED
+    assert adapter.stop_count >= 3
+    release.set()
+    assert active.stop_runtime() == {"state": "ESTOPPED"}
+
+
+def test_stop_runtime_applies_cleanup_timeout_to_owned_safety_watchdog_join(tmp_path):
+    class SlowJoinThread:
+        def is_alive(self):
+            return True
+
+        def join(self, timeout=None):
+            time.sleep(1.0 if timeout is None else timeout)
+
+    active = controller(tmp_path, RecordingAdapter(), cleanup_timeout=0.02)
+    prepare(active)
+    active._gateway.supervisor._thread = SlowJoinThread()
+
+    began = time.monotonic()
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
+
+    assert time.monotonic() - began < 0.2
 
 
 def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_path):

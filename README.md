@@ -6,6 +6,8 @@
 
 > 本项目展示了如何让 AI Agent 通过 **MCP 协议** 连接并操控 **ROS2（lyrical 发行版）** 与 **Gazebo 仿真**，实现"启动仿真 → 查询状态 → 发布指令 → 读取反馈"的完整闭环。环境由 Claude Code 通过官方源安装，本项目在其上构建了 Agent 可用的桥接层。
 
+> **硬件安全边界：** 本项目是研究与教学软件，不能替代认证的工业安全系统。真机 profile 只有在独立 emergency channel 经预检后才可验证；`emergency_stop` 返回仅表示非阻塞 zero/disable 命令已入队，不保证物理执行。Hospital runner 仅支持仿真，不能用于真机急停。运行时状态会将尚未验证的真机通道标记为 `unverified`。
+
 ---
 
 ## 🏗️ 架构

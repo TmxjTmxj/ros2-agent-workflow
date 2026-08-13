@@ -8,6 +8,7 @@ import threading
 from collections.abc import Callable
 from typing import Protocol
 
+from agent_ros.adapters._safety import _ActivationPermit, _ActivationRejected, _EmergencyStopChannel
 from agent_ros.adapters.base import (
     AdapterError,
     AdapterProbe,
@@ -15,7 +16,6 @@ from agent_ros.adapters.base import (
     Observation,
     OdometrySample,
     RobotAdapter,
-    SafetyToken,
     TwistCommand,
 )
 from agent_ros.profiles.models import ODOMETRY_TYPE, TWIST_TYPE, RobotProfile, TaskStage
@@ -25,9 +25,11 @@ _ZERO_BURST_COUNT = 3
 
 
 class TwistTransport(Protocol):
+    def preflight_activation(self) -> bool: ...
+
     def read_odometry(self) -> OdometrySample: ...
 
-    def start_waypoint(self, stage: TaskStage, safety_token: SafetyToken | None = None) -> None: ...
+    def start_waypoint(self, stage: TaskStage, activation_permit: object = None) -> None: ...
 
     def waypoint_status(self) -> AdapterStatus: ...
 
@@ -35,7 +37,7 @@ class TwistTransport(Protocol):
 
     def stop_waypoint(self) -> None: ...
 
-    def emergency_stop(self) -> None: ...
+    def emergency_channel(self) -> _EmergencyStopChannel: ...
 
     def subscribe_estop(self, handler: Callable[[bool], None]) -> None: ...
 
@@ -70,15 +72,30 @@ class TwistAdapter(RobotAdapter):
             or interfaces.odometry.type != ODOMETRY_TYPE
         ):
             raise AdapterError("PROFILE_INVALID")
+        try:
+            if self._transport.preflight_activation() is not True:
+                raise AdapterError("PROFILE_INVALID")
+        except AdapterError:
+            raise
+        except Exception:
+            raise AdapterError("PROFILE_INVALID") from None
 
-    def start(self, task: object, safety_token: SafetyToken | None = None) -> AdapterStatus:
-        if not isinstance(task, TaskStage) or not isinstance(safety_token, SafetyToken):
+    def start(self, task: object, activation_permit: object = None) -> AdapterStatus:
+        if not isinstance(task, TaskStage):
             raise AdapterError("PROFILE_INVALID")
         self._fresh_odometry()
         try:
-            self._transport.start_waypoint(task, safety_token)
+            self._activate_start(
+                activation_permit,
+                lambda: self._transport.start_waypoint(task, activation_permit),
+            )
+        except AdapterError:
+            raise
         except Exception:
-            self.stop()
+            try:
+                self._emergency_stop()
+            except AdapterError:
+                pass
             raise AdapterError("INTERNAL_ERROR") from None
         return AdapterStatus("running")
 
@@ -106,12 +123,6 @@ class TwistAdapter(RobotAdapter):
         except Exception:
             return
 
-    def emergency_stop(self) -> None:
-        try:
-            self._transport.emergency_stop()
-        except Exception:
-            raise AdapterError("UNSAFE_STATE") from None
-
     def observe(self, source: str) -> Observation:
         if source != "odometry" or source not in self._profile.observation_sources:
             raise AdapterError("PROFILE_INVALID")
@@ -125,6 +136,12 @@ class TwistAdapter(RobotAdapter):
     def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         self._transport.subscribe_estop(handler)
         return True
+
+    def _emergency_stop_channel(self):
+        try:
+            return self._transport.emergency_channel()
+        except Exception:
+            raise AdapterError("PROFILE_INVALID") from None
 
     def _fresh_odometry(self) -> OdometrySample:
         try:
@@ -163,6 +180,7 @@ class RclpyTwistTransport:
         self._period = control_period
         self._stale_after = stale_after
         self._stage: TaskStage | None = None
+        self._stage_permit: _ActivationPermit | None = None
         self._generation = 0
         self._stage_generation = 0
         self._state_lock = threading.RLock()
@@ -171,6 +189,7 @@ class RclpyTwistTransport:
         self._last_command = TwistCommand.zero()
         self._timer = node.create_timer(control_period, self._control_step)
         self._estop_handlers: list[Callable[[bool], None]] = []
+        self._safety_channel = _RclpyTwistEmergencyChannel(self)
 
         def odometry_callback(message) -> None:
             self._sample = OdometrySample(
@@ -193,16 +212,17 @@ class RclpyTwistTransport:
         message.angular.z = command.angular_velocity
         self._publisher.publish(message)
 
-    def start_waypoint(self, stage: TaskStage, safety_token: SafetyToken | None = None) -> None:
-        if safety_token is not None and not safety_token.is_valid():
-            raise AdapterError("ESTOP_LATCHED")
-        with self._state_lock:
-            if safety_token is not None and not safety_token.is_valid():
-                raise AdapterError("ESTOP_LATCHED")
-            self._generation += 1
-            self._stage_generation = self._generation
-            self._stage = stage
-            self._state = AdapterStatus("running")
+    def preflight_activation(self) -> bool:
+        return self._limits is not None and callable(getattr(self._publisher, "publish", None))
+
+    def start_waypoint(self, stage: TaskStage, activation_permit: object = None) -> None:
+        if type(activation_permit) is not _ActivationPermit:
+            raise AdapterError("PROFILE_INVALID")
+        self._generation += 1
+        self._stage_generation = self._generation
+        self._stage_permit = activation_permit
+        self._stage = stage
+        self._state = AdapterStatus("running")
 
     def waypoint_status(self) -> AdapterStatus:
         return self._state
@@ -214,13 +234,22 @@ class RclpyTwistTransport:
     def stop_waypoint(self) -> None:
         self._zero_and_disable("stopped")
 
-    def emergency_stop(self) -> None:
-        self._zero_and_disable("estopped")
+    def emergency_channel(self) -> _EmergencyStopChannel:
+        return self._safety_channel
+
+    def _enqueue_emergency_zero(self) -> None:
+        self._generation += 1
+        self._stage = None
+        self._stage_permit = None
+        self._state = AdapterStatus("estopped")
+        self.publish(TwistCommand.zero())
+        self._last_command = TwistCommand.zero()
 
     def _zero_and_disable(self, state: str) -> None:
         with self._state_lock:
             self._generation += 1
             self._stage = None
+            self._stage_permit = None
             self._state = AdapterStatus(state)
         with self._publish_lock:
             for _ in range(_ZERO_BURST_COUNT):
@@ -232,6 +261,7 @@ class RclpyTwistTransport:
             stage = self._stage
             sample = self._sample
             generation = self._stage_generation
+            permit = getattr(self, "_stage_permit", None)
         if stage is None:
             return
         if sample is None or self._clock() - sample.timestamp > self._stale_after or sample.timestamp - self._clock() > 0.05:
@@ -260,11 +290,20 @@ class RclpyTwistTransport:
         before_publish = getattr(self, "_before_publish", None)
         if before_publish is not None:
             before_publish()
-        with self._publish_lock:
+        def enqueue() -> None:
             if generation != self._generation or self._stage is None:
                 return
             self.publish(command)
             self._last_command = command
+
+        if type(permit) is _ActivationPermit:
+            try:
+                permit._activate(enqueue)
+            except _ActivationRejected:
+                return
+        else:
+            with self._publish_lock:
+                enqueue()
 
     def read_odometry(self) -> OdometrySample:
         if self._sample is None:
@@ -273,6 +312,18 @@ class RclpyTwistTransport:
 
     def subscribe_estop(self, handler: Callable[[bool], None]) -> None:
         self._estop_handlers.append(handler)
+
+
+class _RclpyTwistEmergencyChannel(_EmergencyStopChannel):
+    def __init__(self, transport: RclpyTwistTransport) -> None:
+        super().__init__(hardware_verified=True)
+        self._transport = transport
+
+    def _preflight(self) -> bool:
+        return callable(getattr(self._transport, "publish", None))
+
+    def _enqueue_zero_disable(self) -> None:
+        self._transport._enqueue_emergency_zero()
 
 
 def _yaw_from_quaternion(value) -> float:

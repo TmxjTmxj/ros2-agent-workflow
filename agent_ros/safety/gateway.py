@@ -6,6 +6,7 @@ import math
 import threading
 import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from agent_ros.discovery.models import DiscoveryReport
@@ -27,6 +28,13 @@ _REQUIRED_CAPABILITY = {
 _STOP_BURST_COUNT = 3
 
 
+@dataclass(frozen=True, slots=True)
+class SafetyTransition:
+    sequence: int
+    state_before: SafetyState
+    state_after: SafetyState
+
+
 class SafetyGateway:
     """Authorize only reviewed profiles through explicit monotonic state transitions."""
 
@@ -45,6 +53,8 @@ class SafetyGateway:
         self._stop_callback = stop_callback or (lambda: None)
         self._clock = clock
         self._state = SafetyState.NEW
+        self._transition_sequence = 0
+        self._latest_transition: SafetyTransition | None = None
         self._report: DiscoveryReport | None = None
         self._last_heartbeat: float | None = None
         self._deadline: float | None = None
@@ -59,36 +69,41 @@ class SafetyGateway:
 
     @property
     def state(self) -> SafetyState:
-        return self._state
+        with self._lock:
+            return self._state
 
     @property
     def supervisor(self) -> SafetySupervisor:
         """The non-Agent supervisor; runtime owners must call close() during teardown."""
         return self._supervisor
 
-    def discover(self, report: DiscoveryReport) -> None:
+    @property
+    def latest_transition(self) -> SafetyTransition | None:
+        with self._lock:
+            return self._latest_transition
+
+    def discover(self, report: DiscoveryReport) -> SafetyTransition:
         with self._lock:
             self._require(SafetyState.NEW)
             if not isinstance(report, DiscoveryReport) or report.blocking_warnings:
                 raise SafetyError("DISCOVERY_UNSAFE")
             self._report = report
-            self._state = SafetyState.DISCOVERED
+            return self._transition(SafetyState.DISCOVERED)
 
-    def validate(self) -> None:
+    def validate(self) -> SafetyTransition:
         with self._lock:
             self._require(SafetyState.DISCOVERED)
             assert self._report is not None
             capability = _REQUIRED_CAPABILITY[self._profile.adapter.kind]
             if capability not in self._report.capability_names or not self._interfaces_match(self._report):
                 raise SafetyError("PROFILE_UNSUPPORTED")
-            self._state = SafetyState.VALIDATED
-            if self._profile.mode == "simulation":
-                self._state = SafetyState.ARMED
+            target = SafetyState.ARMED if self._profile.mode == "simulation" else SafetyState.VALIDATED
+            return self._transition(target)
 
-    def arm(self, challenge: str | None = None) -> None:
+    def arm(self, challenge: str | None = None) -> SafetyTransition | None:
         with self._lock:
             if self._profile.mode == "simulation" and self._state is SafetyState.ARMED:
-                return
+                return None
             self._require(SafetyState.VALIDATED)
             if self._profile.mode != "hardware" or self._runtime_dir is None:
                 raise SafetyError("HARDWARE_CHALLENGE")
@@ -97,7 +112,7 @@ class SafetyGateway:
                 challenge_args["boot_id"] = self._boot_id
             if not consume_operator_challenge(self._profile.name, self._runtime_dir, challenge or "", **challenge_args):
                 raise SafetyError("HARDWARE_CHALLENGE")
-            self._state = SafetyState.ARMED
+            return self._transition(SafetyState.ARMED)
 
     def start_task(
         self,
@@ -106,7 +121,7 @@ class SafetyGateway:
         angular_velocity: float = 0.0,
         linear_acceleration: float = 0.0,
         angular_acceleration: float = 0.0,
-    ) -> None:
+    ) -> SafetyTransition:
         with self._lock:
             self._require(SafetyState.ARMED)
             self._check_limit(linear_velocity, self._profile.limits.max_linear_velocity)
@@ -116,10 +131,11 @@ class SafetyGateway:
             self._last_heartbeat = self._clock()
             timeout = self._profile.safety.heartbeat_timeout
             self._deadline = None if timeout is None else self._last_heartbeat + timeout
-            self._state = SafetyState.RUNNING
+            transition = self._transition(SafetyState.RUNNING)
             self._supervisor.start()
+            return transition
 
-    def heartbeat(self) -> None:
+    def heartbeat(self) -> SafetyTransition:
         with self._lock:
             self._require(SafetyState.RUNNING)
             timeout = self._profile.safety.heartbeat_timeout
@@ -133,44 +149,47 @@ class SafetyGateway:
                 raise SafetyError("HEARTBEAT_EXPIRED")
             self._last_heartbeat = now
             self._deadline = now + timeout
+            return self._transition(SafetyState.RUNNING)
 
-    def cancel(self) -> None:
+    def cancel(self) -> SafetyTransition:
         with self._lock:
             self._require(SafetyState.RUNNING)
             self._stop_repeatedly()
-            self._state = SafetyState.STOPPED
+            transition = self._transition(SafetyState.STOPPED)
             self._deadline = None
             self._supervisor.stop()
+            return transition
 
-    def estop(self) -> None:
+    def estop(self) -> SafetyTransition | None:
         with self._lock:
-            self._latch_estop()
+            return self._latch_estop()
 
-    def observe_physical_estop(self, asserted: bool) -> None:
+    def observe_physical_estop(self, asserted: bool) -> SafetyTransition | None:
         """Monitor hook for a physical safety circuit; false never clears a latch."""
         if asserted is not True:
-            return
+            return None
         with self._lock:
-            self._latch_estop()
+            return self._latch_estop()
 
-    def operator_reset(self) -> None:
+    def operator_reset(self) -> SafetyTransition:
         with self._lock:
             if self._state is not SafetyState.ESTOPPED:
                 raise SafetyError("UNSAFE_STATE")
             if self._profile.mode == "hardware":
                 raise SafetyError("OPERATOR_REQUIRED")
-            self._state = SafetyState.NEW
+            transition = self._transition(SafetyState.NEW)
             self._report = None
             self._last_heartbeat = None
             self._deadline = None
+            return transition
 
-    def close(self) -> None:
+    def close(self, *, timeout: float = 1.0) -> bool:
         """Own watchdog lifecycle cleanup; active motion is failed closed before shutdown."""
         with self._lock:
             if self._state is SafetyState.RUNNING:
                 self._fault("SUPERVISOR_STOPPED")
             self._supervisor.stop()
-        self._supervisor.join()
+        return self._supervisor.join(timeout=timeout)
 
     def _require(self, expected: SafetyState) -> None:
         if self._state is SafetyState.ESTOPPED:
@@ -200,19 +219,28 @@ class SafetyGateway:
             if self._state is SafetyState.RUNNING and self._deadline is not None and self._clock() > self._deadline:
                 self._fault("HEARTBEAT_EXPIRED")
 
-    def _fault(self, _code: str) -> None:
+    def _fault(self, _code: str) -> SafetyTransition:
         self._stop_repeatedly()
-        self._state = SafetyState.FAULTED
+        transition = self._transition(SafetyState.FAULTED)
         self._deadline = None
         self._supervisor.stop()
+        return transition
 
-    def _latch_estop(self) -> None:
-        if self._state is SafetyState.ESTOPPED:
-            return
+    def _latch_estop(self) -> SafetyTransition | None:
         self._stop_repeatedly()
-        self._state = SafetyState.ESTOPPED
+        if self._state is SafetyState.ESTOPPED:
+            return None
+        transition = self._transition(SafetyState.ESTOPPED)
         self._deadline = None
         self._supervisor.stop()
+        return transition
+
+    def _transition(self, state_after: SafetyState) -> SafetyTransition:
+        transition = SafetyTransition(self._transition_sequence, self._state, state_after)
+        self._transition_sequence += 1
+        self._state = state_after
+        self._latest_transition = transition
+        return transition
 
     def _interfaces_match(self, report: DiscoveryReport) -> bool:
         interfaces = self._profile.interfaces

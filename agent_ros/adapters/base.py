@@ -22,17 +22,6 @@ class AdapterError(RuntimeError):
         super().__init__(code)
 
 
-@dataclass(frozen=True, slots=True)
-class SafetyToken:
-    """Internal generation reservation checked immediately before activation."""
-
-    generation: int
-    current_generation: Callable[[], int]
-
-    def is_valid(self) -> bool:
-        return self.current_generation() == self.generation
-
-
 class HospitalAction(str, Enum):
     """The complete repository-owned hospital controller authority."""
 
@@ -123,7 +112,7 @@ class RobotAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def start(self, task: object, safety_token: SafetyToken | None = None) -> AdapterStatus:
+    def start(self, task: object, activation_permit: object = None) -> AdapterStatus:
         raise NotImplementedError
 
     @abstractmethod
@@ -139,11 +128,6 @@ class RobotAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def emergency_stop(self) -> None:
-        """Synchronously issue bounded independent zero/disable before returning."""
-        raise NotImplementedError
-
-    @abstractmethod
     def observe(self, source: str) -> Observation:
         raise NotImplementedError
 
@@ -151,6 +135,72 @@ class RobotAdapter(ABC):
     def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         """Connect a non-agent safety input directly to the runtime latch."""
         raise NotImplementedError
+
+    @abstractmethod
+    def _emergency_stop_channel(self):
+        """Return the private transport safety channel; never an arbitrary runner."""
+        raise NotImplementedError
+
+    def _bind_runtime_safety(self, issuer) -> None:
+        from agent_ros.adapters._safety import _ActivationIssuer, _EmergencyStopChannel
+
+        channel = self._emergency_stop_channel()
+        if not isinstance(issuer, _ActivationIssuer) or not isinstance(channel, _EmergencyStopChannel):
+            raise AdapterError("PROFILE_INVALID")
+        try:
+            channel._bind(issuer)
+        except Exception:
+            raise AdapterError("PROFILE_INVALID") from None
+        self._activation_issuer = issuer
+
+    def _validate_runtime_safety(self, mode: str) -> None:
+        from agent_ros.adapters._safety import _EmergencyStopChannel
+
+        channel = self._emergency_stop_channel()
+        if not isinstance(channel, _EmergencyStopChannel):
+            raise AdapterError("PROFILE_INVALID")
+        try:
+            channel._verify(mode)
+        except Exception:
+            raise AdapterError("PROFILE_INVALID") from None
+
+    def _activate_start(self, permit: object, enqueue):
+        from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
+
+        issuer = getattr(self, "_activation_issuer", None)
+        if not isinstance(issuer, _ActivationIssuer):
+            raise AdapterError("PROFILE_INVALID")
+        before_activation = getattr(self, "_before_activation", None)
+        if before_activation is not None:
+            before_activation()
+        try:
+            return issuer._activate(permit, enqueue)
+        except _ActivationRejected as exc:
+            raise AdapterError(exc.code) from None
+
+    def _permit_is_current(self, permit: object) -> bool:
+        from agent_ros.adapters._safety import _ActivationIssuer
+
+        issuer = getattr(self, "_activation_issuer", None)
+        return isinstance(issuer, _ActivationIssuer) and issuer._is_current(permit)
+
+    def _require_current_permit(self, permit: object) -> None:
+        from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
+
+        issuer = getattr(self, "_activation_issuer", None)
+        if not isinstance(issuer, _ActivationIssuer):
+            raise AdapterError("PROFILE_INVALID")
+        try:
+            issuer._require_current(permit)
+        except _ActivationRejected as exc:
+            raise AdapterError(exc.code) from None
+
+    def _emergency_stop(self) -> None:
+        try:
+            self._emergency_stop_channel()._stop()
+        except Exception as exc:
+            code = getattr(exc, "code", "UNSAFE_STATE")
+            raise AdapterError(code) from None
 
 
 def create_adapter(profile: "RobotProfile", transport: object, **kwargs: Any) -> RobotAdapter:

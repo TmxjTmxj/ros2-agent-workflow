@@ -48,11 +48,12 @@ class SafetySupervisor:
     def stop(self) -> None:
         self._stop_event.set()
 
-    def join(self) -> None:
+    def join(self, timeout: float = 1.0) -> bool:
         """Wait for owned worker teardown from outside the gateway state lock."""
         thread = self._thread
         if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=1.0)
+            thread.join(timeout=timeout)
+        return thread is None or not thread.is_alive()
 
     def _run(self) -> None:
         while not self._stop_event.wait(self._poll_interval):
