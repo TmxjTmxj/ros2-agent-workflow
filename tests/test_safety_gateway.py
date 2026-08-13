@@ -4,6 +4,7 @@ import json
 import math
 import stat
 import threading
+from dataclasses import FrozenInstanceError
 
 import pytest
 
@@ -97,6 +98,63 @@ def test_degraded_estop_is_latched_but_not_reported_as_successful(gateway_owner)
     assert transition.stop_result == degraded
     assert transition.stop_result.code == "TRANSPORT_UNQUIESCED"
     assert not transition.stop_result.successful
+
+
+@pytest.mark.parametrize("winner", ["a", "b"])
+def test_concurrent_estop_attempts_keep_their_own_frozen_stop_result(
+    winner,
+    gateway_owner,
+):
+    degraded = EmergencyStopResult(True, False, True, "TRANSPORT_UNQUIESCED")
+    successful = EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
+    gateway = prepared_gateway(robot_profile(), gateway_owner)
+    gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
+    gateway._stop_callback = lambda _timeout: (
+        degraded
+        if threading.current_thread().name == "attempt-a"
+        else successful
+    )
+    paused = "b" if winner == "a" else "a"
+    paused_ready = threading.Event()
+    release_paused = threading.Event()
+    original_stop = gateway._stop_repeatedly
+
+    def ordered_stop(timeout):
+        result = original_stop(timeout)
+        if threading.current_thread().name == f"attempt-{paused}":
+            paused_ready.set()
+            assert release_paused.wait(1.0)
+        return result
+
+    gateway._stop_repeatedly = ordered_stop
+    attempts = {}
+    errors = []
+
+    def invoke(label):
+        try:
+            attempts[label] = gateway.estop_attempt(timeout=0.5)
+        except BaseException as exc:
+            errors.append(exc)
+
+    paused_thread = threading.Thread(target=invoke, args=(paused,), name=f"attempt-{paused}")
+    winner_thread = threading.Thread(target=invoke, args=(winner,), name=f"attempt-{winner}")
+    paused_thread.start()
+    assert paused_ready.wait(1.0)
+    winner_thread.start()
+    winner_thread.join(1.0)
+    assert not winner_thread.is_alive()
+    release_paused.set()
+    paused_thread.join(1.0)
+
+    assert not paused_thread.is_alive()
+    assert errors == []
+    assert attempts["a"].result == degraded
+    assert attempts["b"].result == successful
+    assert attempts[winner].transition is not None
+    assert attempts[winner].transition.stop_result is attempts[winner].result
+    assert attempts[paused].transition is None
+    with pytest.raises(FrozenInstanceError):
+        attempts["a"].result = successful
 
 
 def test_simulation_auto_arms_after_validating_and_allows_a_bounded_task(gateway_owner):

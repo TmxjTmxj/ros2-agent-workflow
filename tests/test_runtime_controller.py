@@ -25,7 +25,7 @@ from agent_ros.discovery.models import GraphSnapshot
 from agent_ros.runtime.audit import AuditIntegrityError, AuditOperation, AuditWriter
 from agent_ros.runtime.controller import RuntimeController, RuntimeControllerError
 from agent_ros.runtime.evidence import EvidenceError, EvidenceStore
-from agent_ros.safety.gateway import SafetyTransition
+from agent_ros.safety.gateway import SafetyStopAttempt, SafetyTransition
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
 from tests.support.runtime_owners import runtime_owner
@@ -297,6 +297,62 @@ def test_physical_estop_monitor_is_bound_directly_to_gateway_latch(tmp_path, run
     assert active.state is SafetyState.ESTOPPED
     assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
+
+
+@pytest.mark.parametrize("winner", ["a", "b"])
+def test_concurrent_api_emergency_calls_use_only_their_own_stop_result(
+    tmp_path,
+    runtime_owner,
+    winner,
+):
+    degraded = EmergencyStopResult(True, False, True, "TRANSPORT_UNQUIESCED")
+    successful = EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
+    active = controller(tmp_path, RecordingAdapter(), owner=runtime_owner)
+    prepare(active)
+    active.run_task("delivery")
+    gateway = active._gateway
+    gateway._stop_callback = lambda _timeout: (
+        degraded
+        if threading.current_thread().name == "attempt-a"
+        else successful
+    )
+    paused = "b" if winner == "a" else "a"
+    paused_ready = threading.Event()
+    release_paused = threading.Event()
+    original_stop = gateway._stop_repeatedly
+
+    def ordered_stop(timeout):
+        result = original_stop(timeout)
+        if threading.current_thread().name == f"attempt-{paused}":
+            paused_ready.set()
+            assert release_paused.wait(1.0)
+        return result
+
+    gateway._stop_repeatedly = ordered_stop
+    responses = {}
+    errors = {}
+
+    def invoke(label):
+        try:
+            responses[label] = active.emergency_stop()
+        except BaseException as exc:
+            errors[label] = exc
+
+    paused_thread = threading.Thread(target=invoke, args=(paused,), name=f"attempt-{paused}")
+    winner_thread = threading.Thread(target=invoke, args=(winner,), name=f"attempt-{winner}")
+    paused_thread.start()
+    assert paused_ready.wait(1.0)
+    winner_thread.start()
+    winner_thread.join(1.0)
+    assert not winner_thread.is_alive()
+    release_paused.set()
+    paused_thread.join(1.0)
+
+    assert not paused_thread.is_alive()
+    assert responses == {"b": {"state": "ESTOPPED"}}
+    assert set(errors) == {"a"}
+    assert isinstance(errors["a"], RuntimeControllerError)
+    assert errors["a"].code == "UNSAFE_STATE"
 
 
 def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_path, runtime_owner):
@@ -896,6 +952,66 @@ def test_physical_estop_drains_unobserved_watchdog_fault_without_waiting_for_mon
     assert records[-1]["state"] == {"from": "FAULTED", "to": "ESTOPPED"}
 
 
+def test_physical_estop_attempt_keeps_degraded_result_when_watchdog_estop_wins(
+    tmp_path,
+    runtime_owner,
+):
+    degraded = EmergencyStopResult(True, False, True, "TRANSPORT_UNQUIESCED")
+    successful = EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=10.0)
+    prepare(active)
+    active.run_task("delivery")
+    gateway = active._gateway
+    gateway._stop_callback = lambda _timeout: (
+        degraded
+        if threading.current_thread().name == "physical-a"
+        else successful
+    )
+    physical_ready = threading.Event()
+    release_physical = threading.Event()
+    original_stop = gateway._stop_repeatedly
+
+    def ordered_stop(timeout):
+        result = original_stop(timeout)
+        if threading.current_thread().name == "physical-a":
+            physical_ready.set()
+            assert release_physical.wait(1.0)
+        return result
+
+    gateway._stop_repeatedly = ordered_stop
+    errors = []
+    physical = threading.Thread(
+        target=lambda: _capture(errors, adapter.estop_handler, True),
+        name="physical-a",
+    )
+    physical.start()
+    assert physical_ready.wait(1.0)
+
+    gateway._fault("HEARTBEAT_EXPIRED")
+    active._latch_adapter_fault()
+    release_physical.set()
+    physical.join(1.0)
+
+    assert not physical.is_alive()
+    assert errors == []
+    assert (tmp_path / "runtime" / "audit.quarantine").read_text(
+        encoding="ascii"
+    ) == "AUDIT_INTEGRITY_COMPROMISED\n"
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()
+    ]
+    assert [record["state"] for record in records[-2:]] == [
+        {"from": "RUNNING", "to": "FAULTED"},
+        {"from": "FAULTED", "to": "ESTOPPED"},
+    ]
+    assert [record["operation_data"]["code"] for record in records[-2:]] == [
+        "ESTOP_LATCHED",
+        "ESTOP_LATCHED",
+    ]
+
+
 def test_monitor_never_mistakes_a_newer_estop_for_the_watchdog_fault(tmp_path, runtime_owner):
     now = [0.0]
     entered = threading.Event()
@@ -1026,6 +1142,60 @@ def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(
     assert active.stop_runtime() == {"state": "ESTOPPED"}
 
 
+def test_shutdown_uses_its_own_degraded_attempt_when_repeated_estop_is_successful(
+    tmp_path,
+):
+    degraded = EmergencyStopResult(True, False, True, "TRANSPORT_UNQUIESCED")
+    successful = EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
+    active = controller(tmp_path, RecordingAdapter())
+    prepare(active)
+    active.run_task("delivery")
+    gateway = active._gateway
+    gateway._stop_callback = lambda _timeout: (
+        degraded
+        if threading.current_thread().name == "shutdown-a"
+        else successful
+    )
+    shutdown_ready = threading.Event()
+    release_shutdown = threading.Event()
+    original_stop = gateway._stop_repeatedly
+
+    def ordered_stop(timeout):
+        result = original_stop(timeout)
+        if threading.current_thread().name == "shutdown-a":
+            shutdown_ready.set()
+            assert release_shutdown.wait(1.0)
+        return result
+
+    gateway._stop_repeatedly = ordered_stop
+    responses = []
+    errors = []
+
+    def stop_runtime():
+        try:
+            responses.append(active.stop_runtime())
+        except BaseException as exc:
+            errors.append(exc)
+
+    shutdown = threading.Thread(
+        target=stop_runtime,
+        name="shutdown-a",
+    )
+
+    shutdown.start()
+    assert shutdown_ready.wait(1.0)
+    repeated = active.emergency_stop()
+    release_shutdown.set()
+    shutdown.join(1.0)
+
+    assert not shutdown.is_alive()
+    assert repeated == {"state": "ESTOPPED"}
+    assert responses == []
+    assert len(errors) == 1
+    assert isinstance(errors[0], RuntimeControllerError)
+    assert errors[0].code == "CLEANUP_FAILED"
+
+
 def test_stop_runtime_uses_bounded_tracked_task_cleanup_after_nonblocking_safety_enqueue(tmp_path, runtime_owner):
     entered = threading.Event()
     release = threading.Event()
@@ -1091,10 +1261,10 @@ def test_stop_runtime_shares_one_entry_deadline_across_owned_components(tmp_path
         last_stop_result = result
         last_stop_accepted = True
 
-        def estop(self, *, timeout=1.0):
+        def estop_attempt(self, *, timeout=1.0):
             offered.append(("estop", timeout))
             clock.consume(timeout)
-            return None
+            return SafetyStopAttempt(None, result)
 
         def close(self, *, timeout=1.0):
             offered.append(("gateway", timeout))

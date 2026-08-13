@@ -373,14 +373,11 @@ class RuntimeController:
         with self._lock:
             self._ensure_available()
             gateway, _adapter, _profile = self._active()
-        transition = gateway.estop()
+        attempt = gateway.estop_attempt()
+        transition = attempt.transition
         if transition is not None:
             self._append_transition(AuditOperation.ESTOP, transition)
-        stop_result = (
-            transition.stop_result
-            if transition is not None
-            else gateway.last_stop_result
-        )
+        stop_result = attempt.result
         if stop_result is None or not stop_result.successful:
             raise RuntimeControllerError("UNSAFE_STATE")
         with self._lock:
@@ -423,9 +420,14 @@ class RuntimeController:
         else:
             cleanup_failed = False
             if gateway.state in {SafetyState.RUNNING, SafetyState.ESTOPPED}:
-                transition = gateway.estop(timeout=remaining())
+                require_successful_stop = gateway.state is SafetyState.RUNNING
+                attempt = gateway.estop_attempt(timeout=remaining())
+                transition = attempt.transition
                 if transition is not None:
                     self._register_transition(AuditOperation.ESTOP, transition)
+                cleanup_failed = (
+                    require_successful_stop and not attempt.result.successful
+                )
                 if adapter is not None:
                     self._start_task_cleanup(adapter)
             cleanup_failed = not gateway.close(timeout=remaining()) or cleanup_failed
@@ -510,17 +512,14 @@ class RuntimeController:
         gateway = self._gateway
         if asserted is not True or gateway is None:
             return
-        transition = gateway.observe_physical_estop(True)
+        attempt = gateway.observe_physical_estop_attempt(True)
+        transition = attempt.transition
         if transition is not None:
             try:
                 self._register_transition(AuditOperation.ESTOP, transition)
             except RuntimeControllerError:
                 return
-        stop_result = (
-            transition.stop_result
-            if transition is not None
-            else gateway.last_stop_result
-        )
+        stop_result = attempt.result
         if stop_result is None or not stop_result.successful:
             self._quarantined = True
             self._persist_quarantine()

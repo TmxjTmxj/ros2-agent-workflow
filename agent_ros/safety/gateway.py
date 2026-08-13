@@ -47,6 +47,14 @@ class SafetyTransition:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class SafetyStopAttempt:
+    """The immutable transition and outcome produced by one stop invocation."""
+
+    transition: SafetyTransition | None
+    result: EmergencyStopResult
+
+
 def _successful_stop(_timeout: float) -> EmergencyStopResult:
     return EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
 
@@ -205,13 +213,22 @@ class SafetyGateway:
             return transition
 
     def estop(self, *, timeout: float = 1.0) -> SafetyTransition | None:
-        return self._latch_estop(timeout)
+        """Compatibility API that discards the invocation's stop result."""
+        return self.estop_attempt(timeout=timeout).transition
+
+    def estop_attempt(self, *, timeout: float = 1.0) -> SafetyStopAttempt:
+        return self._latch_estop_attempt(timeout)
 
     def observe_physical_estop(self, asserted: bool) -> SafetyTransition | None:
         """Monitor hook for a physical safety circuit; false never clears a latch."""
         if asserted is not True:
             return None
-        return self._latch_estop(1.0)
+        return self.observe_physical_estop_attempt(True).transition
+
+    def observe_physical_estop_attempt(self, asserted: bool) -> SafetyStopAttempt:
+        if asserted is not True:
+            raise SafetyError("UNSAFE_STATE")
+        return self._latch_estop_attempt(1.0)
 
     def operator_reset(self) -> SafetyTransition:
         with self._lock:
@@ -321,18 +338,18 @@ class SafetyGateway:
             self._supervisor.stop()
             return transition
 
-    def _latch_estop(self, timeout: float) -> SafetyTransition | None:
+    def _latch_estop_attempt(self, timeout: float) -> SafetyStopAttempt:
         stop_result = self._stop_repeatedly(timeout)
         with self._lock:
             if self._state is SafetyState.ESTOPPED:
-                return None
+                return SafetyStopAttempt(None, stop_result)
             transition = self._transition(
                 SafetyState.ESTOPPED,
                 stop_result=stop_result,
             )
             self._deadline = None
             self._supervisor.stop()
-            return transition
+            return SafetyStopAttempt(transition, stop_result)
 
     def _transition(
         self,
