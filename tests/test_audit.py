@@ -92,6 +92,71 @@ def test_estop_audit_accepts_only_structured_stop_result_fields(tmp_path):
     }
 
 
+_STOP_RESULT_DATA = {
+    "latched": True,
+    "activation_quiesced": True,
+    "safety_command_accepted": True,
+    "code": "ESTOP_LATCHED",
+}
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        AuditEvent(
+            AuditOperation.CANCEL,
+            SafetyState.RUNNING,
+            SafetyState.STOPPED,
+            AuditOutcome.OK,
+        ),
+        AuditEvent(
+            AuditOperation.ESTOP,
+            SafetyState.RUNNING,
+            SafetyState.ESTOPPED,
+            AuditOutcome.OK,
+        ),
+        AuditEvent(
+            AuditOperation.HEARTBEAT,
+            SafetyState.RUNNING,
+            SafetyState.FAULTED,
+            AuditOutcome.FAULTED,
+        ),
+        AuditEvent(
+            AuditOperation.HEARTBEAT,
+            SafetyState.RUNNING,
+            SafetyState.RUNNING,
+            AuditOutcome.OK,
+            operation_data=_STOP_RESULT_DATA,
+        ),
+        AuditEvent(
+            AuditOperation.CANCEL,
+            SafetyState.RUNNING,
+            SafetyState.STOPPED,
+            AuditOutcome.OK,
+            operation_data={
+                "latched": True,
+                "activation_quiesced": True,
+                "safety_command_accepted": True,
+            },
+        ),
+        AuditEvent(
+            AuditOperation.ESTOP,
+            SafetyState.RUNNING,
+            SafetyState.ESTOPPED,
+            AuditOutcome.OK,
+            operation_data={**_STOP_RESULT_DATA, "extra": False},
+        ),
+    ],
+)
+def test_stop_transition_data_rejects_missing_empty_or_mismatched_shapes(tmp_path, event):
+    audit_path = tmp_path / "audit.jsonl"
+
+    with pytest.raises(AuditError):
+        AuditWriter(audit_path).append(event)
+
+    assert not audit_path.exists()
+
+
 @pytest.mark.parametrize(
     "event",
     [
@@ -180,8 +245,19 @@ def test_append_rolls_back_a_partial_write_when_the_following_write_fails(tmp_pa
 @pytest.mark.parametrize("state", list(SafetyState))
 def test_each_operation_can_record_rejection_at_every_same_safety_state(tmp_path, operation, state):
     audit_path = tmp_path / "audit.jsonl"
+    operation_data = (
+        _STOP_RESULT_DATA
+        if operation in {AuditOperation.CANCEL, AuditOperation.ESTOP}
+        else {}
+    )
 
-    AuditWriter(audit_path).append(AuditEvent(operation, state, state, AuditOutcome.REJECTED))
+    AuditWriter(audit_path).append(AuditEvent(
+        operation,
+        state,
+        state,
+        AuditOutcome.REJECTED,
+        operation_data=operation_data,
+    ))
 
     record = json.loads(audit_path.read_text(encoding="utf-8"))
     assert record["operation"] == operation.value
@@ -266,6 +342,7 @@ def test_new_session_is_rejected_when_previous_session_was_nonterminal(tmp_path,
             SafetyState.RUNNING,
             SafetyState.FAULTED,
             AuditOutcome.FAULTED,
+            operation_data=_STOP_RESULT_DATA,
         ))
     second = AuditWriter(audit_path, wall_clock=lambda: 2.0, monotonic_clock=lambda: 2.0)
     second.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))

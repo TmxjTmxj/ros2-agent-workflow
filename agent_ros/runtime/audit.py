@@ -6,9 +6,11 @@ import fcntl
 import json
 import math
 import os
+import queue
 import re
-import time
 import secrets
+import threading
+import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
@@ -36,6 +38,7 @@ _STOP_RESULT_KEYS = frozenset({
     "code",
 })
 _MAX_RECORD_BYTES = 4096
+_AUDIT_QUEUE_CAPACITY = 256
 
 
 class AuditError(ValueError):
@@ -181,7 +184,7 @@ class AuditWriter:
         _finite_clock(value["wall_time"])
         _finite_clock(value["monotonic_time"])
         _validate_transition(event)
-        _validate_operation_data(event.operation, event.operation_data)
+        _validate_operation_data(event, event.operation_data)
         _validate_endpoint_gids(event.endpoint_gids)
         _validate_error(None, event.error_code)
         _validate_session_id(event.session_id)
@@ -203,7 +206,7 @@ class AuditWriter:
         if event.session_id is not None:
             raise AuditError("audit session is writer-owned")
         _validate_transition(event)
-        operation_data = _validate_operation_data(event.operation, event.operation_data)
+        operation_data = _validate_operation_data(event, event.operation_data)
         endpoint_gids = _validate_endpoint_gids(event.endpoint_gids)
         error_code = _validate_error(event.error, event.error_code)
         wall_time = _finite_clock(self._wall_clock())
@@ -242,6 +245,164 @@ class AuditWriter:
         except OSError:
             self._integrity_compromised = True
             raise AuditIntegrityError() from None
+
+
+@dataclass(slots=True)
+class _AuditAppendReceipt:
+    event: AuditEvent
+    done: threading.Event = field(default_factory=threading.Event)
+    error: BaseException | None = None
+
+
+class _AuditAppendWorker:
+    """Prestarted bounded owner for calls into an audit writer."""
+
+    def __init__(
+        self,
+        writer: AuditWriter,
+        *,
+        thread_factory: Callable[..., threading.Thread] = threading.Thread,
+    ) -> None:
+        self._writer = writer
+        self._thread_factory = thread_factory
+        self._queue: queue.Queue[_AuditAppendReceipt | None] = queue.Queue(
+            maxsize=_AUDIT_QUEUE_CAPACITY
+        )
+        self._lock = threading.Lock()
+        self._stop = threading.Event()
+        self._thread: threading.Thread | None = None
+        self._in_flight: _AuditAppendReceipt | None = None
+        self._accepting = False
+        self._failed = False
+
+    def start(self) -> bool:
+        with self._lock:
+            if self._thread is not None:
+                return self._healthy_locked()
+            if self._failed:
+                return False
+            thread = self._thread_factory(
+                target=self._run,
+                name="agent-ros-audit",
+                daemon=False,
+            )
+            self._accepting = True
+            try:
+                thread.start()
+            except Exception:
+                self._accepting = False
+                self._failed = True
+                return False
+            if not thread.is_alive():
+                self._accepting = False
+                self._failed = True
+                return False
+            self._thread = thread
+            return True
+
+    def append(self, event: AuditEvent, timeout: float) -> None:
+        deadline = _deadline(timeout)
+        receipt = _AuditAppendReceipt(event)
+        with self._lock:
+            if not self._healthy_locked():
+                raise AuditError("audit write failed")
+            try:
+                self._queue.put_nowait(receipt)
+            except queue.Full:
+                self._fail_locked()
+                raise AuditError("audit write failed") from None
+        if not receipt.done.wait(max(0.0, deadline - time.monotonic())):
+            with self._lock:
+                if not receipt.done.is_set():
+                    receipt.error = AuditError("audit write timed out")
+                    receipt.done.set()
+                    self._fail_locked()
+            raise AuditError("audit write timed out")
+        if receipt.error is not None:
+            if isinstance(receipt.error, (AuditError, OSError)):
+                raise receipt.error
+            raise AuditError("audit write failed") from None
+
+    def close(self, timeout: float) -> bool:
+        deadline = _deadline(timeout)
+        no_wait = max(0.0, float(timeout)) == 0.0
+        with self._lock:
+            self._accepting = False
+            self._request_stop_locked()
+            thread = self._thread
+            live_at_zero = (
+                no_wait
+                and thread is not None
+                and thread.is_alive()
+            )
+        if live_at_zero:
+            return False
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(max(0.0, deadline - time.monotonic()))
+        with self._lock:
+            return (
+                thread is None
+                or (
+                    not thread.is_alive()
+                    and self._queue.empty()
+                    and self._in_flight is None
+                    and not self._failed
+                )
+            )
+
+    @property
+    def worker_alive(self) -> bool:
+        with self._lock:
+            return self._thread is not None and self._thread.is_alive()
+
+    def _run(self) -> None:
+        while True:
+            receipt = self._queue.get()
+            if receipt is None:
+                self._queue.task_done()
+                return
+            with self._lock:
+                self._in_flight = receipt
+            error: BaseException | None = None
+            try:
+                self._writer.append(receipt.event)
+            except BaseException as exc:
+                error = exc
+            finally:
+                with self._lock:
+                    if not receipt.done.is_set():
+                        receipt.error = error
+                        receipt.done.set()
+                    if error is not None:
+                        self._fail_locked()
+                    if self._in_flight is receipt:
+                        self._in_flight = None
+                    self._queue.task_done()
+
+    def _healthy_locked(self) -> bool:
+        thread = self._thread
+        return (
+            self._accepting
+            and not self._failed
+            and thread is not None
+            and thread.is_alive()
+        )
+
+    def _fail_locked(self) -> None:
+        self._failed = True
+        self._accepting = False
+        while not self._queue.empty():
+            receipt = self._queue.get_nowait()
+            if receipt is not None and not receipt.done.is_set():
+                receipt.error = AuditError("audit write failed")
+                receipt.done.set()
+            self._queue.task_done()
+        self._request_stop_locked()
+
+    def _request_stop_locked(self) -> None:
+        if not self._stop.is_set():
+            self._stop.set()
+            self._queue.put_nowait(None)
 
 
 def validate_audit_history(raw: bytes, *, require_terminal: bool = False) -> None:
@@ -322,15 +483,19 @@ def _validate_endpoint_gids(value: object) -> tuple[str, ...]:
     return value
 
 
-def _validate_operation_data(operation: AuditOperation, value: object) -> dict[str, object]:
+def _validate_operation_data(event: AuditEvent, value: object) -> dict[str, object]:
     if not isinstance(value, Mapping):
         raise AuditError("invalid audit data")
     data = dict(value)
-    if operation in {
-        AuditOperation.HEARTBEAT,
-        AuditOperation.CANCEL,
-        AuditOperation.ESTOP,
-    } and data:
+    operation = event.operation
+    stop_result_required = (
+        operation in {AuditOperation.CANCEL, AuditOperation.ESTOP}
+        or (
+            operation is AuditOperation.HEARTBEAT
+            and event.outcome is AuditOutcome.FAULTED
+        )
+    )
+    if stop_result_required:
         if set(data) != _STOP_RESULT_KEYS:
             raise AuditError("unexpected audit data")
         if not all(
@@ -351,6 +516,10 @@ def _validate_operation_data(operation: AuditOperation, value: object) -> dict[s
             "safety_command_accepted": data["safety_command_accepted"],
             "code": code,
         }
+    if operation is AuditOperation.HEARTBEAT:
+        if data:
+            raise AuditError("unexpected audit data")
+        return {}
     if operation is not AuditOperation.START_TASK:
         if data:
             raise AuditError("unexpected audit data")
@@ -369,3 +538,13 @@ def _validate_operation_data(operation: AuditOperation, value: object) -> dict[s
         else:
             raise AuditError("invalid motion data")
     return validated
+
+
+def _deadline(timeout: float) -> float:
+    if (
+        isinstance(timeout, bool)
+        or not isinstance(timeout, (int, float))
+        or not math.isfinite(timeout)
+    ):
+        raise AuditError("invalid audit timeout")
+    return time.monotonic() + max(0.0, timeout)

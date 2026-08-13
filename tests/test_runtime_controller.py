@@ -644,6 +644,62 @@ def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_c
     restarted.stop_runtime()
 
 
+def test_stop_runtime_times_out_waiting_for_concurrent_audit_durability(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+    runtime = tmp_path / "runtime"
+
+    class BlockedStartWriter(AuditWriter):
+        def append(self, event):
+            if event.operation is AuditOperation.START_TASK:
+                entered.set()
+                release.wait()
+            return super().append(event)
+
+    adapter = RecordingAdapter()
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: adapter,
+        audit_writer=BlockedStartWriter(runtime / "audit.jsonl"),
+        cleanup_timeout=0.02,
+    )
+    audit_workers = [
+        thread
+        for thread in threading.enumerate()
+        if thread.name == "agent-ros-audit"
+    ]
+    assert len(audit_workers) == 1
+    assert audit_workers[0].daemon is False
+    prepare(active)
+    errors = []
+    starter = threading.Thread(
+        target=lambda: _capture(errors, active.run_task, "delivery"),
+    )
+    starter.start()
+    assert entered.wait(1.0)
+
+    began = time.monotonic()
+    try:
+        with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+            active.stop_runtime()
+    finally:
+        release.set()
+    elapsed = time.monotonic() - began
+    starter.join(1.0)
+
+    assert elapsed < 0.2
+    assert not starter.is_alive()
+    assert wait_until(lambda: not audit_workers[0].is_alive())
+    assert (runtime / "audit.quarantine").read_text(encoding="ascii") == (
+        "AUDIT_INTEGRITY_COMPROMISED\n"
+    )
+
+
 def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_sequence(tmp_path):
     entered = threading.Event()
     release = threading.Event()
@@ -786,7 +842,10 @@ def test_monitor_never_mistakes_a_newer_estop_for_the_watchdog_fault(tmp_path):
     adapter.estop_handler(True)
     release.set()
     assert wait_until(
-        lambda: len((runtime / "audit.jsonl").read_text().splitlines()) >= 5
+        lambda: (
+            json.loads((runtime / "audit.jsonl").read_text().splitlines()[-1])["operation"]
+            == "estop"
+        )
     )
 
     records = [json.loads(line) for line in (runtime / "audit.jsonl").read_text().splitlines()]
@@ -968,7 +1027,8 @@ def test_stop_runtime_shares_one_entry_deadline_across_owned_components(tmp_path
     active._task_cleanup_started = True
     monkeypatch.setattr("agent_ros.runtime.controller.time.monotonic", clock)
 
-    assert active.stop_runtime() == {"state": "ESTOPPED"}
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
     assert sum(timeout for _owner, timeout in offered) <= 0.5
     assert offered == [("estop", 0.5), ("gateway", 0.0), ("adapter", 0.0)]
 
