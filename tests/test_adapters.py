@@ -205,36 +205,62 @@ def ready_subprocess(program: str, *, ready_timeout: float):
             raise RuntimeError("subprocess readiness rejected")
         yield process
     finally:
-        if process.poll() is None:
-            process.terminate()
         try:
-            process.wait(timeout=0.5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            try:
-                process.wait(timeout=0.5)
-            except subprocess.TimeoutExpired:
-                process.wait()
-        except BaseException:
-            error = sys.exception()
-            killed = False
-            try:
-                if process.poll() is None:
-                    process.kill()
-                    killed = True
-            except BaseException:
-                pass
-            if killed:
-                try:
-                    process.wait()
-                except BaseException:
-                    pass
-            raise error
+            _cleanup_subprocess(process)
         finally:
             if process.stdout is not None:
                 process.stdout.close()
             if process.stderr is not None:
                 process.stderr.close()
+
+
+def _cleanup_subprocess(process) -> None:
+    """Attempt every safe cleanup step for one exact child without short-circuiting."""
+    errors: list[BaseException] = []
+    reaped = False
+    killed = False
+
+    try:
+        reaped = process.poll() is not None
+    except BaseException as exc:
+        errors.append(exc)
+
+    if not reaped:
+        try:
+            process.terminate()
+        except BaseException as exc:
+            errors.append(exc)
+        try:
+            process.wait(timeout=0.5)
+            reaped = True
+        except BaseException as exc:
+            errors.append(exc)
+
+    if not reaped:
+        try:
+            process.kill()
+            killed = True
+        except BaseException as exc:
+            errors.append(exc)
+        try:
+            process.wait(timeout=0.5)
+            reaped = True
+        except BaseException as exc:
+            errors.append(exc)
+
+    if not reaped and killed:
+        try:
+            process.wait()
+            reaped = True
+        except BaseException as exc:
+            errors.append(exc)
+
+    if not reaped:
+        cause = errors[0] if errors else None
+        raise RuntimeError("subprocess cleanup failed") from cause
+    for error in errors:
+        if not isinstance(error, subprocess.TimeoutExpired):
+            raise error
 
 
 def test_ready_subprocess_reaps_after_kill_when_timed_wait_still_times_out(
@@ -358,11 +384,134 @@ def test_ready_subprocess_reaps_then_propagates_unexpected_wait_error(monkeypatc
         "terminate",
         ("wait", 0.5),
         "kill",
+        ("wait", 0.5),
         ("wait", None),
     ]
     assert process.returncode == -9
     assert process.stdout.closed
     assert process.stderr.closed
+
+
+@pytest.mark.parametrize(
+    ("failure_step", "expected_calls", "expected_error"),
+    [
+        (
+            "poll",
+            ["poll", "terminate", ("wait", 0.5)],
+            "controlled poll failure",
+        ),
+        (
+            "terminate",
+            ["poll", "terminate", ("wait", 0.5)],
+            "controlled terminate failure",
+        ),
+        (
+            "kill",
+            [
+                "poll", "terminate", ("wait", 0.5), "kill", ("wait", 0.5),
+            ],
+            "controlled kill failure",
+        ),
+        (
+            "timed_wait",
+            [
+                "poll", "terminate", ("wait", 0.5), "kill", ("wait", 0.5),
+            ],
+            "controlled timed wait failure",
+        ),
+        (
+            "final_wait",
+            [
+                "poll", "terminate", ("wait", 0.5), "kill", ("wait", 0.5),
+                ("wait", None),
+            ],
+            "subprocess cleanup failed",
+        ),
+    ],
+)
+def test_ready_subprocess_cleanup_never_short_circuits_after_step_error(
+    monkeypatch, failure_step, expected_calls, expected_error
+):
+    class FakePipe:
+        closed = False
+
+        def fileno(self):
+            return 123
+
+        def close(self):
+            self.closed = True
+
+    class FakeSelector:
+        def register(self, _stream, _event):
+            return None
+
+        def select(self, _timeout):
+            return [(object(), selectors.EVENT_READ)]
+
+        def close(self):
+            return None
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = FakePipe()
+            self.stderr = FakePipe()
+            self.returncode = None
+            self.calls = []
+            self.timed_waits = 0
+
+        def poll(self):
+            self.calls.append("poll")
+            if failure_step == "poll":
+                raise RuntimeError("controlled poll failure")
+            return self.returncode
+
+        def terminate(self):
+            self.calls.append("terminate")
+            if failure_step == "terminate":
+                raise RuntimeError("controlled terminate failure")
+
+        def kill(self):
+            self.calls.append("kill")
+            if failure_step == "kill":
+                raise RuntimeError("controlled kill failure")
+
+        def wait(self, timeout=None):
+            self.calls.append(("wait", timeout))
+            if timeout is None:
+                if failure_step == "final_wait":
+                    raise RuntimeError("controlled final wait failure")
+                self.returncode = -9
+                return self.returncode
+            self.timed_waits += 1
+            if failure_step in {"poll", "terminate"}:
+                self.returncode = -15
+                return self.returncode
+            if self.timed_waits == 1:
+                if failure_step == "timed_wait":
+                    raise RuntimeError("controlled timed wait failure")
+                raise subprocess.TimeoutExpired("controlled-child", timeout)
+            if failure_step == "final_wait":
+                raise subprocess.TimeoutExpired("controlled-child", timeout)
+            self.returncode = -9
+            return self.returncode
+
+    process = FakeProcess()
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(selectors, "DefaultSelector", FakeSelector)
+    monkeypatch.setattr(os, "read", lambda _fd, _size: b"READY\n")
+
+    with pytest.raises(RuntimeError, match=expected_error) as captured:
+        with ready_subprocess("controlled", ready_timeout=0.1):
+            pass
+
+    assert process.calls == expected_calls
+    assert process.stdout.closed
+    assert process.stderr.closed
+    if failure_step == "final_wait":
+        assert isinstance(captured.value.__cause__, subprocess.TimeoutExpired)
+        assert process.returncode is None
+    else:
+        assert process.returncode is not None
 
 
 def test_subprocess_readiness_timeout_is_bounded_and_reaps_child(tmp_path):
