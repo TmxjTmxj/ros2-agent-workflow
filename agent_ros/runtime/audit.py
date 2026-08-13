@@ -59,15 +59,28 @@ class AuditEvent:
     error_code: str | None = None
 
 
-_TRANSITIONS = {
+_SUCCESS_TRANSITIONS = {
     AuditOperation.DISCOVER: {(SafetyState.NEW, SafetyState.DISCOVERED)},
     AuditOperation.VALIDATE: {(SafetyState.DISCOVERED, SafetyState.VALIDATED), (SafetyState.DISCOVERED, SafetyState.ARMED)},
     AuditOperation.ARM: {(SafetyState.VALIDATED, SafetyState.ARMED)},
     AuditOperation.START_TASK: {(SafetyState.ARMED, SafetyState.RUNNING)},
-    AuditOperation.HEARTBEAT: {(SafetyState.RUNNING, SafetyState.RUNNING), (SafetyState.RUNNING, SafetyState.FAULTED)},
+    AuditOperation.HEARTBEAT: {(SafetyState.RUNNING, SafetyState.RUNNING)},
     AuditOperation.CANCEL: {(SafetyState.RUNNING, SafetyState.STOPPED)},
     AuditOperation.ESTOP: {(state, SafetyState.ESTOPPED) for state in SafetyState if state is not SafetyState.ESTOPPED},
     AuditOperation.OPERATOR_RESET: {(SafetyState.ESTOPPED, SafetyState.NEW)},
+}
+_REJECTED_STATES = {
+    AuditOperation.DISCOVER: SafetyState.NEW,
+    AuditOperation.VALIDATE: SafetyState.DISCOVERED,
+    AuditOperation.ARM: SafetyState.VALIDATED,
+    AuditOperation.START_TASK: SafetyState.ARMED,
+    AuditOperation.HEARTBEAT: SafetyState.RUNNING,
+    AuditOperation.CANCEL: SafetyState.RUNNING,
+    AuditOperation.ESTOP: SafetyState.ESTOPPED,
+    AuditOperation.OPERATOR_RESET: SafetyState.ESTOPPED,
+}
+_FAULTED_TRANSITIONS = {
+    AuditOperation.HEARTBEAT: {(SafetyState.RUNNING, SafetyState.FAULTED)},
 }
 
 
@@ -99,16 +112,21 @@ class AuditWriter:
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)
                 data_fd = os.open(self._path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
                 try:
-                    os.fchmod(data_fd, 0o600)
-                    self._write_all(data_fd, encoded)
-                    os.fsync(data_fd)
+                    offset = os.lseek(data_fd, 0, os.SEEK_END)
+                    try:
+                        os.fchmod(data_fd, 0o600)
+                        self._write_all(data_fd, encoded)
+                        os.fsync(data_fd)
+                    except (AuditError, OSError):
+                        self._rollback(data_fd, offset)
+                        raise AuditError("audit write failed") from None
                 finally:
                     os.close(data_fd)
             finally:
                 fcntl.flock(lock_fd, fcntl.LOCK_UN)
                 os.close(lock_fd)
-        except OSError as exc:
-            raise AuditError("audit write failed") from exc
+        except OSError:
+            raise AuditError("audit write failed") from None
 
     def _encode(self, event: AuditEvent) -> bytes:
         record = self._record(event)
@@ -124,8 +142,7 @@ class AuditWriter:
             raise AuditError("invalid audit enum")
         if not isinstance(event.state_before, SafetyState) or not isinstance(event.state_after, SafetyState):
             raise AuditError("invalid audit state")
-        if (event.state_before, event.state_after) not in _TRANSITIONS[event.operation]:
-            raise AuditError("invalid audit transition")
+        _validate_transition(event)
         operation_data = _validate_operation_data(event.operation, event.operation_data)
         endpoint_gids = _validate_endpoint_gids(event.endpoint_gids)
         error_code = _validate_error(event.error, event.error_code)
@@ -157,11 +174,34 @@ class AuditWriter:
                 raise AuditError("audit write failed")
             offset += written
 
+    @staticmethod
+    def _rollback(descriptor: int, offset: int) -> None:
+        try:
+            os.ftruncate(descriptor, offset)
+            os.fsync(descriptor)
+        except OSError:
+            # The original write failure remains the only safe public error.
+            pass
+
 
 def _finite_clock(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise AuditError("invalid audit clock")
     return float(value)
+
+
+def _validate_transition(event: AuditEvent) -> None:
+    transition = (event.state_before, event.state_after)
+    if event.outcome is AuditOutcome.REJECTED:
+        if transition != (_REJECTED_STATES[event.operation], _REJECTED_STATES[event.operation]):
+            raise AuditError("invalid audit transition")
+        return
+    if event.outcome is AuditOutcome.FAULTED:
+        if transition not in _FAULTED_TRANSITIONS.get(event.operation, set()):
+            raise AuditError("invalid audit transition")
+        return
+    if transition not in _SUCCESS_TRANSITIONS[event.operation]:
+        raise AuditError("invalid audit transition")
 
 
 def _validate_error(error: BaseException | None, error_code: str | None) -> str | None:

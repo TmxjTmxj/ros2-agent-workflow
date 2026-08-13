@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import stat
+import threading
 
 import pytest
 
@@ -128,6 +129,20 @@ def test_independent_watchdog_faults_after_deadline_without_an_agent_heartbeat_c
     assert len(stops) >= 3
     gateway.close()
     assert gateway.supervisor.running is False
+
+
+def test_watchdog_worker_polls_and_faults_without_manual_evaluation_or_heartbeat():
+    stopped = threading.Event()
+    gateway = prepared_gateway(
+        robot_profile(heartbeat_timeout=0.01),
+        stop_callback=stopped.set,
+        supervisor_poll_interval=0.001,
+    )
+    gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
+
+    assert stopped.wait(timeout=1.0)
+    assert gateway.state is SafetyState.FAULTED
+    gateway.close()
 
 
 def test_missing_simulation_heartbeat_configuration_faults_without_an_assertion_error():

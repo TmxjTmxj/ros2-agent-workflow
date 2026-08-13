@@ -105,3 +105,69 @@ def test_append_retries_a_real_controlled_short_write_until_the_record_is_comple
         "state": {"from": "NEW", "to": "DISCOVERED"},
         "wall_time": 1.0,
     }
+
+
+@pytest.mark.parametrize("failure", ["raise", "zero"])
+def test_append_rolls_back_a_partial_write_when_the_following_write_fails(tmp_path, failure):
+    audit_path = tmp_path / "audit.jsonl"
+    initial = AuditWriter(audit_path, wall_clock=lambda: 1.0, monotonic_clock=lambda: 2.0)
+    initial.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
+    original = audit_path.read_bytes()
+    calls = [0]
+
+    def partial_then_fail(descriptor: int, data: bytes) -> int:
+        calls[0] += 1
+        if calls[0] == 1:
+            return os.write(descriptor, data[:5])
+        if failure == "raise":
+            raise OSError("controlled write failure")
+        return 0
+
+    failing = AuditWriter(audit_path, write=partial_then_fail)
+    rejected = AuditEvent(AuditOperation.VALIDATE, SafetyState.DISCOVERED, SafetyState.ARMED, AuditOutcome.OK)
+
+    with pytest.raises(AuditError, match="audit write failed"):
+        failing.append(rejected)
+    assert audit_path.read_bytes() == original
+
+    initial.append(rejected)
+    assert [json.loads(line)["operation"] for line in audit_path.read_text(encoding="utf-8").splitlines()] == [
+        "discover", "validate",
+    ]
+
+
+@pytest.mark.parametrize(
+    "operation,state",
+    [
+        (AuditOperation.DISCOVER, SafetyState.NEW),
+        (AuditOperation.VALIDATE, SafetyState.DISCOVERED),
+        (AuditOperation.ARM, SafetyState.VALIDATED),
+        (AuditOperation.START_TASK, SafetyState.ARMED),
+        (AuditOperation.HEARTBEAT, SafetyState.RUNNING),
+        (AuditOperation.CANCEL, SafetyState.RUNNING),
+        (AuditOperation.ESTOP, SafetyState.ESTOPPED),
+        (AuditOperation.OPERATOR_RESET, SafetyState.ESTOPPED),
+    ],
+)
+def test_each_operation_can_record_a_rejected_same_state_transition(tmp_path, operation, state):
+    audit_path = tmp_path / "audit.jsonl"
+
+    AuditWriter(audit_path).append(AuditEvent(operation, state, state, AuditOutcome.REJECTED))
+
+    record = json.loads(audit_path.read_text(encoding="utf-8"))
+    assert record["operation"] == operation.value
+    assert record["outcome"] == "rejected"
+    assert record["state"] == {"from": state.value, "to": state.value}
+
+
+def test_rejected_outcome_cannot_forge_an_impossible_cross_state_transition(tmp_path):
+    audit_path = tmp_path / "audit.jsonl"
+
+    with pytest.raises(AuditError, match="invalid audit transition"):
+        AuditWriter(audit_path).append(AuditEvent(
+            AuditOperation.START_TASK,
+            SafetyState.ARMED,
+            SafetyState.RUNNING,
+            AuditOutcome.REJECTED,
+        ))
+    assert not audit_path.exists()

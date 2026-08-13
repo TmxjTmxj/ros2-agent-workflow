@@ -38,6 +38,7 @@ class SafetyGateway:
         stop_callback: Callable[[], None] | None = None,
         clock: Callable[[], float] = time.monotonic,
         boot_id: Callable[[], str] | None = None,
+        supervisor_poll_interval: float = 0.05,
     ) -> None:
         self._profile = profile
         self._runtime_dir = Path(runtime_dir) if runtime_dir is not None else None
@@ -53,6 +54,7 @@ class SafetyGateway:
             clock=self._clock,
             deadline=self._active_deadline,
             on_expired=self._fault_heartbeat_expiry,
+            poll_interval=supervisor_poll_interval,
         )
 
     @property
