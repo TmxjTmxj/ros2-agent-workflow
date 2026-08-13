@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import stat
+import threading
 
 import pytest
 
@@ -13,6 +14,7 @@ from agent_ros.runtime.audit import (
     AuditOperation,
     AuditOutcome,
     AuditWriter,
+    _AuditAppendWorker,
     validate_audit_history,
 )
 from agent_ros.safety.state import SafetyState
@@ -60,6 +62,62 @@ def test_append_only_adds_complete_json_records(tmp_path):
     assert [json.loads(line)["operation"] for line in audit_path.read_text().splitlines()] == [
         "discover", "validate",
     ]
+
+
+def test_audit_worker_failure_after_close_sentinel_still_exits_and_joins():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class FailingWriter:
+        def append(self, _event):
+            entered.set()
+            release.wait()
+            raise AuditError("controlled failure")
+
+    worker = _AuditAppendWorker(FailingWriter())
+    assert worker.start()
+    event = AuditEvent(
+        AuditOperation.DISCOVER,
+        SafetyState.NEW,
+        SafetyState.DISCOVERED,
+        AuditOutcome.OK,
+    )
+    append_errors = []
+    appender = threading.Thread(
+        target=lambda: _capture_audit_error(append_errors, worker.append, event, 1.0)
+    )
+    close_results = []
+    closer = threading.Thread(
+        target=lambda: close_results.append(worker.close(0.1))
+    )
+
+    appender.start()
+    assert entered.wait(1.0)
+    closer.start()
+    assert worker._stop.wait(1.0)
+    release.set()
+    appender.join(1.0)
+    closer.join(0.5)
+
+    close_completed = not closer.is_alive()
+    worker_exited = not worker.worker_alive
+    if not worker_exited:
+        worker._queue.put_nowait(None)
+        worker._thread.join(1.0)
+        assert not worker.worker_alive
+
+    assert not appender.is_alive()
+    assert close_completed
+    assert len(append_errors) == 1
+    assert close_results == [True]
+    assert worker_exited
+
+
+def _capture_audit_error(errors, function, *args):
+    try:
+        function(*args)
+    except BaseException as exc:
+        errors.append(exc)
 
 
 def test_estop_audit_accepts_only_structured_stop_result_fields(tmp_path):

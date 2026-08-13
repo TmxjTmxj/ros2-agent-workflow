@@ -93,9 +93,12 @@ class RuntimeController:
         self._cleanup_timeout = cleanup_timeout
         self._monitor_thread_factory = monitor_thread_factory
         self._lock = threading.RLock()
-        self._audit_lock = threading.RLock()
-        self._audit_condition = threading.Condition(self._audit_lock)
         self._transition_lock = threading.RLock()
+        self._transition_condition = threading.Condition(self._transition_lock)
+        # Retain the audit-lock name for lifecycle diagnostics; transition and
+        # durability coordination intentionally share this one condition.
+        self._audit_lock = self._transition_lock
+        self._audit_condition = self._transition_condition
         self._next_audit_sequence = 0
         self._pending_audit: dict[
             int,
@@ -703,7 +706,7 @@ class RuntimeController:
             if operation_data is not None:
                 raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
             operation_data = self._stop_result_data(transition.stop_result)
-        with self._transition_lock:
+        with self._transition_condition:
             if self._audit_failure:
                 raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
             if transition.sequence < self._next_audit_sequence:
@@ -713,6 +716,7 @@ class RuntimeController:
             if existing is not None and existing != item:
                 raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
             self._pending_audit[transition.sequence] = item
+            self._transition_condition.notify_all()
 
     def _drain_pending_transitions(
         self,
@@ -723,35 +727,41 @@ class RuntimeController:
         deadline = time.monotonic() + (
             self._cleanup_timeout if timeout is None else max(0.0, timeout)
         )
+        owns_drain = False
         timed_out = False
-        while True:
-            with self._audit_condition:
-                if self._audit_failure:
-                    raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
-                with self._transition_lock:
-                    if wait_for is not None and wait_for < self._next_audit_sequence:
-                        return
-                if not self._audit_draining:
-                    self._audit_draining = True
-                    break
-                remaining = deadline - time.monotonic()
-                if remaining <= 0.0:
-                    timed_out = True
-                    break
-                self._audit_condition.wait(remaining)
-        if timed_out:
-            self._record_audit_failure(timeout=0.0)
-            raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
         try:
             while True:
-                with self._transition_lock:
-                    if self._audit_failure:
-                        raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
-                    item = self._pending_audit.get(self._next_audit_sequence)
-                    if item is None:
-                        item = self._infer_gateway_fault(self._next_audit_sequence)
-                    if item is None:
-                        return
+                with self._transition_condition:
+                    while True:
+                        if self._audit_failure:
+                            raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
+                        item = self._pending_audit.get(self._next_audit_sequence)
+                        if item is None:
+                            item = self._infer_gateway_fault(self._next_audit_sequence)
+                        if (
+                            wait_for is not None
+                            and wait_for < self._next_audit_sequence
+                            and (not owns_drain or item is None)
+                        ):
+                            return
+                        if item is not None and (owns_drain or not self._audit_draining):
+                            if not owns_drain:
+                                self._audit_draining = True
+                                owns_drain = True
+                            break
+                        if (
+                            wait_for is None
+                            and not self._pending_audit
+                            and (owns_drain or not self._audit_draining)
+                        ):
+                            return
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0.0:
+                            timed_out = True
+                            break
+                        self._transition_condition.wait(remaining)
+                    if timed_out:
+                        break
                 operation, transition, operation_data, outcome = item
                 try:
                     self._append_audit(
@@ -763,18 +773,22 @@ class RuntimeController:
                         timeout=max(0.0, deadline - time.monotonic()),
                     )
                 except RuntimeControllerError:
-                    with self._transition_lock:
+                    with self._transition_condition:
                         self._audit_failure = True
+                        self._transition_condition.notify_all()
                     raise
-                with self._transition_lock:
+                with self._transition_condition:
                     self._pending_audit.pop(self._next_audit_sequence, None)
                     self._next_audit_sequence += 1
-                with self._audit_condition:
-                    self._audit_condition.notify_all()
+                    self._transition_condition.notify_all()
         finally:
-            with self._audit_condition:
-                self._audit_draining = False
-                self._audit_condition.notify_all()
+            if owns_drain:
+                with self._transition_condition:
+                    self._audit_draining = False
+                    self._transition_condition.notify_all()
+        if timed_out:
+            self._record_audit_failure(timeout=0.0)
+            raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
 
     def _infer_gateway_fault(
         self,
@@ -844,8 +858,9 @@ class RuntimeController:
             raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED") from None
 
     def _record_audit_failure(self, *, timeout: float) -> None:
-        with self._transition_lock:
+        with self._transition_condition:
             self._audit_failure = True
+            self._transition_condition.notify_all()
         self._quarantined = True
         self._persist_quarantine()
         gateway = self._gateway

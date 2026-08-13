@@ -266,7 +266,8 @@ class _AuditAppendWorker:
         self._writer = writer
         self._thread_factory = thread_factory
         self._queue: queue.Queue[_AuditAppendReceipt | None] = queue.Queue(
-            maxsize=_AUDIT_QUEUE_CAPACITY
+            # Keep one reserved slot for the terminal marker.
+            maxsize=_AUDIT_QUEUE_CAPACITY + 1
         )
         self._lock = threading.Lock()
         self._stop = threading.Event()
@@ -274,6 +275,7 @@ class _AuditAppendWorker:
         self._in_flight: _AuditAppendReceipt | None = None
         self._accepting = False
         self._failed = False
+        self._sentinel_queued = False
 
     def start(self) -> bool:
         with self._lock:
@@ -306,6 +308,9 @@ class _AuditAppendWorker:
         with self._lock:
             if not self._healthy_locked():
                 raise AuditError("audit write failed")
+            if self._queue.qsize() >= _AUDIT_QUEUE_CAPACITY:
+                self._fail_locked()
+                raise AuditError("audit write failed")
             try:
                 self._queue.put_nowait(receipt)
             except queue.Full:
@@ -328,8 +333,15 @@ class _AuditAppendWorker:
         no_wait = max(0.0, float(timeout)) == 0.0
         with self._lock:
             self._accepting = False
-            self._request_stop_locked()
             thread = self._thread
+            if (
+                thread is not None
+                and not thread.is_alive()
+                and self._queue.empty()
+                and self._in_flight is None
+            ):
+                return True
+            self._request_stop_locked()
             live_at_zero = (
                 no_wait
                 and thread is not None
@@ -346,7 +358,6 @@ class _AuditAppendWorker:
                     not thread.is_alive()
                     and self._queue.empty()
                     and self._in_flight is None
-                    and not self._failed
                 )
             )
 
@@ -359,7 +370,9 @@ class _AuditAppendWorker:
         while True:
             receipt = self._queue.get()
             if receipt is None:
-                self._queue.task_done()
+                with self._lock:
+                    self._sentinel_queued = False
+                    self._queue.task_done()
                 return
             with self._lock:
                 self._in_flight = receipt
@@ -391,8 +404,13 @@ class _AuditAppendWorker:
     def _fail_locked(self) -> None:
         self._failed = True
         self._accepting = False
-        while not self._queue.empty():
-            receipt = self._queue.get_nowait()
+        while True:
+            try:
+                receipt = self._queue.get_nowait()
+            except queue.Empty:
+                break
+            if receipt is None:
+                self._sentinel_queued = False
             if receipt is not None and not receipt.done.is_set():
                 receipt.error = AuditError("audit write failed")
                 receipt.done.set()
@@ -400,9 +418,10 @@ class _AuditAppendWorker:
         self._request_stop_locked()
 
     def _request_stop_locked(self) -> None:
-        if not self._stop.is_set():
-            self._stop.set()
+        self._stop.set()
+        if not self._sentinel_queued:
             self._queue.put_nowait(None)
+            self._sentinel_queued = True
 
 
 def validate_audit_history(raw: bytes, *, require_terminal: bool = False) -> None:

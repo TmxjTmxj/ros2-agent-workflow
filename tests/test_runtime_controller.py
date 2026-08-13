@@ -700,6 +700,78 @@ def test_stop_runtime_times_out_waiting_for_concurrent_audit_durability(tmp_path
     )
 
 
+def test_higher_sequence_append_waits_for_delayed_lower_receipt(tmp_path):
+    active = controller(tmp_path, RecordingAdapter(), cleanup_timeout=0.2)
+    prepare(active)
+    gateway = active._gateway
+    lower = gateway.start_task()
+    higher = gateway.heartbeat()
+    active._register_transition(AuditOperation.HEARTBEAT, higher)
+    errors = []
+
+    def drain_higher():
+        try:
+            active._drain_pending_transitions(
+                wait_for=higher.sequence,
+                timeout=0.2,
+            )
+        except BaseException as exc:
+            errors.append(exc)
+
+    waiter = threading.Thread(target=drain_higher)
+
+    waiter.start()
+    assert wait_until(lambda: higher.sequence in active._pending_audit)
+    waiter.join(0.03)
+    assert waiter.is_alive()
+
+    active._register_transition(
+        AuditOperation.START_TASK,
+        lower,
+        operation_data={"task": "delivery"},
+    )
+    waiter.join(1.0)
+
+    assert not waiter.is_alive()
+    assert errors == []
+    records = [
+        json.loads(line)
+        for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()
+    ]
+    assert [record["operation"] for record in records[-2:]] == [
+        "start_task",
+        "heartbeat",
+    ]
+    estop = gateway.estop(timeout=0.2)
+    assert estop is not None
+    active._append_transition(AuditOperation.ESTOP, estop)
+    assert gateway.close(timeout=0.2)
+    assert active._audit_worker.close(0.2)
+    assert active._adapter is not None
+    assert active._adapter.close(0.2)
+
+
+def test_stop_runtime_waits_to_entry_deadline_for_pending_sequence_gap(tmp_path):
+    active = controller(tmp_path, RecordingAdapter(), cleanup_timeout=0.02)
+    prepare(active)
+    gateway = active._gateway
+    _lower = gateway.start_task()
+    higher = gateway.heartbeat()
+    active._register_transition(AuditOperation.HEARTBEAT, higher)
+
+    began = time.monotonic()
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
+    elapsed = time.monotonic() - began
+
+    assert elapsed >= 0.015
+    assert elapsed < 0.2
+    assert higher.sequence in active._pending_audit
+    assert (tmp_path / "runtime" / "audit.quarantine").read_text(
+        encoding="ascii"
+    ) == "AUDIT_INTEGRITY_COMPROMISED\n"
+
+
 def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_sequence(tmp_path):
     entered = threading.Event()
     release = threading.Event()
