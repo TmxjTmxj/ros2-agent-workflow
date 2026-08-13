@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Agent ROS Robot Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["name", "mode", "namespace", "frames", "adapter", "interfaces", "limits", "safety", "observation_sources"],
+  "properties": {
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "mode": {"enum": ["simulation", "hardware"]},
+    "namespace": {"type": "string", "minLength": 1},
+    "frames": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {"type": "string", "minLength": 1}
+    },
+    "adapter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {"kind": {"enum": ["twist", "nav2", "follow_joint_trajectory"]}}
+    },
+    "interfaces": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "command": {"$ref": "#/$defs/topicInterface"},
+        "odometry": {"$ref": "#/$defs/topicInterface"},
+        "navigation": {"$ref": "#/$defs/actionInterface"},
+        "trajectory": {"$ref": "#/$defs/actionInterface"}
+      }
+    },
+    "limits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_linear_velocity", "max_angular_velocity", "max_linear_acceleration", "max_angular_acceleration"],
+      "properties": {
+        "max_linear_velocity": {"type": "number", "exclusiveMinimum": 0},
+        "max_angular_velocity": {"type": "number", "exclusiveMinimum": 0},
+        "max_linear_acceleration": {"type": "number", "exclusiveMinimum": 0},
+        "max_angular_acceleration": {"type": "number", "exclusiveMinimum": 0}
+      }
+    },
+    "safety": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "heartbeat_timeout": {"type": "number", "exclusiveMinimum": 0},
+        "estop_topic": {"type": "string", "minLength": 1}
+      }
+    },
+    "observation_sources": {"type": "array", "items": {"type": "string", "minLength": 1}}
+  },
+  "$defs": {
+    "topicInterface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["topic", "type"],
+      "properties": {
+        "topic": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "minLength": 1}
+      }
+    },
+    "actionInterface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["action", "type"],
+      "properties": {
+        "action": {"type": "string", "minLength": 1},
+        "type": {"type": "string", "minLength": 1}
+      }
+    }
+  }
+}
