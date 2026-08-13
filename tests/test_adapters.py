@@ -211,12 +211,158 @@ def ready_subprocess(program: str, *, ready_timeout: float):
             process.wait(timeout=0.5)
         except subprocess.TimeoutExpired:
             process.kill()
-            process.wait(timeout=0.5)
+            try:
+                process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                process.wait()
+        except BaseException:
+            error = sys.exception()
+            killed = False
+            try:
+                if process.poll() is None:
+                    process.kill()
+                    killed = True
+            except BaseException:
+                pass
+            if killed:
+                try:
+                    process.wait()
+                except BaseException:
+                    pass
+            raise error
         finally:
             if process.stdout is not None:
                 process.stdout.close()
             if process.stderr is not None:
                 process.stderr.close()
+
+
+def test_ready_subprocess_reaps_after_kill_when_timed_wait_still_times_out(
+    monkeypatch,
+):
+    class FakePipe:
+        closed = False
+
+        def fileno(self):
+            return 123
+
+        def close(self):
+            self.closed = True
+
+    class FakeSelector:
+        def register(self, _stream, _event):
+            return None
+
+        def select(self, _timeout):
+            return [(object(), selectors.EVENT_READ)]
+
+        def close(self):
+            return None
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = FakePipe()
+            self.stderr = FakePipe()
+            self.returncode = None
+            self.calls = []
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.calls.append("terminate")
+
+        def kill(self):
+            self.calls.append("kill")
+
+        def wait(self, timeout=None):
+            self.calls.append(("wait", timeout))
+            if timeout is not None:
+                raise subprocess.TimeoutExpired("controlled-child", timeout)
+            self.returncode = -9
+            return self.returncode
+
+    process = FakeProcess()
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(selectors, "DefaultSelector", FakeSelector)
+    monkeypatch.setattr(os, "read", lambda _fd, _size: b"READY\n")
+
+    with ready_subprocess("controlled", ready_timeout=0.1) as yielded:
+        assert yielded is process
+
+    assert process.calls == [
+        "terminate",
+        ("wait", 0.5),
+        "kill",
+        ("wait", 0.5),
+        ("wait", None),
+    ]
+    assert process.returncode == -9
+    assert process.stdout.closed
+    assert process.stderr.closed
+
+
+def test_ready_subprocess_reaps_then_propagates_unexpected_wait_error(monkeypatch):
+    class FakePipe:
+        closed = False
+
+        def fileno(self):
+            return 123
+
+        def close(self):
+            self.closed = True
+
+    class FakeSelector:
+        def register(self, _stream, _event):
+            return None
+
+        def select(self, _timeout):
+            return [(object(), selectors.EVENT_READ)]
+
+        def close(self):
+            return None
+
+    class FakeProcess:
+        def __init__(self):
+            self.stdout = FakePipe()
+            self.stderr = FakePipe()
+            self.returncode = None
+            self.calls = []
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            self.calls.append("terminate")
+
+        def kill(self):
+            self.calls.append("kill")
+
+        def wait(self, timeout=None):
+            self.calls.append(("wait", timeout))
+            if timeout is not None:
+                raise RuntimeError("controlled wait failure")
+            self.returncode = -9
+            return self.returncode
+
+    process = FakeProcess()
+    monkeypatch.setattr(subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(selectors, "DefaultSelector", FakeSelector)
+    monkeypatch.setattr(os, "read", lambda _fd, _size: b"READY\n")
+
+    with pytest.raises(RuntimeError, match="controlled wait failure"):
+        with ready_subprocess("controlled", ready_timeout=0.1):
+            pass
+
+    assert process.calls == [
+        "terminate",
+        ("wait", 0.5),
+        "kill",
+        ("wait", None),
+    ]
+    assert process.returncode == -9
+    assert process.stdout.closed
+    assert process.stderr.closed
 
 
 def test_subprocess_readiness_timeout_is_bounded_and_reaps_child(tmp_path):
