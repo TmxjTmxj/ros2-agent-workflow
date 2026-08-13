@@ -152,9 +152,10 @@ class _SafetySequencer:
         if not receipt.done.wait(remaining):
             with self._condition:
                 if not receipt.done.is_set():
+                    self._complete_receipt_locked(
+                        receipt, error=_ActivationRejected("TIMEOUT")
+                    )
                     self._latch_locked("ESTOP_LATCHED")
-                    receipt.error = _ActivationRejected("TIMEOUT")
-                    receipt.done.set()
                     self._condition.notify_all()
                     raise _ActivationRejected("TIMEOUT")
         if receipt.error is not None:
@@ -208,16 +209,21 @@ class _SafetySequencer:
             code,
         )
 
+    def begin_close(self) -> None:
+        with self._condition:
+            if not self._closed:
+                self._closed = True
+                self._accepting = False
+                self._generation += 1
+                self._latched = True
+                self._reject_queued_locked("UNSAFE_STATE")
+                self._condition.notify_all()
+
     def close(self, timeout: float) -> bool:
         deadline = self._deadline(timeout)
+        self.begin_close()
         with self._condition:
-            self._closed = True
-            self._accepting = False
-            self._generation += 1
-            self._latched = True
-            self._reject_queued_locked("UNSAFE_STATE")
             thread = self._thread
-            self._condition.notify_all()
         if thread is not None and thread is not threading.current_thread():
             thread.join(max(0.0, deadline - time.monotonic()))
         with self._condition:
@@ -271,27 +277,30 @@ class _SafetySequencer:
                     continue
                 receipt = self._queue.get_nowait()
                 if self._latched or receipt.generation != self._generation:
-                    receipt.error = _ActivationRejected("ESTOP_LATCHED")
-                    receipt.done.set()
+                    self._complete_receipt_locked(
+                        receipt, error=_ActivationRejected("ESTOP_LATCHED")
+                    )
                     self._queue.task_done()
                     continue
                 self._in_flight = receipt
 
             try:
-                receipt.value = receipt.command()
+                value = receipt.command()
             except BaseException as exc:
-                receipt.error = exc
                 with self._condition:
+                    self._complete_receipt_locked(receipt, error=exc)
                     self._failed = True
                     self._accepting = False
                     self._generation += 1
                     self._latched = True
                     self._reject_queued_locked("UNSAFE_STATE")
+            else:
+                with self._condition:
+                    self._complete_receipt_locked(receipt, value=value)
             finally:
                 with self._condition:
                     if self._in_flight is receipt:
                         self._in_flight = None
-                    receipt.done.set()
                     self._queue.task_done()
                     self._condition.notify_all()
 
@@ -304,9 +313,24 @@ class _SafetySequencer:
     def _reject_queued_locked(self, code: str) -> None:
         while not self._queue.empty():
             receipt = self._queue.get_nowait()
-            receipt.error = _ActivationRejected(code)
-            receipt.done.set()
+            self._complete_receipt_locked(
+                receipt, error=_ActivationRejected(code)
+            )
             self._queue.task_done()
+
+    @staticmethod
+    def _complete_receipt_locked(
+        receipt: _Receipt[object],
+        *,
+        value: object = None,
+        error: BaseException | None = None,
+    ) -> bool:
+        if receipt.done.is_set():
+            return False
+        receipt.value = value
+        receipt.error = error
+        receipt.done.set()
+        return True
 
     def _worker_ready_locked(self) -> bool:
         thread = self._thread

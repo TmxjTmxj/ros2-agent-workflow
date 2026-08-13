@@ -165,10 +165,12 @@ class RobotAdapter(ABC):
         sequencer = getattr(self, "_safety_sequencer", None)
         if not isinstance(sequencer, _SafetySequencer):
             return True
+        deadline = time.monotonic() + max(0.0, timeout)
+        sequencer.begin_close()
         channel = self._emergency_stop_channel()
         if not isinstance(channel, _EmergencyStopChannel):
+            sequencer.close(max(0.0, deadline - time.monotonic()))
             return False
-        deadline = time.monotonic() + max(0.0, timeout)
         channel_closed = channel._close(max(0.0, deadline - time.monotonic()))
         sequencer_closed = sequencer.close(max(0.0, deadline - time.monotonic()))
         return channel_closed and sequencer_closed

@@ -300,14 +300,20 @@ class RclpyTwistTransport:
             self.publish(command)
             self._last_command = command
 
-        if type(permit) is _ActivationPermit:
-            try:
-                permit._sequencer.submit(permit, enqueue, 1.0)
-            except _ActivationRejected:
-                return
-        else:
-            with self._publish_lock:
-                enqueue()
+        if type(permit) is not _ActivationPermit:
+            self._disable_unsafe_stage()
+            return
+        try:
+            permit._sequencer.submit(permit, enqueue, 1.0)
+        except _ActivationRejected:
+            self._disable_unsafe_stage()
+
+    def _disable_unsafe_stage(self) -> None:
+        with self._state_lock:
+            self._generation += 1
+            self._stage = None
+            self._stage_permit = None
+            self._state = AdapterStatus("faulted", "UNSAFE_STATE")
 
     def read_odometry(self) -> OdometrySample:
         if self._sample is None:

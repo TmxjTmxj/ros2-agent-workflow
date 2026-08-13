@@ -273,6 +273,38 @@ def test_submit_result_wait_timeout_latches_and_rejects_later_activation():
         assert sequencer.close(0.2)
 
 
+def test_late_transport_completion_cannot_overwrite_timed_out_receipt():
+    sequencer = started_sequencer()
+    entered = threading.Event()
+    release = threading.Event()
+    call = ThreadCall(
+        lambda: sequencer.submit(
+            sequencer.issue(),
+            lambda: (entered.set(), release.wait(), "late")[2],
+            timeout=0.02,
+        )
+    )
+    try:
+        assert entered.wait(0.2)
+        receipt = sequencer._in_flight
+        assert receipt is not None
+        with pytest.raises(_ActivationRejected, match="TIMEOUT"):
+            call.result(0.2)
+
+        release.set()
+        deadline = time.monotonic() + 0.2
+        while sequencer._in_flight is not None and time.monotonic() < deadline:
+            threading.Event().wait(0.001)
+
+        assert sequencer._in_flight is None
+        assert isinstance(receipt.error, _ActivationRejected)
+        assert receipt.error.code == "TIMEOUT"
+        assert receipt.value is None
+    finally:
+        release.set()
+        assert sequencer.close(0.2)
+
+
 def test_close_is_bounded_while_transport_is_blocked():
     sequencer = started_sequencer()
     entered = threading.Event()

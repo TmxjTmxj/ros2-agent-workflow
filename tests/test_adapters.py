@@ -24,6 +24,7 @@ from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.profiles.models import RobotProfile
 from agent_ros.profiles.models import PoseGoal, TaskStage
 from agent_ros.safety.outcome import EmergencyStopResult
+from agent_ros.safety.sequencer import _ActivationRejected, _SafetySequencer
 
 
 def robot_profile(kind: str = "twist", *, mode: str = "simulation") -> RobotProfile:
@@ -388,6 +389,94 @@ def test_twist_runtime_timer_limits_first_command_acceleration_from_zero(monkeyp
     transport._control_step()
 
     assert commands == [TwistCommand(0.05, 0.0)]
+
+
+@pytest.mark.parametrize("permit_kind", ["missing", "invalid", "foreign"])
+def test_twist_timer_without_exact_owned_permit_fails_closed(
+    monkeypatch, permit_kind
+):
+    transport = real_twist_transport(monkeypatch)
+    transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
+    adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
+    adapter.start(stage(), valid_permit(adapter))
+    if permit_kind == "missing":
+        transport._stage_permit = None
+    elif permit_kind == "invalid":
+        transport._stage_permit = object()
+    else:
+        transport._stage_permit = _ActivationIssuer().issue()
+    commands = []
+    transport.publish = commands.append
+    try:
+        transport._control_step()
+
+        assert commands == []
+        assert transport.waypoint_status() == AdapterStatus(
+            "faulted", "UNSAFE_STATE"
+        )
+    finally:
+        assert adapter.close(0.2)
+
+
+def test_adapter_close_latches_before_emergency_close_and_shares_one_deadline():
+    close_entered = threading.Event()
+    release_close = threading.Event()
+
+    class BlockingCloseChannel(RecordingEmergencyChannel):
+        def __init__(self, enqueue) -> None:
+            super().__init__(enqueue)
+            self.offered: list[float] = []
+
+        def _close(self, timeout: float) -> bool:
+            self.offered.append(timeout)
+            close_entered.set()
+            release_close.wait(timeout)
+            return False
+
+        def finish(self) -> bool:
+            return super()._close(0.2)
+
+    class RecordingSequencer(_SafetySequencer):
+        def __init__(self) -> None:
+            super().__init__()
+            self.offered: list[float] = []
+
+        def close(self, timeout: float) -> bool:
+            self.offered.append(timeout)
+            return super().close(timeout)
+
+    transport = TwistTransport()
+    channel = BlockingCloseChannel(transport._enqueue_emergency_stop)
+    transport.safety_channel = channel
+    adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
+    sequencer = RecordingSequencer()
+    adapter._bind_runtime_safety(sequencer)
+    adapter._validate_runtime_safety("simulation")
+    old_permit = sequencer.issue()
+    close_results = []
+    began = time.monotonic()
+    closer = threading.Thread(target=lambda: close_results.append(adapter.close(0.05)))
+    closer.start()
+    try:
+        assert close_entered.wait(0.2)
+        with pytest.raises(_ActivationRejected):
+            sequencer.issue()
+        invoked = []
+        with pytest.raises(_ActivationRejected):
+            sequencer.submit(old_permit, lambda: invoked.append(True), timeout=0.02)
+        assert invoked == []
+
+        closer.join(0.2)
+        assert not closer.is_alive()
+        assert time.monotonic() - began < 0.2
+        assert close_results == [False]
+        assert len(channel.offered) == 1
+        assert len(sequencer.offered) == 1
+        assert sum(channel.offered + sequencer.offered) <= 0.055
+    finally:
+        release_close.set()
+        closer.join(0.2)
+        assert channel.finish()
 
 
 def test_twist_timer_snapshot_before_estop_cannot_publish_nonzero_after_estop_returns(monkeypatch):
