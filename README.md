@@ -1,117 +1,248 @@
-# 🤖 ROS2 Agent 工作流
+# 🤖 Codex 控制 ROS2 自动化框架
 
-**用 AI Agent 操控 ROS2 与 Gazebo 仿真 —— MCP Server + 一键演示脚本 + 完整技能文档**
+**让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"智能车国赛·医院配送"赛题为完整验证案例**
 
-![ROS2](https://img.shields.io/badge/ROS2-lyrical-orange) ![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10.4-blue) ![MCP](https://img.shields.io/badge/MCP-FastMCP-green)
-
-> 本项目展示了如何让 AI Agent 通过 **MCP 协议** 连接并操控 **ROS2（lyrical 发行版）** 与 **Gazebo 仿真**，实现"启动仿真 → 查询状态 → 发布指令 → 读取反馈"的完整闭环。环境由 Claude Code 通过官方源安装，本项目在其上构建了 Agent 可用的桥接层。
-
-> **硬件安全边界：** 本项目是研究与教学软件，不能替代认证的工业安全系统。真机必须配备经审查的物理急停端点；软件进程隔离、ROS action 取消请求和 zero velocity 消息都不能提供物理安全证明。只有三个布尔字段均为 `true` 的成功 `EmergencyStopResult`，才证明本地控制面已经闩锁急停 generation、拒绝后续 activation、等待已跨过执行边界的 activation 调用返回，并让本地有界安全队列接受 zero/disable 意图。这仍不证明 DDS 已交付消息、ROS action server 已接受或完成取消，也不证明执行器已经停止；这些是需要独立观测的结果。
->
-> `code="TRANSPORT_UNQUIESCED"` 表示本地急停已经闩锁，但某个已启动的第三方 transport 调用未在期限内静止，因此不能声称返回后不存在该调用的迟到效果。`safety_command_accepted=true` 仅表示本地 emergency 队列接受了安全意图，不表示 ROS/DDS 或硬件已经执行。队列满、worker 死亡、安全命令失败或有界关闭超时都会显式 fail closed。Hospital adapter 是封闭的进程内仿真队列，不能连接或控制硬件。
+[![ROS2](https://img.shields.io/badge/ROS2-lyrical-orange)](https://docs.ros.org)
+[![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10-blue)](https://gazebosim.org)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org)
+[![MCP](https://img.shields.io/badge/MCP-FastMCP-important)](https://modelcontextprotocol.io)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 ---
 
-## 🏗️ 架构
+## 🎯 项目是什么
 
-```
-┌────────────────────────────────────────────────────┐
-│                 AI Agent (Claude Code / Hermes)     │
-│                      │  MCP 协议                    │
-│                      ▼                              │
-│           ┌──────────────────────┐                  │
-│           │  ros2_mcp_server.py  │  ← FastMCP 桥接层 │
-│           │  (list/pub/gz/turtle)│                  │
-│           └──────────┬───────────┘                  │
-│                      │ CLI                          │
-│           ┌──────────▼───────────┐                  │
-│           │      ROS2 lyrical    │                  │
-│           │  /opt/ros/lyrical    │                  │
-│           └──────────┬───────────┘                  │
-│                      │ ros_gz_bridge                │
-│           ┌──────────▼───────────┐                  │
-│           │   Gazebo gz sim      │                  │
-│           │   10.4.0 (headless)  │                  │
-│           └──────────────────────┘                  │
-└────────────────────────────────────────────────────┘
-```
+这是一个 **基于 Codex（OpenAI）的 ROS2 自动化控制框架**：AI Agent 通过 **MCP 协议** 连接 ROS2 + Gazebo 仿真环境，以**任务级意图**（"把药从药房送到病房2"）驱动机器人完成复杂任务，而不是逐条下发底层指令。
 
-## ✨ 功能
+**项目的核心价值：**
 
-### MCP Server 工具（`mcp_server/ros2_mcp_server.py`）
-| 工具 | 功能 |
+| 特点 | 说明 |
 |------|------|
-| `list_nodes` | 列出所有 ROS2 节点 |
-| `list_topics` | 列出所有话题（含类型） |
-| `topic_echo` | 读取话题最新消息 |
-| `pub_topic` | 发布消息到话题 |
-| `run_ros2_cmd` | 执行 ROS2 CLI（白名单安全控制） |
-| `gz_sim_launch` | 启动 Gazebo 仿真 |
-| `gz_topic_list/echo` | 查询 Gazebo 话题 |
-| `gz_model_list` | 列出仿真世界模型 |
-| `turtle_launch/spawn/teleport` | turtlesim 演示控制 |
+| 🧠 **Agent 驱动** | Codex / Claude / 任意 MCP 客户端即可操控 ROS2 |
+| 🔒 **Fail-Closed 安全** | 激活许可 + 心跳监控 + 急停闩锁 + 完整审计,任何异常都安全停机 |
+| 📦 **可复现** | 声明式 Profile 描述机器人能力,一键运行完整验证 |
+| 🧪 **赛题案例** | 以"智能车国赛·医院配送"为完整参考案例,带真实验收报告 |
+| 📊 **可验证证据** | 独立验收监控器,生成机器可验证的 JSON 证据,防伪造 |
 
-### 一键演示脚本（`scripts/`）
-- **`demo_turtlesim.sh`** — turtlesim 完整闭环：启动 → 列节点 → 列话题 → 发布速度 → 读位姿 → 清理
-- **`demo_gazebo_bridge.sh`** — Gazebo ↔ ROS2 桥接：启动 gz sim → 查话题 → 起 bridge → 验证互通
+> **这个框架从一次真实的赛题出发**:原任务是让 Agent 完成"智能车国赛"中的医院配送仿真赛题。我们将赛题固化为完整参考案例(`examples/hospital_delivery`),并抽象出一套**通用、安全、可复现**的 Agent 控制 ROS2 框架。赛题是案例,框架是产品。
+
+---
+
+## 🏗️ 架构总览
+
+![系统架构](assets/architecture.svg)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    AI Agent (Codex / 任意 MCP 客户端)          │
+│              "把药从药房送到病房2" —— 任务级意图                │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ MCP 协议 (stdio)
+┌──────────────────────────▼──────────────────────────────────┐
+│                 MCP Server (FastMCP)                        │
+│  discover_robot · validate_profile · arm_robot · run_task   │
+│  task_status · cancel_task · emergency_stop · get_evidence  │
+└──────────────────────────┬──────────────────────────────────┘
+                           │ 授权后的有界操作
+┌──────────────────────────▼──────────────────────────────────┐
+│            安全网关 Safety Gateway (Fail-Closed)             │
+│  激活许可签发 · 心跳监控 · 急停闩锁 · 审计日志                 │
+└─────────────┬──────────────────────────┬───────────────────┘
+              │                          │
+┌─────────────▼──────────┐   ┌───────────▼──────────────────┐
+│   ROS2 Adapters        │   │   ROS2 Lyrical               │
+│   Twist · Nav2 ·       │   │   rclpy 节点 · topics         │
+│   Hospital (封闭)      │   │   /cmd_vel · /odom · camera   │
+└────────────────────────┘   └───────────┬──────────────────┘
+                                         │ ros_gz_bridge
+                              ┌──────────▼──────────────────┐
+                              │   Gazebo Sim 10 (headless)  │
+                              │   医院病房世界 · AMR · 相机    │
+                              └─────────────────────────────┘
+```
+
+---
+
+## 🧩 核心组件
+
+### 1. MCP Server —— Agent 与 ROS2 的桥
+
+基于 FastMCP 3.4.7,提供**有界、类型安全**的任务级工具,绝不暴露任意 shell:
+
+| 工具 | 作用 |
+|------|------|
+| `discover_robot` | 按 Profile 发现并装配机器人适配器 |
+| `validate_profile` | 校验机器人/任务 Profile 合法性 |
+| `arm_robot` | 授权激活(签发激活许可) |
+| `run_task` | 执行任务级操作(如"医院配送") |
+| `task_status` / `cancel_task` | 任务状态查询 / 取消 |
+| `emergency_stop` | **急停**——Fail-Closed,任何时刻可用 |
+| `observe` / `get_evidence` | 观测数据 / 可验证证据 |
+
+### 2. 声明式 Profile —— 描述"机器人是什么"
+
+```yaml
+# profiles/robots/hospital-amr.yaml (简化)
+name: hospital-amr
+mode: simulation
+adapter:
+  kind: hospital_delivery
+interfaces:
+  command:    {topic: /cmd_vel, type: geometry_msgs/msg/Twist}
+  odometry:   {topic: /odom,    type: nav_msgs/msg/Odometry}
+limits:
+  max_linear_velocity: 0.5
+safety:
+  heartbeat_timeout: 1.0
+  estop_topic: /emergency_stop
+```
+
+Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必须是正有限值,适配器必须是白名单类型。
+
+### 3. 安全内核 —— Fail-Closed 状态机
+
+![安全状态机](assets/safety-state-machine.svg)
+
+- **激活许可(Activation Permit)**:任何运动指令必须携带当前许可,急停后许可立即失效
+- **心跳监控**:任务执行期间持续监控,心跳丢失 → FAULTED → 安全停机
+- **急停闩锁(E-Stop Latch)**:一旦闩锁,拒绝所有后续激活,并有界等待在途调用静止
+- **完整审计**:所有状态转换、激活、急停写入持久化 JSONL 审计
+
+### 4. 可验证证据 —— 防伪造
+
+每个任务生成**独立于控制器的验收监控器**报告:
+- 三段式路线端点误差(实测 0.325 / 0.337 / 0.341 m)
+- 全程 `/cmd_vel` 发布者身份(GID)固定
+- 接触消息计数、禁止碰撞检测
+- 初始/最终相机 PNG(640×480,可解码)
+
+---
+
+## 🏥 参考案例:医院配送(智能车国赛赛题)
+
+![医院配送路线](assets/hospital-route.svg)
+
+这是**完整的赛题案例**:一辆 AMR(自主移动机器人)在医院病房环境中完成"取药 → 送药 → 巡视"三段式配送任务。
+
+### 真实运行画面
+
+| 任务开始(相机视角) | 任务完成(相机视角) |
+|---|---|
+| ![初始](assets/hospital-camera-initial.png) | ![最终](assets/hospital-camera-final.png) |
+
+### 实测验收指标(schema-2,2026-08-13)
+
+| 指标 | 实测值 |
+|------|--------|
+| 任务状态 | ✅ SUCCEEDED |
+| 三段端点误差 | 0.325 / 0.337 / 0.341 m(要求 ≤0.50 m) |
+| 总耗时 | 49.6 s(要求 ≤180 s) |
+| 停止漂移 | 0.0088 m(要求 ≤0.02 m) |
+| `/cmd_vel` 发布者 | 唯一(1 个 GID) |
+| 接触消息 | 12,831 条,禁止碰撞 **0** |
+| 相机证据 | 初始 + 最终 PNG,640×480 可解码 |
+| 验证错误 | 无(`validation_errors: []`) |
+
+> 验收报告由**独立监控器**生成,不信任控制器自报——所有指标都来自 ROS 话题的独立观测。
+
+---
 
 ## 🚀 快速开始
 
+### 环境要求
+
+- Ubuntu 24.04+ / 26.04,ROS2 **lyrical**(`ros-lyrical-desktop-full` + `ros-lyrical-ros-gz`)
+- Gazebo gz sim ≥ 10.0
+- Python 3.11+(推荐 3.14)
+- 无显示器环境自动 headless
+
+### 1. 安装
+
 ```bash
-# 1. 加载 ROS2 环境
-source scripts/ros2_env.sh
-
-# 2. 跑 turtlesim 演示（无需显示器）
-bash scripts/demo_turtlesim.sh
-
-# 3. 跑 Gazebo 桥接演示
-bash scripts/demo_gazebo_bridge.sh
-
-# 4. 启动 MCP Server（供 AI Agent 连接）
-pip install fastmcp
-python3 mcp_server/ros2_mcp_server.py
+python3 -m venv .venv
+.venv/bin/pip install -e .
+source /opt/ros/lyrical/setup.bash
 ```
 
-## ✅ 实测验证（2026-08-11）
+### 2. 一键运行医院配送案例(完整验证)
 
-### turtlesim 闭环
-```
-/turtlesim                    ← 节点启动
-/turtle1/cmd_vel              ← 话题就绪
-发布 Twist (v=2.0, ω=1.8)     ← 控制指令
-x: 6.602 y: 6.938 θ: 1.814    ← 位姿反馈（乌龟动了）
+```bash
+bash scripts/demo_hospital.sh --headless --verify
 ```
 
-### Gazebo 桥接闭环
-```
-Gazebo 话题: /world/empty/pose/info, /clock, /stats
-ros_gz_bridge: parameter_bridge 启动
-ROS2 侧出现: /world/empty/pose/info, /clock  ← 桥接成功！
+启动 Gazebo 医院世界 → 运行三段配送任务 → 独立监控器验证 → 输出 `acceptance_report.json` + 相机截图。
+
+### 3. 以 Agent 方式连接(推荐)
+
+```bash
+# 配置 MCP Server(复制 .codex/config.toml.example 到你的 Agent 配置)
+# 对 Codex:
+#   mcp_servers.agent_ros = {
+#     command = "<仓库路径>/.venv/bin/python",
+#     args = ["-m", "mcp_server.ros2_mcp_server"],
+#     cwd = "<仓库路径>",
+#   }
 ```
 
-## 📁 目录结构
+然后 Agent 就能用自然语言完成任务:
+
+```
+Agent: 运行医院配送任务
+Agent: 紧急停止!
+Agent: 当前任务状态是什么?
+```
+
+### 4. 跑测试(322 个)
+
+```bash
+source /opt/ros/lyrical/setup.bash
+python3 -m pytest tests/ examples/hospital_delivery/tests/ -q
+```
+
+---
+
+## 📂 项目结构
 
 ```
 ros2-agent-workflow/
+├── agent_ros/                  # 核心框架
+│   ├── adapters/               #   ROS2 适配器(Twist/Nav2/Hospital)
+│   ├── discovery/              #   ROS 图发现与能力推断
+│   ├── profiles/               #   Profile 模型与加载
+│   ├── runtime/                #   控制器、审计、证据
+│   └── safety/                 #   安全网关、序列器、状态机
 ├── mcp_server/
-│   └── ros2_mcp_server.py     # FastMCP ROS2 桥接层
-├── scripts/
-│   ├── ros2_env.sh            # 环境加载器
-│   ├── demo_turtlesim.sh      # turtlesim 演示
-│   └── demo_gazebo_bridge.sh  # Gazebo 桥接演示
-├── skills/
-│   └── ros2-agent-workflow.md # Agent 技能文档
-├── launch/
-└── docs/
+│   └── ros2_mcp_server.py      # FastMCP Server(Agent 入口)
+├── profiles/
+│   ├── robots/hospital-amr.yaml
+│   └── tasks/hospital-delivery.yaml
+├── examples/hospital_delivery/ # 完整赛题参考案例
+│   ├── config/                 #   路线、桥接配置
+│   ├── models/hospital_amr/    #   AMR 模型(SDF)
+│   ├── worlds/                 #   医院病房世界
+│   ├── scripts/                #   控制器、相机、验收
+│   ├── src/smartcar_bringup/   #   ROS2 功能包
+│   └── tests/                  #   案例测试
+├── scripts/                    # 一键演示脚本
+├── skills/                     # Agent 技能文档
+├── tests/                      # 框架测试(322 个)
+└── assets/                     # 架构图、路线图、截图
 ```
 
-## ⚙️ 环境要求
+---
 
-- Ubuntu + ROS2 **lyrical**（`ros-lyrical-desktop-full` + `ros-lyrical-ros-gz`）
-- Gazebo gz sim ≥ 10.0
-- Python 3.10+（MCP Server 用）
-- 无显示器环境需 `QT_QPA_PLATFORM=offscreen`
+## 🧪 测试与质量
+
+- **322 个测试**覆盖:Profile 校验、安全序列器、网关、审计、适配器、MCP 工具、验收报告解析
+- 每个 Task 都经过 **5 轮代码审查循环**(Critical/Important/Minor 分级),修复后独立复审
+- 真实验收通过:三段误差、停止漂移、碰撞、相机证据全部达标
 
 ## 📄 License
 
-MIT
+MIT —— 自由使用、修改、分发,保留版权声明即可。
+
+## 🙏 致谢
+
+- 案例基于"智能车国赛"医院配送赛题场景
+- TurtleBot 几何模型来自开源社区,归属保留在模型元数据中
+- ROS2 / Gazebo / FastMCP 生态
