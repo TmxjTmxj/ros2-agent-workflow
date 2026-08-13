@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import threading
+import time
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -22,6 +23,7 @@ from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.profiles.models import RobotProfile
 from agent_ros.profiles.models import PoseGoal, TaskStage
+from agent_ros.safety.outcome import EmergencyStopResult
 
 
 def robot_profile(kind: str = "twist", *, mode: str = "simulation") -> RobotProfile:
@@ -436,6 +438,79 @@ def test_twist_emergency_enqueue_never_waits_for_a_blocked_ros_publish(monkeypat
     assert not errors
 
 
+def test_twist_estop_success_waits_for_blocked_nonzero_publish(monkeypatch):
+    transport = real_twist_transport(monkeypatch)
+    transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
+    adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
+    adapter.start(stage(), valid_permit(adapter))
+    entered = threading.Event()
+    release = threading.Event()
+    commands = []
+
+    def publish(command):
+        if command != TwistCommand.zero():
+            entered.set()
+            release.wait()
+        commands.append(command)
+
+    transport.publish = publish
+    timer = threading.Thread(target=transport._control_step)
+    timer.start()
+    try:
+        assert entered.wait(0.2)
+        results = []
+        stop = threading.Thread(
+            target=lambda: results.append(adapter._emergency_stop(0.2))
+        )
+        stop.start()
+        assert stop.is_alive()
+        release.set()
+        stop.join(0.2)
+        timer.join(0.2)
+
+        assert not stop.is_alive()
+        assert not timer.is_alive()
+        assert results == [EmergencyStopResult(True, True, True, "ESTOP_LATCHED")]
+        assert any(command != TwistCommand.zero() for command in commands)
+    finally:
+        release.set()
+        timer.join(0.2)
+        assert adapter.close(0.2)
+
+
+def test_twist_estop_degrades_when_publish_does_not_quiesce(monkeypatch):
+    transport = real_twist_transport(monkeypatch)
+    transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
+    adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
+    adapter.start(stage(), valid_permit(adapter))
+    entered = threading.Event()
+    release = threading.Event()
+
+    def publish(command):
+        if command != TwistCommand.zero():
+            entered.set()
+            release.wait()
+
+    transport.publish = publish
+    timer = threading.Thread(target=transport._control_step)
+    timer.start()
+    try:
+        assert entered.wait(0.2)
+        began = time.monotonic()
+
+        result = adapter._emergency_stop(0.02)
+
+        assert time.monotonic() - began < 0.2
+        assert result == EmergencyStopResult(
+            True, False, True, "TRANSPORT_UNQUIESCED"
+        )
+    finally:
+        release.set()
+        timer.join(0.2)
+        assert not timer.is_alive()
+        assert adapter.close(0.2)
+
+
 class Nav2Transport:
     def __init__(self) -> None:
         self.requests = []
@@ -507,6 +582,142 @@ def test_nav2_emergency_stop_publishes_independent_zero_and_initiates_cancel():
     assert _wait_until(lambda: transport.zeros == 2)
     assert transport.zeros == 2
     assert transport.cancel_count == 1
+
+
+def test_nav2_estop_success_waits_for_send_goal_boundary():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingNav2Transport(Nav2Transport):
+        def send_goal(self, goal, _permit=None):
+            entered.set()
+            release.wait()
+            return super().send_goal(goal, _permit)
+
+    transport = BlockingNav2Transport()
+    adapter = Nav2Adapter(robot_profile("nav2"), transport)
+    permit = valid_permit(adapter)
+    errors = []
+    starter = threading.Thread(
+        target=lambda: _capture(errors, adapter.start, stage(), permit)
+    )
+    starter.start()
+    try:
+        assert entered.wait(0.2)
+        results = []
+        stop = threading.Thread(
+            target=lambda: results.append(adapter._emergency_stop(0.2))
+        )
+        stop.start()
+        assert stop.is_alive()
+        release.set()
+        stop.join(0.2)
+        starter.join(0.2)
+
+        assert not stop.is_alive()
+        assert not starter.is_alive()
+        assert results == [EmergencyStopResult(True, True, True, "ESTOP_LATCHED")]
+        assert any(isinstance(error, AdapterError) for error in errors)
+    finally:
+        release.set()
+        starter.join(0.2)
+        assert adapter.close(0.2)
+
+
+def test_nav2_estop_degrades_when_send_goal_does_not_quiesce():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingNav2Transport(Nav2Transport):
+        def send_goal(self, goal, _permit=None):
+            entered.set()
+            release.wait()
+            return super().send_goal(goal, _permit)
+
+    transport = BlockingNav2Transport()
+    adapter = Nav2Adapter(robot_profile("nav2"), transport)
+    permit = valid_permit(adapter)
+    errors = []
+    starter = threading.Thread(
+        target=lambda: _capture(errors, adapter.start, stage(), permit)
+    )
+    starter.start()
+    try:
+        assert entered.wait(0.2)
+        began = time.monotonic()
+
+        result = adapter._emergency_stop(0.02)
+
+        assert time.monotonic() - began < 0.2
+        assert result == EmergencyStopResult(
+            True, False, True, "TRANSPORT_UNQUIESCED"
+        )
+    finally:
+        release.set()
+        starter.join(0.2)
+        assert not starter.is_alive()
+        assert adapter.close(0.2)
+
+
+def test_no_stale_timer_publish_after_successful_estop(monkeypatch):
+    transport = real_twist_transport(monkeypatch)
+    transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
+    adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
+    adapter.start(stage(), valid_permit(adapter))
+    snapshot = threading.Event()
+    release = threading.Event()
+    commands = []
+    transport.publish = commands.append
+    transport._before_publish = lambda: (snapshot.set(), release.wait())
+    timer = threading.Thread(target=transport._control_step)
+    timer.start()
+    try:
+        assert snapshot.wait(0.2)
+
+        result = adapter._emergency_stop(0.2)
+        release.set()
+        timer.join(0.2)
+
+        assert result.successful
+        assert not timer.is_alive()
+        assert _wait_until(lambda: bool(commands), timeout=0.2)
+        assert commands == [TwistCommand.zero()]
+    finally:
+        release.set()
+        timer.join(0.2)
+        assert adapter.close(0.2)
+
+
+def test_late_nav2_goal_response_is_best_effort_cancelled(monkeypatch):
+    class Handle:
+        accepted = True
+
+        def __init__(self) -> None:
+            self.cancel_count = 0
+            self.cancel_future = CallbackFuture()
+            self.result_future = CallbackFuture()
+
+        def cancel_goal_async(self):
+            self.cancel_count += 1
+            return self.cancel_future
+
+        def get_result_async(self):
+            return self.result_future
+
+    transport = real_nav2_transport(monkeypatch)
+    adapter = Nav2Adapter(robot_profile("nav2"), transport)
+    adapter.start(stage(), valid_permit(adapter))
+    try:
+        result = adapter._emergency_stop(0.2)
+        handle = Handle()
+
+        transport._client.goal_future.resolve(handle)
+
+        assert result.successful
+        assert handle.cancel_count == 1
+        assert transport.goal_status() == {"state": "cancelling"}
+    finally:
+        assert adapter.close(0.2)
 
 
 def test_nav2_estop_between_reservation_and_goal_enqueue_rejects_late_start():

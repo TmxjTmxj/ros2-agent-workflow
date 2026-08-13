@@ -11,6 +11,8 @@ from enum import Enum
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
+from agent_ros.safety.outcome import EmergencyStopResult
+
 if TYPE_CHECKING:
     from agent_ros.profiles.models import RobotProfile
 
@@ -142,32 +144,34 @@ class RobotAdapter(ABC):
         """Return the private transport safety channel; never an arbitrary runner."""
         raise NotImplementedError
 
-    def _bind_runtime_safety(self, issuer) -> None:
-        from agent_ros.adapters._safety import _ActivationIssuer, _EmergencyStopChannel
+    def _bind_runtime_safety(self, sequencer) -> None:
+        from agent_ros.adapters._safety import _EmergencyStopChannel
+        from agent_ros.safety.sequencer import _SafetySequencer
 
         channel = self._emergency_stop_channel()
-        if not isinstance(issuer, _ActivationIssuer) or not isinstance(channel, _EmergencyStopChannel):
+        if not isinstance(sequencer, _SafetySequencer) or not isinstance(channel, _EmergencyStopChannel):
             raise AdapterError("PROFILE_INVALID")
         try:
-            channel._bind(issuer)
+            channel._bind(sequencer)
         except Exception:
             raise AdapterError("PROFILE_INVALID") from None
-        self._activation_issuer = issuer
+        self._safety_sequencer = sequencer
 
     def close(self, timeout: float = 1.0) -> bool:
         """Bounded close for adapter-owned activation and emergency workers."""
-        from agent_ros.adapters._safety import _ActivationIssuer, _EmergencyStopChannel
+        from agent_ros.adapters._safety import _EmergencyStopChannel
+        from agent_ros.safety.sequencer import _SafetySequencer
 
-        issuer = getattr(self, "_activation_issuer", None)
-        if not isinstance(issuer, _ActivationIssuer):
+        sequencer = getattr(self, "_safety_sequencer", None)
+        if not isinstance(sequencer, _SafetySequencer):
             return True
         channel = self._emergency_stop_channel()
-        if not isinstance(issuer, _ActivationIssuer) or not isinstance(channel, _EmergencyStopChannel):
+        if not isinstance(channel, _EmergencyStopChannel):
             return False
         deadline = time.monotonic() + max(0.0, timeout)
         channel_closed = channel._close(max(0.0, deadline - time.monotonic()))
-        issuer_closed = issuer._close(max(0.0, deadline - time.monotonic()))
-        return channel_closed and issuer_closed
+        sequencer_closed = sequencer.close(max(0.0, deadline - time.monotonic()))
+        return channel_closed and sequencer_closed
 
     def _validate_runtime_safety(self, mode: str) -> None:
         from agent_ros.adapters._safety import _EmergencyStopChannel
@@ -181,50 +185,50 @@ class RobotAdapter(ABC):
             raise AdapterError("PROFILE_INVALID") from None
 
     def _activate_start(self, permit: object, enqueue):
-        from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
+        from agent_ros.safety.sequencer import _ActivationRejected, _SafetySequencer
 
-        issuer = getattr(self, "_activation_issuer", None)
-        if not isinstance(issuer, _ActivationIssuer):
+        sequencer = getattr(self, "_safety_sequencer", None)
+        if not isinstance(sequencer, _SafetySequencer):
             raise AdapterError("PROFILE_INVALID")
         before_activation = getattr(self, "_before_activation", None)
         if before_activation is not None:
             before_activation()
         try:
-            return issuer._activate(permit, enqueue)
+            return sequencer.submit(permit, enqueue, 1.0)
         except _ActivationRejected as exc:
             raise AdapterError(exc.code) from None
 
     def _activate_owned_start(self, permit: object, enqueue):
-        from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
+        from agent_ros.safety.sequencer import _ActivationRejected, _SafetySequencer
 
-        issuer = getattr(self, "_activation_issuer", None)
-        if not isinstance(issuer, _ActivationIssuer):
+        sequencer = getattr(self, "_safety_sequencer", None)
+        if not isinstance(sequencer, _SafetySequencer):
             raise AdapterError("PROFILE_INVALID")
         try:
-            return issuer._activate_owned(permit, enqueue)
+            return sequencer.submit_owned(permit, enqueue)
         except _ActivationRejected as exc:
             raise AdapterError(exc.code) from None
 
     def _permit_is_current(self, permit: object) -> bool:
-        from agent_ros.adapters._safety import _ActivationIssuer
+        from agent_ros.safety.sequencer import _SafetySequencer
 
-        issuer = getattr(self, "_activation_issuer", None)
-        return isinstance(issuer, _ActivationIssuer) and issuer._is_current(permit)
+        sequencer = getattr(self, "_safety_sequencer", None)
+        return isinstance(sequencer, _SafetySequencer) and sequencer.is_current(permit)
 
     def _require_current_permit(self, permit: object) -> None:
-        from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
+        from agent_ros.safety.sequencer import _ActivationRejected, _SafetySequencer
 
-        issuer = getattr(self, "_activation_issuer", None)
-        if not isinstance(issuer, _ActivationIssuer):
+        sequencer = getattr(self, "_safety_sequencer", None)
+        if not isinstance(sequencer, _SafetySequencer):
             raise AdapterError("PROFILE_INVALID")
         try:
-            issuer._require_current(permit)
+            sequencer.require_current(permit)
         except _ActivationRejected as exc:
             raise AdapterError(exc.code) from None
 
-    def _emergency_stop(self) -> None:
+    def _emergency_stop(self, timeout: float = 1.0) -> EmergencyStopResult:
         try:
-            self._emergency_stop_channel()._stop()
+            return self._emergency_stop_channel()._stop(timeout)
         except Exception as exc:
             code = getattr(exc, "code", "UNSAFE_STATE")
             raise AdapterError(code) from None

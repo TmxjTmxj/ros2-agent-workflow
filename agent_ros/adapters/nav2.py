@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from agent_ros.adapters._safety import (
-    _ActivationPermit,
     _EmergencyStopChannel,
     _HARDWARE_CHANNEL_GUARD,
 )
@@ -22,6 +21,7 @@ from agent_ros.adapters.base import (
     RobotAdapter,
 )
 from agent_ros.profiles.models import NAVIGATE_TO_POSE_TYPE, RobotProfile, TaskStage
+from agent_ros.safety.sequencer import _ActivationPermit
 
 
 _ZERO_BURST_COUNT = 3
@@ -276,10 +276,13 @@ class RclpyNav2Transport:
                     return
             stale = (
                 type(activation_permit) is _ActivationPermit
-                and not activation_permit._issuer._is_current(activation_permit)
+                and not activation_permit._sequencer.is_current(activation_permit)
             )
             if self._cancel_requested or getattr(self, "_emergency_latched", False) or stale:
                 if accepted:
+                    self._cancel_requested = True
+                    self._state = "cancelling"
+                    self._cancel_deadline = self._clock() + self._cancel_timeout
                     self._begin_cancel(handle, generation)
                 else:
                     self._state = "cancelled"

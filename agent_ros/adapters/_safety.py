@@ -9,17 +9,18 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Generic, TypeVar
 
+from agent_ros.safety.outcome import EmergencyStopResult
+from agent_ros.safety.sequencer import (
+    _ActivationIssuer,
+    _ActivationPermit,
+    _ActivationRejected,
+    _SafetySequencer,
+)
+
 
 _T = TypeVar("_T")
-_PERMIT_CONSTRUCTION_GUARD = object()
 _HARDWARE_CHANNEL_GUARD = object()
 _QUEUE_CAPACITY = 16
-
-
-class _ActivationRejected(RuntimeError):
-    def __init__(self, code: str) -> None:
-        self.code = code
-        super().__init__(code)
 
 
 @dataclass(slots=True)
@@ -110,132 +111,28 @@ class _BoundedCommandWorker:
                 self._queue.task_done()
 
 
-class _ActivationPermit:
-    """Issuer-bound reservation; callers cannot construct a valid instance."""
-
-    __slots__ = ("_generation", "_issuer", "_nonce")
-
-    def __init__(
-        self,
-        issuer: "_ActivationIssuer",
-        generation: int,
-        nonce: object,
-        construction_guard: object,
-    ) -> None:
-        if construction_guard is not _PERMIT_CONSTRUCTION_GUARD:
-            raise TypeError("activation permits are issuer-owned")
-        self._issuer = issuer
-        self._generation = generation
-        self._nonce = nonce
-
-    def _activate(self, enqueue: Callable[[], _T]) -> _T:
-        return self._issuer._activate(self, enqueue)
-
-
-class _ActivationIssuer:
-    """Atomically orders activation submission against safety invalidation."""
-
-    __slots__ = ("_generation", "_latched", "_lock", "_nonce", "_worker")
-
-    def __init__(self) -> None:
-        self._generation = 0
-        self._latched = False
-        self._lock = threading.Lock()
-        self._nonce = object()
-        self._worker = _BoundedCommandWorker("agent-ros-activation")
-
-    def _start(self) -> None:
-        if not self._worker.start():
-            raise _ActivationRejected("PROFILE_INVALID")
-
-    def _close(self, timeout: float) -> bool:
-        return self._worker.close(timeout)
-
-    def _issue(self) -> _ActivationPermit:
-        with self._lock:
-            if self._latched:
-                raise _ActivationRejected("ESTOP_LATCHED")
-            return _ActivationPermit(
-                self,
-                self._generation,
-                self._nonce,
-                _PERMIT_CONSTRUCTION_GUARD,
-            )
-
-    def _activate(self, permit: object, enqueue: Callable[[], _T]) -> _T:
-        with self._lock:
-            self._require_owned(permit)
-            if self._latched or permit._generation != self._generation:
-                raise _ActivationRejected("ESTOP_LATCHED")
-
-            def guarded_enqueue() -> _T:
-                with self._lock:
-                    if self._latched or permit._generation != self._generation:
-                        raise _ActivationRejected("ESTOP_LATCHED")
-                return enqueue()
-
-            result = self._worker.submit(guarded_enqueue)
-        return result.wait()
-
-    def _activate_owned(self, permit: object, enqueue: Callable[[], _T]) -> _T:
-        """Run one repository-owned, fixed-memory queue insertion atomically."""
-        with self._lock:
-            self._require_owned(permit)
-            if self._latched or permit._generation != self._generation:
-                raise _ActivationRejected("ESTOP_LATCHED")
-            return enqueue()
-
-    def _is_current(self, permit: object) -> bool:
-        with self._lock:
-            try:
-                self._require_owned(permit)
-            except _ActivationRejected:
-                return False
-            return not self._latched and permit._generation == self._generation
-
-    def _require_current(self, permit: object) -> None:
-        with self._lock:
-            self._require_owned(permit)
-            if self._latched or permit._generation != self._generation:
-                raise _ActivationRejected("ESTOP_LATCHED")
-
-    def _invalidate_and_submit(self, submit: Callable[[], None]) -> None:
-        with self._lock:
-            self._generation += 1
-            self._latched = True
-            submit()
-
-    def _require_owned(self, permit: object) -> None:
-        if (
-            type(permit) is not _ActivationPermit
-            or permit._issuer is not self
-            or permit._nonce is not self._nonce
-        ):
-            raise _ActivationRejected("PROFILE_INVALID")
-
-
 class _EmergencyStopChannel(ABC):
     """A private bounded enqueue whose worker owns all transport calls."""
 
     __slots__ = (
-        "_hardware_verified", "_issuer", "_verified", "_worker", "__weakref__",
+        "_hardware_verified", "_sequencer", "_verified", "_worker", "__weakref__",
     )
 
     def __init__(self, *, hardware_verified: bool, construction_guard: object = None) -> None:
         self._hardware_verified = (
             hardware_verified is True and construction_guard is _HARDWARE_CHANNEL_GUARD
         )
-        self._issuer: _ActivationIssuer | None = None
+        self._sequencer: _SafetySequencer | None = None
         self._verified = False
         self._worker = _BoundedCommandWorker("agent-ros-emergency")
 
-    def _bind(self, issuer: _ActivationIssuer) -> None:
-        if not isinstance(issuer, _ActivationIssuer):
+    def _bind(self, sequencer: _SafetySequencer) -> None:
+        if not isinstance(sequencer, _SafetySequencer):
             raise _ActivationRejected("PROFILE_INVALID")
-        if self._issuer is not None and self._issuer is not issuer:
+        if self._sequencer is not None and self._sequencer is not sequencer:
             raise _ActivationRejected("PROFILE_INVALID")
-        issuer._start()
-        self._issuer = issuer
+        sequencer._start()
+        self._sequencer = sequencer
 
     def _verify(self, mode: str) -> None:
         if mode not in {"simulation", "hardware"}:
@@ -252,18 +149,17 @@ class _EmergencyStopChannel(ABC):
             raise _ActivationRejected("PROFILE_INVALID")
         self._verified = True
 
-    def _stop(self) -> None:
-        issuer = self._issuer
-        if issuer is None or not self._verified:
+    def _stop(self, timeout: float = 1.0) -> EmergencyStopResult:
+        sequencer = self._sequencer
+        if sequencer is None or not self._verified:
             raise _ActivationRejected("UNSAFE_STATE")
-        try:
-            issuer._invalidate_and_submit(
-                lambda: self._worker.submit(self._execute_zero_disable)
-            )
-        except _ActivationRejected:
-            raise
-        except Exception:
-            raise _ActivationRejected("UNSAFE_STATE") from None
+        return sequencer.latch_and_quiesce(
+            self._submit_zero,
+            timeout,
+        )
+
+    def _submit_zero(self) -> None:
+        self._worker.submit(self._execute_zero_disable)
 
     def _close(self, timeout: float) -> bool:
         return self._worker.close(timeout)

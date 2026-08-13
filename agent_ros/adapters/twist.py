@@ -9,8 +9,6 @@ from collections.abc import Callable
 from typing import Protocol
 
 from agent_ros.adapters._safety import (
-    _ActivationPermit,
-    _ActivationRejected,
     _EmergencyStopChannel,
     _HARDWARE_CHANNEL_GUARD,
 )
@@ -24,6 +22,7 @@ from agent_ros.adapters.base import (
     TwistCommand,
 )
 from agent_ros.profiles.models import ODOMETRY_TYPE, TWIST_TYPE, RobotProfile, TaskStage
+from agent_ros.safety.sequencer import _ActivationPermit, _ActivationRejected
 
 
 _ZERO_BURST_COUNT = 3
@@ -303,7 +302,7 @@ class RclpyTwistTransport:
 
         if type(permit) is _ActivationPermit:
             try:
-                permit._activate(enqueue)
+                permit._sequencer.submit(permit, enqueue, 1.0)
             except _ActivationRejected:
                 return
         else:
