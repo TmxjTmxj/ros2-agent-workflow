@@ -22,7 +22,11 @@ from agent_ros.adapters.base import (
     TwistCommand,
 )
 from agent_ros.profiles.models import ODOMETRY_TYPE, TWIST_TYPE, RobotProfile, TaskStage
-from agent_ros.safety.sequencer import _ActivationPermit, _ActivationRejected
+from agent_ros.safety.sequencer import (
+    _ActivationPermit,
+    _ActivationRejected,
+    _SafetySequencer,
+)
 
 
 _ZERO_BURST_COUNT = 3
@@ -147,6 +151,11 @@ class TwistAdapter(RobotAdapter):
         except Exception:
             raise AdapterError("PROFILE_INVALID") from None
 
+    def _bind_runtime_safety(self, sequencer) -> None:
+        super()._bind_runtime_safety(sequencer)
+        if type(self._transport) is RclpyTwistTransport:
+            self._transport._bind_safety_sequencer(sequencer)
+
     def _fresh_odometry(self) -> OdometrySample:
         try:
             sample = self._transport.read_odometry()
@@ -185,6 +194,7 @@ class RclpyTwistTransport:
         self._stale_after = stale_after
         self._stage: TaskStage | None = None
         self._stage_permit: _ActivationPermit | None = None
+        self._safety_sequencer: _SafetySequencer | None = None
         self._generation = 0
         self._stage_generation = 0
         self._state_lock = threading.RLock()
@@ -227,6 +237,13 @@ class RclpyTwistTransport:
         self._stage_permit = activation_permit
         self._stage = stage
         self._state = AdapterStatus("running")
+
+    def _bind_safety_sequencer(self, sequencer: _SafetySequencer) -> None:
+        if type(sequencer) is not _SafetySequencer:
+            raise AdapterError("PROFILE_INVALID")
+        if self._safety_sequencer is not None and self._safety_sequencer is not sequencer:
+            raise AdapterError("PROFILE_INVALID")
+        self._safety_sequencer = sequencer
 
     def waypoint_status(self) -> AdapterStatus:
         return self._state
@@ -300,7 +317,10 @@ class RclpyTwistTransport:
             self.publish(command)
             self._last_command = command
 
-        if type(permit) is not _ActivationPermit:
+        if (
+            type(permit) is not _ActivationPermit
+            or permit._sequencer is not self._safety_sequencer
+        ):
             self._disable_unsafe_stage()
             return
         try:

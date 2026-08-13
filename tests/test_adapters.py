@@ -399,12 +399,15 @@ def test_twist_timer_without_exact_owned_permit_fails_closed(
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
     adapter.start(stage(), valid_permit(adapter))
+    foreign = None
     if permit_kind == "missing":
         transport._stage_permit = None
     elif permit_kind == "invalid":
         transport._stage_permit = object()
     else:
-        transport._stage_permit = _ActivationIssuer().issue()
+        foreign = _ActivationIssuer()
+        assert foreign.start()
+        transport._stage_permit = foreign.issue()
     commands = []
     transport.publish = commands.append
     try:
@@ -416,6 +419,8 @@ def test_twist_timer_without_exact_owned_permit_fails_closed(
         )
     finally:
         assert adapter.close(0.2)
+        if foreign is not None:
+            assert foreign.close(0.2)
 
 
 def test_adapter_close_latches_before_emergency_close_and_shares_one_deadline():
