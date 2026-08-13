@@ -58,6 +58,20 @@ def test_discovery_infers_standard_capabilities_with_deterministic_confidence():
     assert all(capability.confidence == 1.0 for capability in report.capabilities)
 
 
+def test_discovery_report_preserves_reviewed_endpoint_type_evidence_for_safety_validation():
+    report = infer_capabilities(GraphSnapshot(
+        topics={
+            "/cmd_vel": ("geometry_msgs/msg/Twist",),
+            "/odom": ("nav_msgs/msg/Odometry",),
+        },
+        actions={"/navigate_to_pose": ("nav2_msgs/action/NavigateToPose",)},
+    ))
+
+    assert report.topic_types["/cmd_vel"] == ("geometry_msgs/msg/Twist",)
+    assert report.topic_types["/odom"] == ("nav_msgs/msg/Odometry",)
+    assert report.action_types["/navigate_to_pose"] == ("nav2_msgs/action/NavigateToPose",)
+
+
 def test_probe_uses_fixed_ros2_argv_and_preserves_duplicate_endpoint_gids():
     calls: list[tuple[str, ...]] = []
     responses = {

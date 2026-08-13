@@ -37,7 +37,13 @@ def robot_profile(mode: str = "simulation", heartbeat_timeout: float | None = 1.
 
 
 def compatible_report() -> DiscoveryReport:
-    return DiscoveryReport((Capability("mobile_base.twist", 1.0, ("/cmd_vel", "/odom")),))
+    return DiscoveryReport(
+        (Capability("mobile_base.twist", 1.0, ("/cmd_vel", "/odom")),),
+        topic_types={
+            "/cmd_vel": ("geometry_msgs/msg/Twist",),
+            "/odom": ("nav_msgs/msg/Odometry",),
+        },
+    )
 
 
 def prepared_gateway(profile: RobotProfile, **kwargs) -> SafetyGateway:
@@ -110,6 +116,20 @@ def test_expired_heartbeat_stops_repeatedly_and_latches_fault():
     assert len(stops) >= 3
 
 
+def test_independent_watchdog_faults_after_deadline_without_an_agent_heartbeat_call():
+    now = [0.0]
+    stops: list[str] = []
+    gateway = prepared_gateway(robot_profile(), clock=lambda: now[0], stop_callback=lambda: stops.append("stop"))
+    gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
+    now[0] = 1.1
+
+    assert gateway.supervisor.evaluate() is True
+    assert gateway.state is SafetyState.FAULTED
+    assert len(stops) >= 3
+    gateway.close()
+    assert gateway.supervisor.running is False
+
+
 def test_missing_simulation_heartbeat_configuration_faults_without_an_assertion_error():
     stops: list[str] = []
     gateway = prepared_gateway(robot_profile(heartbeat_timeout=None), stop_callback=lambda: stops.append("stop"))
@@ -137,3 +157,62 @@ def test_estop_is_latched_and_agent_cannot_reset_hardware_estop(tmp_path):
     with pytest.raises(SafetyError, match="OPERATOR_REQUIRED"):
         gateway.operator_reset()
     assert gateway.state is SafetyState.ESTOPPED
+
+
+def test_hardware_challenge_is_rejected_after_a_boot_identity_change(tmp_path):
+    profile = robot_profile("hardware")
+    now = [100.0]
+    token = create_operator_challenge(
+        profile.name, tmp_path, monotonic_clock=lambda: now[0], boot_id=lambda: "boot-before"
+    )
+    gateway = prepared_gateway(
+        profile,
+        runtime_dir=tmp_path,
+        clock=lambda: now[0],
+        boot_id=lambda: "boot-after",
+    )
+
+    with pytest.raises(SafetyError, match="HARDWARE_CHALLENGE"):
+        gateway.arm(token)
+    assert gateway.state is SafetyState.VALIDATED
+
+
+@pytest.mark.parametrize(
+    "report",
+    [
+        DiscoveryReport(
+            (Capability("mobile_base.twist", 1.0, ("/cmd_vel", "/odom")),),
+            topic_types={
+                "/cmd_vel": ("wrong/msg/Twist",),
+                "/odom": ("nav_msgs/msg/Odometry",),
+            },
+        ),
+        DiscoveryReport(
+            (Capability("mobile_base.twist", 1.0, ("/cmd_vel", "/odom")),),
+            topic_types={
+                "/wrong_cmd_vel": ("geometry_msgs/msg/Twist",),
+                "/odom": ("nav_msgs/msg/Odometry",),
+            },
+        ),
+    ],
+)
+def test_validation_rejects_capability_claims_without_profile_endpoint_and_type_evidence(report):
+    gateway = SafetyGateway(robot_profile())
+    gateway.discover(report)
+
+    with pytest.raises(SafetyError, match="PROFILE_UNSUPPORTED"):
+        gateway.validate()
+    assert gateway.state is SafetyState.DISCOVERED
+
+
+def test_physical_estop_monitor_hook_latches_and_stops_immediately():
+    stops: list[str] = []
+    gateway = prepared_gateway(robot_profile(), stop_callback=lambda: stops.append("stop"))
+    gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
+
+    gateway.observe_physical_estop(True)
+
+    assert gateway.state is SafetyState.ESTOPPED
+    assert len(stops) >= 3
+    with pytest.raises(SafetyError, match="ESTOP_LATCHED"):
+        gateway.heartbeat()

@@ -34,7 +34,12 @@ def infer_capabilities(snapshot: GraphSnapshot) -> DiscoveryReport:
         capabilities.append(Capability(
             "manipulation.follow_joint_trajectory", 1.0, (trajectory_actions[0],)
         ))
-    return DiscoveryReport(tuple(capabilities), tuple(_controller_warnings(snapshot, command_topics)))
+    return DiscoveryReport(
+        tuple(capabilities),
+        tuple(_controller_warnings(snapshot, command_topics)),
+        topic_types=snapshot.topics,
+        action_types=snapshot.actions,
+    )
 
 
 def _typed_topics(entries, type_name: str, suffix: str | None = None) -> tuple[str, ...]:

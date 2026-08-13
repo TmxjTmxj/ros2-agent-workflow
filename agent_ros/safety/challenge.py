@@ -24,23 +24,34 @@ class ChallengeError(ValueError):
     """Raised without exposing filesystem or secret details to control clients."""
 
 
+def linux_boot_id() -> str:
+    """Read Linux's per-boot identifier; challenge creation fails closed if unavailable."""
+    try:
+        return Path("/proc/sys/kernel/random/boot_id").read_text(encoding="utf-8").strip()
+    except OSError as exc:
+        raise ChallengeError("boot identity unavailable") from exc
+
+
 def create_operator_challenge(
     profile_name: str,
     runtime_dir: Path,
     *,
     ttl_seconds: float = _DEFAULT_TTL_SECONDS,
     monotonic_clock: Callable[[], float] = time.monotonic,
+    boot_id: Callable[[], str] = linux_boot_id,
 ) -> str:
     """Create one short-lived token for a local operator, never for MCP callers."""
     _validate_profile_name(profile_name)
     if not isinstance(ttl_seconds, (int, float)) or isinstance(ttl_seconds, bool) or not 0 < ttl_seconds <= _MAX_TTL_SECONDS:
         raise ChallengeError("invalid challenge lifetime")
     runtime = _secure_runtime_dir(runtime_dir)
+    current_boot_id = _validated_boot_id(boot_id)
     token = secrets.token_urlsafe(32)
     record = {
         "hash": _token_hash(token),
         "profile": profile_name,
         "expires_monotonic": float(monotonic_clock()) + float(ttl_seconds),
+        "boot_id": current_boot_id,
         "used": False,
     }
     _write_record(_challenge_path(runtime, profile_name), record)
@@ -53,6 +64,7 @@ def consume_operator_challenge(
     token: str,
     *,
     monotonic_clock: Callable[[], float] = time.monotonic,
+    boot_id: Callable[[], str] = linux_boot_id,
 ) -> bool:
     """Atomically consume an exact, unexpired local operator challenge."""
     if not isinstance(token, str) or not token:
@@ -70,7 +82,7 @@ def consume_operator_challenge(
                 record = json.loads(record_path.read_text(encoding="utf-8"))
             except (OSError, ValueError, TypeError):
                 return False
-            if not _valid_record(record, profile_name, token, monotonic_clock()):
+            if not _valid_record(record, profile_name, token, monotonic_clock(), _validated_boot_id(boot_id)):
                 return False
             record["used"] = True
             _write_record(record_path, record)
@@ -82,13 +94,14 @@ def consume_operator_challenge(
         return False
 
 
-def _valid_record(record: object, profile_name: str, token: str, now: float) -> bool:
+def _valid_record(record: object, profile_name: str, token: str, now: float, boot_id: str) -> bool:
     if not isinstance(record, dict):
         return False
     expected = record.get("hash")
     expiry = record.get("expires_monotonic")
     return (
         record.get("profile") == profile_name
+        and record.get("boot_id") == boot_id
         and record.get("used") is False
         and isinstance(expected, str)
         and isinstance(expiry, (int, float))
@@ -100,6 +113,16 @@ def _valid_record(record: object, profile_name: str, token: str, now: float) -> 
 
 def _token_hash(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _validated_boot_id(provider: Callable[[], str]) -> str:
+    try:
+        value = provider()
+    except Exception as exc:
+        raise ChallengeError("boot identity unavailable") from exc
+    if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9-]{8,128}", value):
+        raise ChallengeError("boot identity unavailable")
+    return value
 
 
 def _validate_profile_name(profile_name: str) -> None:

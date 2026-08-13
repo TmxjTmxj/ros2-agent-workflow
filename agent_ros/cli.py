@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Sequence
 
@@ -18,7 +19,13 @@ from agent_ros.safety.gateway import SafetyError, SafetyGateway
 def main(argv: Sequence[str] | None = None) -> int:
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.command == "hardware-challenge" and args.json:
+        return _emit_error(True)
     try:
+        if args.command == "hardware-challenge":
+            _run_hardware_challenge(args)
+            print("OK")
+            return 0
         result = _run(args)
     except (ChallengeError, DiscoveryError, ProfileValidationError, SafetyError, OSError, ValueError):
         return _emit_error(args.json)
@@ -47,10 +54,6 @@ def _run(args: argparse.Namespace) -> dict[str, object]:
     profile = load_robot_profile(args.profile, args.profiles_root)
     if args.command == "verify-profile":
         return {"profile": profile.name, "verified": True}
-    if args.command == "hardware-challenge":
-        if profile.mode != "hardware":
-            raise ValueError("hardware profile required")
-        return {"profile": profile.name, "challenge": create_operator_challenge(profile.name, args.runtime_dir)}
     if args.command == "status":
         return {"profile": profile.name, "state": "NEW"}
     report = infer_capabilities(RosGraphProbe().probe())
@@ -60,6 +63,32 @@ def _run(args: argparse.Namespace) -> dict[str, object]:
     gateway.discover(report)
     gateway.validate()
     return {"profile": profile.name, "state": gateway.state.value}
+
+
+def _run_hardware_challenge(args: argparse.Namespace) -> None:
+    """Creation requires the controlling terminal and never returns a token to a caller."""
+    profile = load_robot_profile(args.profile, args.profiles_root)
+    if profile.mode != "hardware" or not _is_interactive_terminal():
+        raise ValueError("operator terminal required")
+    terminal = _open_operator_terminal()
+    try:
+        terminal.write(f"Create one challenge for {profile.name}. Type the profile name to confirm: ")
+        terminal.flush()
+        if terminal.readline().strip() != profile.name:
+            raise ValueError("operator confirmation required")
+        token = create_operator_challenge(profile.name, args.runtime_dir)
+        terminal.write(f"\nHardware challenge for {profile.name}: {token}\n")
+        terminal.flush()
+    finally:
+        terminal.close()
+
+
+def _is_interactive_terminal() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _open_operator_terminal():
+    return open("/dev/tty", "r+", encoding="utf-8")
 
 
 def _emit_error(as_json: bool) -> int:

@@ -53,6 +53,15 @@ class DiscoveryReport:
     capabilities: tuple[Capability, ...]
     blocking_warnings: tuple[str, ...] = ()
     warnings: tuple[str, ...] = ()
+    topic_types: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+    action_types: Mapping[str, tuple[str, ...]] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "capabilities", tuple(self.capabilities))
+        object.__setattr__(self, "blocking_warnings", tuple(self.blocking_warnings))
+        object.__setattr__(self, "warnings", tuple(self.warnings))
+        object.__setattr__(self, "topic_types", _frozen_mapping(self.topic_types))
+        object.__setattr__(self, "action_types", _frozen_mapping(self.action_types))
 
     @property
     def capability_names(self) -> tuple[str, ...]:
