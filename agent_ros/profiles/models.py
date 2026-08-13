@@ -28,6 +28,12 @@ def _only_keys(value: Mapping[str, Any], allowed: set[str], label: str) -> None:
         raise ProfileValidationError(f"{label} contains unknown field: {sorted(unexpected)[0]}")
 
 
+def _required_keys(value: Mapping[str, Any], required: set[str], label: str) -> None:
+    missing = required - set(value)
+    if missing:
+        raise ProfileValidationError(f"{label} is missing required field: {sorted(missing)[0]}")
+
+
 def _text(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ProfileValidationError(f"{label} must be a non-empty string")
@@ -105,11 +111,15 @@ class RobotProfile:
             "name", "mode", "namespace", "frames", "adapter", "interfaces", "limits", "safety",
             "observation_sources",
         }, "robot profile")
+        _required_keys(data, {
+            "name", "mode", "namespace", "frames", "adapter", "interfaces", "limits", "safety",
+            "observation_sources",
+        }, "robot profile")
         name = _text(data.get("name"), "robot name")
         mode = data.get("mode")
         if mode not in {"simulation", "hardware"}:
             raise ProfileValidationError("robot mode must be simulation or hardware")
-        namespace = _text(data.get("namespace", "/"), "namespace")
+        namespace = _text(data.get("namespace"), "namespace")
 
         frames_data = _mapping(data.get("frames"), "frames")
         frames = tuple((str(key), _text(item, f"frame {key}")) for key, item in frames_data.items())
@@ -158,7 +168,7 @@ class RobotProfile:
             max_angular_acceleration=_finite_positive(limits_data.get("max_angular_acceleration"), "max_angular_acceleration"),
         )
 
-        safety_data = _mapping(data.get("safety", {}), "safety")
+        safety_data = _mapping(data.get("safety"), "safety")
         _only_keys(safety_data, {"heartbeat_timeout", "estop_topic"}, "safety")
         heartbeat_raw = safety_data.get("heartbeat_timeout")
         safety = SafetyConfig(
@@ -168,7 +178,7 @@ class RobotProfile:
         if mode == "hardware" and (safety.heartbeat_timeout is None or safety.estop_topic is None):
             raise ProfileValidationError("hardware safety configuration requires heartbeat_timeout and estop_topic")
 
-        sources = data.get("observation_sources", [])
+        sources = data.get("observation_sources")
         if not isinstance(sources, list) or not all(isinstance(source, str) and source for source in sources):
             raise ProfileValidationError("observation_sources must be a list of non-empty strings")
         return cls(name, mode, namespace, frames, adapter, interfaces, limits, safety, tuple(sources))
@@ -219,6 +229,9 @@ class TaskProfile:
         _only_keys(data, {
             "name", "robot_profile", "stages", "required_sensors", "evidence", "recovery_policy",
         }, "task profile")
+        _required_keys(data, {
+            "name", "robot_profile", "stages", "required_sensors", "evidence", "recovery_policy",
+        }, "task profile")
         name = _text(data.get("name"), "task name")
         robot_profile = _text(data.get("robot_profile"), "robot_profile")
         stages_raw = data.get("stages")
@@ -247,11 +260,11 @@ class TaskProfile:
                 tolerance=_finite_positive(stage.get("tolerance"), f"stages[{index}].tolerance"),
                 timeout=_finite_positive(stage.get("timeout"), f"stages[{index}].timeout"),
             ))
-        required_sensors = _string_list(data.get("required_sensors", []), "required_sensors")
-        evidence = _mapping(data.get("evidence", {}), "evidence")
+        required_sensors = _string_list(data.get("required_sensors"), "required_sensors")
+        evidence = _mapping(data.get("evidence"), "evidence")
         _only_keys(evidence, {"sources"}, "evidence")
         evidence_sources = _string_list(evidence.get("sources", []), "evidence.sources")
-        recovery_policy = data.get("recovery_policy", "stop")
+        recovery_policy = data.get("recovery_policy")
         if recovery_policy not in {"stop", "cancel_and_stop"}:
             raise ProfileValidationError("recovery_policy must be stop or cancel_and_stop")
         return cls(name, robot_profile, tuple(stages), required_sensors, evidence_sources, recovery_policy)

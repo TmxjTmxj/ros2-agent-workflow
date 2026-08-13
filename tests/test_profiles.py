@@ -115,6 +115,28 @@ def test_robot_profile_rejects_unreviewed_fields(tmp_path):
         load_robot_profile("robot", tmp_path)
 
 
+@pytest.mark.parametrize("field", ["namespace", "safety", "observation_sources"])
+def test_robot_profile_rejects_schema_required_fields_when_omitted(tmp_path, field):
+    document = _robot_document()
+    del document[field]
+    _write_yaml(tmp_path / "robots" / "robot.yaml", document)
+
+    with pytest.raises(ProfileValidationError):
+        load_robot_profile("robot", tmp_path)
+
+
+@pytest.mark.parametrize(
+    "field", ["name", "robot_profile", "stages", "required_sensors", "evidence", "recovery_policy"]
+)
+def test_task_profile_rejects_schema_required_fields_when_omitted(tmp_path, field):
+    document = _task_document()
+    del document[field]
+    _write_yaml(tmp_path / "tasks" / "task.yaml", document)
+
+    with pytest.raises(ProfileValidationError):
+        load_task_profile("task", tmp_path)
+
+
 def test_twist_profile_requires_odometry(tmp_path):
     write_profile(tmp_path, interfaces={
         "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
