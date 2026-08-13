@@ -233,7 +233,7 @@ class AuditWriter:
             raise AuditIntegrityError() from None
 
 
-def validate_audit_history(raw: bytes) -> None:
+def validate_audit_history(raw: bytes, *, require_terminal: bool = False) -> None:
     """Validate bounded records plus plausible cross-record state continuity."""
     if raw and not raw.endswith(b"\n"):
         raise AuditError("invalid audit history")
@@ -255,6 +255,8 @@ def validate_audit_history(raw: bytes) -> None:
             if session_id in completed_sessions:
                 raise AuditError("invalid audit history")
             if current_session is not None:
+                if previous_after not in {SafetyState.STOPPED, SafetyState.ESTOPPED}:
+                    raise AuditError("invalid audit history")
                 completed_sessions.add(current_session)
             current_session = session_id
             previous_after = None
@@ -263,6 +265,8 @@ def validate_audit_history(raw: bytes) -> None:
         if previous_after is not None and before is not previous_after:
             raise AuditError("invalid audit history")
         previous_after = after
+    if require_terminal and previous_after not in {None, SafetyState.STOPPED, SafetyState.ESTOPPED}:
+        raise AuditError("invalid audit history")
 
 
 def _validate_session_id(value: object) -> str:

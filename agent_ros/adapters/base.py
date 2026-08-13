@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
@@ -153,6 +154,21 @@ class RobotAdapter(ABC):
             raise AdapterError("PROFILE_INVALID") from None
         self._activation_issuer = issuer
 
+    def close(self, timeout: float = 1.0) -> bool:
+        """Bounded close for adapter-owned activation and emergency workers."""
+        from agent_ros.adapters._safety import _ActivationIssuer, _EmergencyStopChannel
+
+        issuer = getattr(self, "_activation_issuer", None)
+        if not isinstance(issuer, _ActivationIssuer):
+            return True
+        channel = self._emergency_stop_channel()
+        if not isinstance(issuer, _ActivationIssuer) or not isinstance(channel, _EmergencyStopChannel):
+            return False
+        deadline = time.monotonic() + max(0.0, timeout)
+        channel_closed = channel._close(max(0.0, deadline - time.monotonic()))
+        issuer_closed = issuer._close(max(0.0, deadline - time.monotonic()))
+        return channel_closed and issuer_closed
+
     def _validate_runtime_safety(self, mode: str) -> None:
         from agent_ros.adapters._safety import _EmergencyStopChannel
 
@@ -175,6 +191,17 @@ class RobotAdapter(ABC):
             before_activation()
         try:
             return issuer._activate(permit, enqueue)
+        except _ActivationRejected as exc:
+            raise AdapterError(exc.code) from None
+
+    def _activate_owned_start(self, permit: object, enqueue):
+        from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
+
+        issuer = getattr(self, "_activation_issuer", None)
+        if not isinstance(issuer, _ActivationIssuer):
+            raise AdapterError("PROFILE_INVALID")
+        try:
+            return issuer._activate_owned(permit, enqueue)
         except _ActivationRejected as exc:
             raise AdapterError(exc.code) from None
 

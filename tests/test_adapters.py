@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import sys
 import threading
 from types import ModuleType, SimpleNamespace
@@ -18,7 +17,7 @@ from agent_ros.adapters.base import (
     TwistCommand,
     create_adapter,
 )
-from agent_ros.adapters.hospital import HospitalDeliveryAdapter
+from agent_ros.adapters.hospital import HospitalDeliveryAdapter, HospitalSimulationRuntime
 from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.profiles.models import RobotProfile
@@ -269,7 +268,14 @@ def test_twist_start_accepts_only_a_reviewed_stage():
     assert transport.started_waypoints == [stage()]
 
 
-def test_twist_emergency_stop_is_synchronous_idempotent_and_zero_before_return():
+def _wait_until(predicate, timeout=1.0):
+    deadline = __import__("time").monotonic() + timeout
+    while not predicate() and __import__("time").monotonic() < deadline:
+        __import__("time").sleep(0.001)
+    return predicate()
+
+
+def test_twist_emergency_stop_idempotently_accepts_a_fresh_zero_enqueue():
     transport = TwistTransport()
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
     valid_permit(adapter)
@@ -277,6 +283,7 @@ def test_twist_emergency_stop_is_synchronous_idempotent_and_zero_before_return()
     adapter._emergency_stop()
     adapter._emergency_stop()
 
+    assert _wait_until(lambda: len(transport.commands) == 2)
     assert transport.commands == [TwistCommand.zero()] * 2
 
 
@@ -399,9 +406,34 @@ def test_twist_timer_snapshot_before_estop_cannot_publish_nonzero_after_estop_re
     release.set()
     worker.join(1.0)
 
+    assert _wait_until(lambda: bool(commands))
     assert commands
     first_zero = commands.index(TwistCommand.zero())
     assert all(command == TwistCommand.zero() for command in commands[first_zero:])
+
+
+def test_twist_emergency_enqueue_never_waits_for_a_blocked_ros_publish(monkeypatch):
+    transport = real_twist_transport(monkeypatch)
+    adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
+    valid_permit(adapter)
+    entered = threading.Event()
+    release = threading.Event()
+    errors = []
+
+    def blocked_publish(_message):
+        entered.set()
+        release.wait()
+
+    transport._publisher.publish = blocked_publish
+    worker = threading.Thread(target=lambda: _capture(errors, adapter._emergency_stop))
+    worker.start()
+    worker.join(0.05)
+    blocked = worker.is_alive()
+    release.set()
+    worker.join(1.0)
+
+    assert not blocked
+    assert not errors
 
 
 class Nav2Transport:
@@ -466,11 +498,13 @@ def test_nav2_emergency_stop_publishes_independent_zero_and_initiates_cancel():
 
     adapter._emergency_stop()
 
+    assert _wait_until(lambda: transport.zeros == 1)
     assert transport.zeros == 1
     assert transport.cancel_count == 1
 
     adapter._emergency_stop()
 
+    assert _wait_until(lambda: transport.zeros == 2)
     assert transport.zeros == 2
     assert transport.cancel_count == 1
 
@@ -494,6 +528,7 @@ def test_nav2_estop_between_reservation_and_goal_enqueue_rejects_late_start():
     worker.join(1.0)
 
     assert transport.requests == []
+    assert _wait_until(lambda: transport.zeros == 1)
     assert transport.zeros == 1
     assert any(isinstance(error, AdapterError) and error.code == "ESTOP_LATCHED" for error in errors)
 
@@ -515,6 +550,7 @@ def test_nav2_goal_callback_registration_happens_after_atomic_enqueue_lock():
         adapter.start(stage(), permit)
 
     assert len(transport.requests) == 1
+    assert _wait_until(lambda: transport.zeros == 1)
     assert transport.zeros == 1
 
 
@@ -568,30 +604,26 @@ def test_adapter_physical_estop_subscription_is_wired_to_runtime_handler():
     assert assertions == [True]
 
 
-def test_hospital_adapter_accepts_only_fixed_action_enums_and_exactly_one_json_object():
-    actions: list[HospitalAction] = []
-
-    def runner(action: HospitalAction) -> str:
-        actions.append(action)
-        return json.dumps({"state": "running"})
-
-    adapter = HospitalDeliveryAdapter(runner)
+def test_hospital_adapter_accepts_only_fixed_actions_on_owned_simulation_runtime():
+    runtime = HospitalSimulationRuntime()
+    adapter = HospitalDeliveryAdapter(runtime)
     assert adapter.start(HospitalAction.START, valid_permit(adapter)).state == "running"
-    assert actions == [HospitalAction.START]
+    assert runtime.commands == (HospitalAction.START,)
 
     with pytest.raises(AdapterError, match="PROFILE_INVALID"):
         adapter.start("start", valid_permit(adapter))
 
-    broken = HospitalDeliveryAdapter(lambda _action: '{}\n{"second":true}')
-    with pytest.raises(AdapterError, match="INTERNAL_ERROR"):
-        broken.status()
+
+def test_hospital_adapter_rejects_an_arbitrary_callable_runner_at_construction():
+    with pytest.raises(AdapterError, match="PROFILE_INVALID"):
+        HospitalDeliveryAdapter(lambda _action: {"state": "running"})
 
 
 def test_hospital_simulation_rejects_late_start_after_permit_invalidation():
     entered = threading.Event()
     release = threading.Event()
-    actions = []
-    adapter = HospitalDeliveryAdapter(lambda action: actions.append(action) or {"state": "running"})
+    runtime = HospitalSimulationRuntime()
+    adapter = HospitalDeliveryAdapter(runtime)
     permit = valid_permit(adapter)
     adapter._before_activation = lambda: (entered.set(), release.wait(1.0))
     errors = []
@@ -605,8 +637,29 @@ def test_hospital_simulation_rejects_late_start_after_permit_invalidation():
     release.set()
     worker.join(1.0)
 
-    assert actions == []
+    assert HospitalAction.START not in runtime.commands
     assert any(isinstance(error, AdapterError) and error.code == "ESTOP_LATCHED" for error in errors)
+
+
+def test_hospital_start_never_waits_then_dispatches_late_behind_runtime_lock():
+    runtime = HospitalSimulationRuntime()
+    adapter = HospitalDeliveryAdapter(runtime)
+    permit = valid_permit(adapter)
+    errors = []
+    runtime._lock.acquire()
+    worker = threading.Thread(
+        target=lambda: _capture(errors, adapter.start, HospitalAction.START, permit),
+    )
+    worker.start()
+    worker.join(0.05)
+    blocked = worker.is_alive()
+    adapter._emergency_stop()
+    runtime._lock.release()
+    worker.join(1.0)
+
+    assert not blocked
+    assert HospitalAction.START not in runtime.commands
+    assert any(isinstance(error, AdapterError) and error.code == "INTERNAL_ERROR" for error in errors)
 
 
 def _capture(errors, function, *args):
@@ -714,6 +767,7 @@ def test_nav2_status_exception_is_stable_and_does_not_recurse_through_normal_sto
     with pytest.raises(AdapterError, match="STALE_FEEDBACK"):
         adapter.status()
 
+    assert _wait_until(lambda: transport.zeros == 1)
     assert transport.zeros == 1
 
 
@@ -735,3 +789,34 @@ def test_nav2_cancelled_goal_result_exception_is_faulted_not_cancelled(monkeypat
     handle.result_future.reject(RuntimeError("raw callback"))
 
     assert transport.goal_status() == {"state": "faulted"}
+
+
+def test_nav2_emergency_enqueue_never_waits_for_blocked_action_cancel(monkeypatch):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class Handle:
+        accepted = True
+
+        def cancel_goal_async(self):
+            entered.set()
+            release.wait()
+            return CallbackFuture()
+
+        def get_result_async(self):
+            return CallbackFuture()
+
+    transport = real_nav2_transport(monkeypatch)
+    adapter = Nav2Adapter(robot_profile("nav2"), transport)
+    adapter.start(stage(), valid_permit(adapter))
+    transport._client.goal_future.resolve(Handle())
+    errors = []
+    worker = threading.Thread(target=lambda: _capture(errors, adapter._emergency_stop))
+    worker.start()
+    worker.join(0.05)
+    blocked = worker.is_alive()
+    release.set()
+    worker.join(1.0)
+
+    assert not blocked
+    assert not errors

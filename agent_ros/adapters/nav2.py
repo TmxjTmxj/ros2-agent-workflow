@@ -8,7 +8,11 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
-from agent_ros.adapters._safety import _ActivationPermit, _EmergencyStopChannel
+from agent_ros.adapters._safety import (
+    _ActivationPermit,
+    _EmergencyStopChannel,
+    _HARDWARE_CHANNEL_GUARD,
+)
 from agent_ros.adapters.base import (
     AdapterError,
     AdapterProbe,
@@ -361,7 +365,7 @@ class RclpyNav2Transport:
 
 class _RclpyNav2EmergencyChannel(_EmergencyStopChannel):
     def __init__(self, transport: RclpyNav2Transport) -> None:
-        super().__init__(hardware_verified=True)
+        super().__init__(hardware_verified=True, construction_guard=_HARDWARE_CHANNEL_GUARD)
         self._transport = transport
 
     def _preflight(self) -> bool:

@@ -13,6 +13,7 @@ from agent_ros.runtime.audit import (
     AuditOperation,
     AuditOutcome,
     AuditWriter,
+    validate_audit_history,
 )
 from agent_ros.safety.state import SafetyState
 
@@ -220,3 +221,16 @@ def test_rollback_failure_locks_writer_and_never_exposes_raw_error_data(tmp_path
     with pytest.raises(AuditIntegrityError):
         writer.append(event)
     assert calls[0] == writes_after_integrity_failure
+
+
+def test_new_session_is_rejected_when_previous_session_was_still_running(tmp_path):
+    audit_path = tmp_path / "audit.jsonl"
+    first = AuditWriter(audit_path, wall_clock=lambda: 1.0, monotonic_clock=lambda: 1.0)
+    first.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
+    first.append(AuditEvent(AuditOperation.VALIDATE, SafetyState.DISCOVERED, SafetyState.ARMED, AuditOutcome.OK))
+    first.append(AuditEvent(AuditOperation.START_TASK, SafetyState.ARMED, SafetyState.RUNNING, AuditOutcome.OK))
+    second = AuditWriter(audit_path, wall_clock=lambda: 2.0, monotonic_clock=lambda: 2.0)
+    second.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
+
+    with pytest.raises(AuditError, match="invalid audit history"):
+        validate_audit_history(audit_path.read_bytes())

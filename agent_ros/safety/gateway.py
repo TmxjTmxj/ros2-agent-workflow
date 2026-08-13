@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,7 @@ class SafetyTransition:
     sequence: int
     state_before: SafetyState
     state_after: SafetyState
+    safety_enqueue_accepted: bool = True
 
 
 class SafetyGateway:
@@ -55,6 +57,8 @@ class SafetyGateway:
         self._state = SafetyState.NEW
         self._transition_sequence = 0
         self._latest_transition: SafetyTransition | None = None
+        self._last_stop_accepted = True
+        self._transition_history: deque[SafetyTransition] = deque(maxlen=256)
         self._report: DiscoveryReport | None = None
         self._last_heartbeat: float | None = None
         self._deadline: float | None = None
@@ -81,6 +85,15 @@ class SafetyGateway:
     def latest_transition(self) -> SafetyTransition | None:
         with self._lock:
             return self._latest_transition
+
+    def transitions_from(self, sequence: int) -> tuple[SafetyTransition, ...]:
+        with self._lock:
+            return tuple(item for item in self._transition_history if item.sequence >= sequence)
+
+    @property
+    def last_stop_accepted(self) -> bool:
+        with self._lock:
+            return self._last_stop_accepted
 
     def discover(self, report: DiscoveryReport) -> SafetyTransition:
         with self._lock:
@@ -154,8 +167,11 @@ class SafetyGateway:
     def cancel(self) -> SafetyTransition:
         with self._lock:
             self._require(SafetyState.RUNNING)
-            self._stop_repeatedly()
-            transition = self._transition(SafetyState.STOPPED)
+            accepted = self._stop_repeatedly()
+            transition = self._transition(
+                SafetyState.STOPPED,
+                safety_enqueue_accepted=accepted,
+            )
             self._deadline = None
             self._supervisor.stop()
             return transition
@@ -202,13 +218,15 @@ class SafetyGateway:
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or abs(value) > maximum:
             raise SafetyError("MOTION_LIMIT")
 
-    def _stop_repeatedly(self) -> None:
+    def _stop_repeatedly(self) -> bool:
+        accepted = True
         for _ in range(_STOP_BURST_COUNT):
             try:
                 self._stop_callback()
             except Exception:
-                # A stop transport failure cannot make a fault recoverable.
-                continue
+                accepted = False
+        self._last_stop_accepted = accepted
+        return accepted
 
     def _active_deadline(self) -> float | None:
         with self._lock:
@@ -220,26 +238,43 @@ class SafetyGateway:
                 self._fault("HEARTBEAT_EXPIRED")
 
     def _fault(self, _code: str) -> SafetyTransition:
-        self._stop_repeatedly()
-        transition = self._transition(SafetyState.FAULTED)
+        accepted = self._stop_repeatedly()
+        transition = self._transition(
+            SafetyState.FAULTED,
+            safety_enqueue_accepted=accepted,
+        )
         self._deadline = None
         self._supervisor.stop()
         return transition
 
     def _latch_estop(self) -> SafetyTransition | None:
-        self._stop_repeatedly()
+        accepted = self._stop_repeatedly()
         if self._state is SafetyState.ESTOPPED:
             return None
-        transition = self._transition(SafetyState.ESTOPPED)
+        transition = self._transition(
+            SafetyState.ESTOPPED,
+            safety_enqueue_accepted=accepted,
+        )
         self._deadline = None
         self._supervisor.stop()
         return transition
 
-    def _transition(self, state_after: SafetyState) -> SafetyTransition:
-        transition = SafetyTransition(self._transition_sequence, self._state, state_after)
+    def _transition(
+        self,
+        state_after: SafetyState,
+        *,
+        safety_enqueue_accepted: bool = True,
+    ) -> SafetyTransition:
+        transition = SafetyTransition(
+            self._transition_sequence,
+            self._state,
+            state_after,
+            safety_enqueue_accepted,
+        )
         self._transition_sequence += 1
         self._state = state_after
         self._latest_transition = transition
+        self._transition_history.append(transition)
         return transition
 
     def _interfaces_match(self, report: DiscoveryReport) -> bool:

@@ -8,7 +8,12 @@ import threading
 from collections.abc import Callable
 from typing import Protocol
 
-from agent_ros.adapters._safety import _ActivationPermit, _ActivationRejected, _EmergencyStopChannel
+from agent_ros.adapters._safety import (
+    _ActivationPermit,
+    _ActivationRejected,
+    _EmergencyStopChannel,
+    _HARDWARE_CHANNEL_GUARD,
+)
 from agent_ros.adapters.base import (
     AdapterError,
     AdapterProbe,
@@ -316,7 +321,7 @@ class RclpyTwistTransport:
 
 class _RclpyTwistEmergencyChannel(_EmergencyStopChannel):
     def __init__(self, transport: RclpyTwistTransport) -> None:
-        super().__init__(hardware_verified=True)
+        super().__init__(hardware_verified=True, construction_guard=_HARDWARE_CHANNEL_GUARD)
         self._transport = transport
 
     def _preflight(self) -> bool:

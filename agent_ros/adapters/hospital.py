@@ -1,9 +1,10 @@
-"""Fixed-authority bridge to the repository-owned hospital lifecycle."""
+"""Fixed in-process hospital simulation adapter."""
 
 from __future__ import annotations
 
-import json
+import threading
 import time
+from collections import deque
 from collections.abc import Callable, Mapping
 
 from agent_ros.adapters._safety import _EmergencyStopChannel
@@ -17,14 +18,62 @@ from agent_ros.adapters.base import (
 )
 
 
-HospitalRunner = Callable[[HospitalAction], str | Mapping[str, object]]
+class HospitalSimulationRuntime:
+    """Repository-owned fixed-enum lifecycle that cannot dispatch to hardware."""
+
+    __slots__ = ("_commands", "_lock", "_state")
+
+    def __init__(self) -> None:
+        self._commands: deque[HospitalAction] = deque(maxlen=64)
+        self._lock = threading.Lock()
+        self._state = "idle"
+
+    @property
+    def commands(self) -> tuple[HospitalAction, ...]:
+        with self._lock:
+            return tuple(self._commands)
+
+    def dispatch(self, action: HospitalAction) -> Mapping[str, object]:
+        if not isinstance(action, HospitalAction):
+            raise AdapterError("PROFILE_INVALID")
+        with self._lock:
+            if len(self._commands) == self._commands.maxlen:
+                raise AdapterError("INTERNAL_ERROR")
+            self._commands.append(action)
+            if action is HospitalAction.START:
+                self._state = "running"
+            elif action is HospitalAction.CANCEL:
+                self._state = "cancelled"
+            elif action is HospitalAction.STOP:
+                self._state = "stopped"
+            return {"available": True, "state": self._state}
+
+    def start_nowait(self) -> Mapping[str, object]:
+        """Reserve START without ever waiting behind another simulation action."""
+        if not self._lock.acquire(blocking=False):
+            raise AdapterError("INTERNAL_ERROR")
+        try:
+            if len(self._commands) == self._commands.maxlen:
+                raise AdapterError("INTERNAL_ERROR")
+            self._commands.append(HospitalAction.START)
+            self._state = "running"
+            return {"available": True, "state": self._state}
+        finally:
+            self._lock.release()
 
 
 class HospitalDeliveryAdapter(RobotAdapter):
-    """Invoke fixed lifecycle actions; never accept argv, shell text, paths, or payloads."""
+    """Expose only the repository-owned simulation lifecycle."""
 
-    def __init__(self, runner: HospitalRunner, *, clock: Callable[[], float] = time.monotonic) -> None:
-        self._runner = runner
+    def __init__(
+        self,
+        runtime: HospitalSimulationRuntime,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if type(runtime) is not HospitalSimulationRuntime:
+            raise AdapterError("PROFILE_INVALID")
+        self._runtime = runtime
         self._clock = clock
         self._simulation_stop_enqueued = 0
         self._safety_channel = _HospitalSimulationEmergencyChannel(self)
@@ -42,10 +91,10 @@ class HospitalDeliveryAdapter(RobotAdapter):
         before_activation = getattr(self, "_before_activation", None)
         if before_activation is not None:
             before_activation()
-        # This adapter is simulation-only. The final permit check rejects a
-        # queued late START, but no claim is made about physical actuation.
-        self._require_current_permit(activation_permit)
-        return self._status_from(HospitalAction.START)
+        return self._activate_owned_start(
+            activation_permit,
+            self._start_nowait,
+        )
 
     def status(self) -> AdapterStatus:
         return self._status_from(HospitalAction.STATUS)
@@ -63,7 +112,6 @@ class HospitalDeliveryAdapter(RobotAdapter):
         return Observation(source, self._clock(), result)
 
     def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
-        # Repository-owned HospitalRunner is a simulation lifecycle only.
         return False
 
     def _emergency_stop_channel(self):
@@ -76,34 +124,28 @@ class HospitalDeliveryAdapter(RobotAdapter):
             raise AdapterError("INTERNAL_ERROR")
         return AdapterStatus(state, values=result)
 
-    def _invoke(self, action: HospitalAction) -> dict[str, object]:
-        if not isinstance(action, HospitalAction):
-            raise AdapterError("PROFILE_INVALID")
+    def _start_nowait(self) -> AdapterStatus:
         try:
-            raw = self._runner(action)
+            result = dict(self._runtime.start_nowait())
+        except AdapterError:
+            raise
         except Exception:
             raise AdapterError("INTERNAL_ERROR") from None
-        if isinstance(raw, Mapping):
-            result = dict(raw)
-        elif isinstance(raw, str):
-            result = _exact_json_object(raw)
-        else:
+        state = result.get("state")
+        if not isinstance(state, str) or not state:
             raise AdapterError("INTERNAL_ERROR")
-        if not all(isinstance(key, str) for key in result):
+        return AdapterStatus(state, values=result)
+
+    def _invoke(self, action: HospitalAction) -> dict[str, object]:
+        try:
+            result = self._runtime.dispatch(action)
+        except AdapterError:
+            raise
+        except Exception:
+            raise AdapterError("INTERNAL_ERROR") from None
+        if not isinstance(result, Mapping):
             raise AdapterError("INTERNAL_ERROR")
-        return result
-
-
-def _exact_json_object(raw: str) -> dict[str, object]:
-    try:
-        decoder = json.JSONDecoder()
-        value, end = decoder.raw_decode(raw.lstrip())
-    except (json.JSONDecodeError, TypeError):
-        raise AdapterError("INTERNAL_ERROR") from None
-    leading = len(raw) - len(raw.lstrip())
-    if raw[leading + end:].strip() or not isinstance(value, dict):
-        raise AdapterError("INTERNAL_ERROR")
-    return value
+        return dict(result)
 
 
 class _HospitalSimulationEmergencyChannel(_EmergencyStopChannel):
@@ -115,5 +157,4 @@ class _HospitalSimulationEmergencyChannel(_EmergencyStopChannel):
         return True
 
     def _enqueue_zero_disable(self) -> None:
-        # Fixed in-process simulation lifecycle marker; never invoke runner.
         self._adapter._simulation_stop_enqueued += 1

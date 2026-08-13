@@ -19,7 +19,7 @@ from agent_ros.adapters.base import (
 )
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.adapters.nav2 import Nav2Adapter
-from agent_ros.adapters.hospital import HospitalDeliveryAdapter
+from agent_ros.adapters.hospital import HospitalDeliveryAdapter, HospitalSimulationRuntime
 from agent_ros.adapters.base import HospitalAction
 from agent_ros.discovery.models import GraphSnapshot
 from agent_ros.runtime.audit import AuditIntegrityError, AuditWriter
@@ -98,6 +98,13 @@ class RecordingAdapter(RobotAdapter):
 
     def _emergency_stop_channel(self):
         return self.safety_channel
+
+
+def wait_until(predicate, timeout=1.0):
+    deadline = time.monotonic() + timeout
+    while not predicate() and time.monotonic() < deadline:
+        time.sleep(0.001)
+    return predicate()
 
 
 def write_profiles(
@@ -259,6 +266,7 @@ def test_physical_estop_monitor_is_bound_directly_to_gateway_latch(tmp_path):
     adapter.estop_handler(True)
 
     assert active.state is SafetyState.ESTOPPED
+    assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
 
 
@@ -351,18 +359,13 @@ def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path
 
 
 def test_real_hospital_adapter_uses_only_fixed_start_action_through_runtime(tmp_path):
-    actions = []
-
-    def runner(action):
-        actions.append(action)
-        return {"state": "running"}
-
-    active = controller(tmp_path, HospitalDeliveryAdapter(runner))
+    runtime = HospitalSimulationRuntime()
+    active = controller(tmp_path, HospitalDeliveryAdapter(runtime))
     prepare(active)
 
     active.run_task("delivery")
 
-    assert actions[-1] is HospitalAction.START
+    assert runtime.commands[-1] is HospitalAction.START
     active.stop_runtime()
 
 
@@ -374,7 +377,7 @@ def test_hospital_hardware_profile_is_rejected_during_adapter_validation(tmp_pat
     robot["mode"] = "hardware"
     robot_path.write_text(yaml.safe_dump(robot), encoding="utf-8")
     runtime = tmp_path / "runtime"
-    adapter = HospitalDeliveryAdapter(lambda _action: {"state": "running"})
+    adapter = HospitalDeliveryAdapter(HospitalSimulationRuntime())
     active = RuntimeController(
         profiles_root=profiles,
         evidence_dir=tmp_path / "evidence",
@@ -445,6 +448,7 @@ def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_
     estopper.join(1.0)
 
     assert active.state is SafetyState.ESTOPPED
+    assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
 
 
@@ -461,7 +465,7 @@ def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
     adapter = HungStart()
     active = controller(tmp_path, adapter)
     prepare(active)
-    starter = threading.Thread(target=lambda: _capture([], active.run_task, "delivery"), daemon=True)
+    starter = threading.Thread(target=lambda: _capture([], active.run_task, "delivery"))
     starter.start()
     assert entered.wait(1.0)
 
@@ -470,8 +474,10 @@ def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
 
     assert time.monotonic() - began < 0.2
     assert active.state is SafetyState.ESTOPPED
+    assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
     release.set()
+    starter.join(1.0)
 
 
 def test_estop_between_start_reservation_and_transport_activation_rejects_start(tmp_path):
@@ -593,6 +599,7 @@ def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_c
     while active.state is not SafetyState.ESTOPPED and time.monotonic() < deadline:
         time.sleep(0.001)
     assert active.state is SafetyState.ESTOPPED
+    assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
     release.set()
     starter.join(1.0)
@@ -675,7 +682,6 @@ def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_seq
     errors = []
     worker = threading.Thread(
         target=lambda: _capture(errors, active.run_task, "delivery"),
-        daemon=True,
     )
     worker.start()
     worker.join(0.5)
@@ -687,6 +693,135 @@ def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_seq
     assert records[-2]["outcome"] == "faulted"
     assert records[-2]["state"] == {"from": "RUNNING", "to": "FAULTED"}
     assert records[-1]["state"] == {"from": "FAULTED", "to": "ESTOPPED"}
+
+
+def test_physical_estop_drains_unobserved_watchdog_fault_without_waiting_for_monitor(tmp_path):
+    now = [0.0]
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter, clock=lambda: now[0], monitor_interval=10.0)
+    prepare(active)
+    active.run_task("delivery")
+    now[0] = 2.0
+    assert active._gateway.supervisor.evaluate() is True
+    assert active.state is SafetyState.FAULTED
+    errors = []
+    estopper = threading.Thread(target=lambda: _capture(errors, adapter.estop_handler, True))
+    estopper.start()
+    estopper.join(0.05)
+    blocked = estopper.is_alive()
+    if blocked:
+        active._append_latest_gateway_fault(active._gateway)
+    estopper.join(1.0)
+
+    assert not blocked
+    assert not errors
+    active.stop_runtime()
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
+    assert [record["operation"] for record in records[-2:]] == ["heartbeat", "estop"]
+    assert records[-2]["state"] == {"from": "RUNNING", "to": "FAULTED"}
+    assert records[-1]["state"] == {"from": "FAULTED", "to": "ESTOPPED"}
+
+
+def test_monitor_never_mistakes_a_newer_estop_for_the_watchdog_fault(tmp_path):
+    now = [0.0]
+    entered = threading.Event()
+    release = threading.Event()
+    profiles = tmp_path / "profiles"
+    runtime = tmp_path / "runtime"
+    write_profiles(profiles)
+
+    class PausedFaultController(RuntimeController):
+        def _append_latest_gateway_fault(self, gateway):
+            entered.set()
+            release.wait(1.0)
+            return super()._append_latest_gateway_fault(gateway)
+
+    adapter = RecordingAdapter()
+    active = PausedFaultController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: adapter,
+        clock=lambda: now[0],
+        monitor_interval=0.001,
+    )
+    prepare(active)
+    active.run_task("delivery")
+    now[0] = 2.0
+    assert active._gateway.supervisor.evaluate() is True
+    assert entered.wait(1.0)
+
+    adapter.estop_handler(True)
+    release.set()
+    assert wait_until(
+        lambda: len((runtime / "audit.jsonl").read_text().splitlines()) >= 5
+    )
+
+    records = [json.loads(line) for line in (runtime / "audit.jsonl").read_text().splitlines()]
+    assert [record["operation"] for record in records[-2:]] == ["heartbeat", "estop"]
+    assert records[-2]["state"] == {"from": "RUNNING", "to": "FAULTED"}
+    assert records[-1]["state"] == {"from": "FAULTED", "to": "ESTOPPED"}
+
+
+def test_dead_emergency_worker_fails_closed_and_shutdown_reports_failure(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class FailingEmergencyChannel(RecordingEmergencyChannel):
+        def _enqueue_zero_disable(self):
+            entered.set()
+            release.wait()
+            raise RuntimeError("controlled transport failure")
+
+    adapter = RecordingAdapter()
+    adapter.safety_channel = FailingEmergencyChannel(adapter)
+    active = controller(tmp_path, adapter)
+    prepare(active)
+    active.run_task("delivery")
+
+    assert active.emergency_stop() == {"state": "ESTOPPED"}
+    assert entered.wait(1.0)
+    release.set()
+    assert wait_until(lambda: adapter.safety_channel._worker._failed)
+    with pytest.raises(RuntimeControllerError, match="UNSAFE_STATE"):
+        active.emergency_stop()
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
+
+
+def test_full_emergency_queue_fails_closed_without_blocking_caller(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingEmergencyChannel(RecordingEmergencyChannel):
+        def _enqueue_zero_disable(self):
+            entered.set()
+            release.wait()
+
+    adapter = RecordingAdapter()
+    adapter.safety_channel = BlockingEmergencyChannel(adapter)
+    active = controller(tmp_path, adapter)
+    prepare(active)
+    active.run_task("delivery")
+    active.emergency_stop()
+    assert entered.wait(1.0)
+
+    failure = None
+    began = time.monotonic()
+    for _ in range(8):
+        try:
+            active.emergency_stop()
+        except RuntimeControllerError as exc:
+            failure = exc
+            break
+
+    assert time.monotonic() - began < 0.2
+    assert failure is not None and failure.code == "UNSAFE_STATE"
+    assert active.state is SafetyState.ESTOPPED
+    release.set()
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
 
 
 def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(tmp_path):
@@ -778,6 +913,7 @@ def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_pat
 
     assert time.monotonic() - began < 0.2
     assert active.state is SafetyState.ESTOPPED
+    assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
     release.set()
     active.stop_runtime()
@@ -795,6 +931,26 @@ def test_monitor_thread_start_failure_latches_stop_and_never_leaks_running(tmp_p
 
     assert active.state is SafetyState.ESTOPPED
     assert adapter.stop_count >= 3
+
+    assert active.stop_runtime() == {"state": "ESTOPPED"}
+
+
+def test_cleanup_thread_start_failure_is_reported_without_joining_unstarted_thread(tmp_path, monkeypatch):
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter)
+    prepare(active)
+    active.run_task("delivery")
+    original_start = threading.Thread.start
+
+    def fail_cleanup_start(thread):
+        if thread.name == "agent-ros-task-cleanup":
+            raise RuntimeError("controlled start failure")
+        return original_start(thread)
+
+    monkeypatch.setattr(threading.Thread, "start", fail_cleanup_start)
+
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
 
 
 def _capture(errors, function, *args):
@@ -991,6 +1147,25 @@ def test_clean_stopped_session_allows_new_controller_session_from_new(tmp_path):
     records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
     assert result["state"] == "DISCOVERED"
     assert records[-1]["session_id"] != records[0]["session_id"]
+
+
+def test_restart_quarantines_a_previous_running_session(tmp_path):
+    adapter = RecordingAdapter()
+    first = controller(tmp_path, adapter)
+    prepare(first)
+    first.run_task("delivery")
+
+    restarted = RuntimeController(
+        profiles_root=tmp_path / "profiles",
+        evidence_dir=tmp_path / "evidence-2",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: RecordingAdapter(),
+    )
+
+    with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
+        restarted.discover_robot("robot")
+    first.stop_runtime()
 
 
 def test_restart_quarantines_interleaved_or_replayed_audit_session(tmp_path):

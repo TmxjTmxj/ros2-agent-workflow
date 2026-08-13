@@ -7,7 +7,7 @@ from collections.abc import Callable
 
 
 class SafetySupervisor:
-    """Owns a daemon watchdog and exposes deterministic evaluation for tests/runtime loops."""
+    """Owns a tracked watchdog and exposes deterministic evaluation for tests/runtime loops."""
 
     def __init__(
         self,
@@ -35,8 +35,9 @@ class SafetySupervisor:
             if self.running:
                 return
             self._stop_event.clear()
-            self._thread = threading.Thread(target=self._run, name="agent-ros-safety-watchdog", daemon=True)
-            self._thread.start()
+            thread = threading.Thread(target=self._run, name="agent-ros-safety-watchdog", daemon=False)
+            thread.start()
+            self._thread = thread
 
     def evaluate(self) -> bool:
         deadline = self._deadline()
