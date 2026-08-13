@@ -1,0 +1,4 @@
+def generate_function():
+    return {'smartcar_bringup': 'smartcar_bringup'}
+
+package_name = 'smartcar_bringup'
