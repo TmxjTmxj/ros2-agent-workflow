@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import secrets
 import stat
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,39 +34,68 @@ class EvidenceStore:
     """Resolve opaque report IDs without exposing arbitrary filesystem authority."""
 
     def __init__(self, root: Path) -> None:
-        self._root = Path(root).resolve()
-        self._root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        os.chmod(self._root, 0o700)
+        try:
+            self._root = Path(root).resolve()
+            self._root.mkdir(mode=0o700, parents=True, exist_ok=True)
+            os.chmod(self._root, 0o700)
+            descriptor = self._open_root()
+            self._close(descriptor)
+        except OSError:
+            raise EvidenceError() from None
 
     def get(self, report_id: str | None = None) -> EvidenceReference:
         if report_id is None:
             candidates = self._safe_candidates()
             if not candidates:
                 raise EvidenceError()
-            path = max(candidates, key=lambda item: (item.stat().st_mtime_ns, item.name))
-            report_id = path.stem
+            name, info = max(candidates, key=lambda item: (item[1].st_mtime_ns, item[0]))
+            report_id = Path(name).stem
         else:
             self._validate_id(report_id)
-            candidates = [self._candidate(report_id, suffix) for suffix in _MEDIA_TYPES]
-            candidates = [path for path in candidates if path.exists()]
+            candidates = []
+            for suffix in _MEDIA_TYPES:
+                name = f"{report_id}{suffix}"
+                try:
+                    info = self._stat_name(name)
+                except EvidenceError:
+                    continue
+                candidates.append((name, info))
             if len(candidates) != 1:
                 raise EvidenceError()
-            path = candidates[0]
-        self._validate_path(path)
-        return EvidenceReference(report_id, path.name, _MEDIA_TYPES[path.suffix], path.stat().st_size)
+            name, info = candidates[0]
+        suffix = Path(name).suffix
+        return EvidenceReference(report_id, name, _MEDIA_TYPES[suffix], info.st_size)
 
     def read(self, reference: EvidenceReference) -> bytes:
         if not isinstance(reference, EvidenceReference):
             raise EvidenceError()
         self._validate_id(reference.report_id)
-        path = self._candidate(reference.report_id, Path(reference.relative_path).suffix)
-        self._validate_path(path)
-        if path.name != reference.relative_path or _MEDIA_TYPES.get(path.suffix) != reference.media_type:
+        suffix = Path(reference.relative_path).suffix
+        name = f"{reference.report_id}{suffix}"
+        if name != reference.relative_path or _MEDIA_TYPES.get(suffix) != reference.media_type:
             raise EvidenceError()
+        root_fd = -1
+        descriptor = -1
         try:
-            return path.read_bytes()
+            root_fd = self._open_root()
+            descriptor = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=root_fd)
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode):
+                raise OSError
+            chunks = []
+            while True:
+                chunk = os.read(descriptor, 65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+            return b"".join(chunks)
         except OSError:
             raise EvidenceError() from None
+        finally:
+            if descriptor >= 0:
+                self._close(descriptor)
+            if root_fd >= 0:
+                self._close(root_fd)
 
     def write_json(self, report_id: str, value: object) -> EvidenceReference:
         self._validate_id(report_id)
@@ -75,60 +105,88 @@ class EvidenceStore:
             encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8") + b"\n"
         except (TypeError, ValueError):
             raise EvidenceError() from None
-        destination = self._candidate(report_id, ".json")
-        temporary = self._root / f".{report_id}.json.tmp"
+        destination = f"{report_id}.json"
+        temporary = f".{report_id}.{secrets.token_hex(8)}.tmp"
+        root_fd = -1
+        descriptor = -1
         try:
-            descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            try:
-                offset = 0
-                while offset < len(encoded):
-                    written = os.write(descriptor, encoded[offset:])
-                    if written <= 0:
-                        raise OSError
-                    offset += written
-                os.fsync(descriptor)
-            finally:
-                os.close(descriptor)
-            os.replace(temporary, destination)
-            directory = os.open(self._root, os.O_RDONLY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            root_fd = self._open_root()
+            descriptor = os.open(
+                temporary,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+                dir_fd=root_fd,
+            )
+            offset = 0
+            while offset < len(encoded):
+                written = os.write(descriptor, encoded[offset:])
+                if written <= 0:
+                    raise OSError
+                offset += written
+            os.fsync(descriptor)
+            self._close(descriptor)
+            descriptor = -1
+            os.replace(temporary, destination, src_dir_fd=root_fd, dst_dir_fd=root_fd)
+            os.fsync(root_fd)
         except OSError:
             try:
-                temporary.unlink()
+                if root_fd >= 0:
+                    os.unlink(temporary, dir_fd=root_fd)
             except OSError:
                 pass
             raise EvidenceError() from None
+        finally:
+            if descriptor >= 0:
+                self._close(descriptor)
+            if root_fd >= 0:
+                self._close(root_fd)
         return self.get(report_id)
 
-    def _safe_candidates(self) -> list[Path]:
-        candidates: list[Path] = []
-        for path in self._root.iterdir():
-            if path.suffix not in _MEDIA_TYPES or not _REPORT_ID.fullmatch(path.stem):
-                continue
-            try:
-                self._validate_path(path)
-            except EvidenceError:
-                continue
-            candidates.append(path)
-        return candidates
-
-    def _candidate(self, report_id: str, suffix: str) -> Path:
-        if suffix not in _MEDIA_TYPES:
-            raise EvidenceError()
-        return self._root / f"{report_id}{suffix}"
-
-    def _validate_path(self, path: Path) -> None:
+    def _safe_candidates(self) -> list[tuple[str, os.stat_result]]:
+        root_fd = -1
         try:
-            if path.is_symlink() or path.resolve(strict=True).parent != self._root:
-                raise EvidenceError()
-            mode = path.stat().st_mode
-        except (OSError, RuntimeError):
+            root_fd = self._open_root()
+            candidates = []
+            for name in os.listdir(root_fd):
+                path = Path(name)
+                if path.suffix not in _MEDIA_TYPES or not _REPORT_ID.fullmatch(path.stem):
+                    continue
+                try:
+                    info = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+                except OSError:
+                    continue
+                if stat.S_ISREG(info.st_mode):
+                    candidates.append((name, info))
+            return candidates
+        except OSError:
             raise EvidenceError() from None
-        if not stat.S_ISREG(mode):
+        finally:
+            if root_fd >= 0:
+                self._close(root_fd)
+
+    def _stat_name(self, name: str) -> os.stat_result:
+        root_fd = -1
+        try:
+            root_fd = self._open_root()
+            info = os.stat(name, dir_fd=root_fd, follow_symlinks=False)
+        except OSError:
+            raise EvidenceError() from None
+        finally:
+            if root_fd >= 0:
+                self._close(root_fd)
+        if not stat.S_ISREG(info.st_mode):
             raise EvidenceError()
+        return info
+
+    def _open_root(self) -> int:
+        return os.open(self._root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+
+    @staticmethod
+    def _close(descriptor: int) -> None:
+        try:
+            os.close(descriptor)
+        except OSError:
+            raise EvidenceError() from None
 
     @staticmethod
     def _validate_id(report_id: object) -> None:

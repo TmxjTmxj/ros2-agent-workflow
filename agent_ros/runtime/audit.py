@@ -134,6 +134,41 @@ class AuditWriter:
         except OSError:
             raise AuditError("audit write failed") from None
 
+    @staticmethod
+    def validate_record(value: object) -> None:
+        """Validate a persisted record through the same event schema and enums."""
+        if not isinstance(value, Mapping):
+            raise AuditError("invalid audit record")
+        allowed = {
+            "wall_time", "monotonic_time", "operation", "state", "outcome",
+            "operation_data", "endpoint_gids", "error_code",
+        }
+        if set(value) - allowed or allowed - {"error_code"} - set(value):
+            raise AuditError("invalid audit record")
+        state = value.get("state")
+        if not isinstance(state, Mapping) or set(state) != {"from", "to"}:
+            raise AuditError("invalid audit record")
+        try:
+            if not isinstance(value["endpoint_gids"], list):
+                raise AuditError("invalid audit record")
+            event = AuditEvent(
+                AuditOperation(value["operation"]),
+                SafetyState(state["from"]),
+                SafetyState(state["to"]),
+                AuditOutcome(value["outcome"]),
+                operation_data=value["operation_data"],
+                endpoint_gids=tuple(value["endpoint_gids"]),
+                error_code=value.get("error_code"),
+            )
+        except (ValueError, TypeError, KeyError):
+            raise AuditError("invalid audit record") from None
+        _finite_clock(value["wall_time"])
+        _finite_clock(value["monotonic_time"])
+        _validate_transition(event)
+        _validate_operation_data(event.operation, event.operation_data)
+        _validate_endpoint_gids(event.endpoint_gids)
+        _validate_error(None, event.error_code)
+
     def _encode(self, event: AuditEvent) -> bytes:
         record = self._record(event)
         encoded = json.dumps(record, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8") + b"\n"

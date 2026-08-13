@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,10 @@ from agent_ros.adapters.base import (
     Observation,
     RobotAdapter,
 )
+from agent_ros.adapters.twist import TwistAdapter
+from agent_ros.adapters.nav2 import Nav2Adapter
+from agent_ros.adapters.hospital import HospitalDeliveryAdapter
+from agent_ros.adapters.base import HospitalAction
 from agent_ros.discovery.models import GraphSnapshot
 from agent_ros.runtime.audit import AuditIntegrityError, AuditWriter
 from agent_ros.runtime.controller import RuntimeController, RuntimeControllerError
@@ -67,7 +73,13 @@ class RecordingAdapter(RobotAdapter):
         self.estop_handler = handler
 
 
-def write_profiles(root: Path, *, required_sensors: list[str] | None = None) -> None:
+def write_profiles(
+    root: Path,
+    *,
+    required_sensors: list[str] | None = None,
+    heartbeat_timeout: float = 1.0,
+    stage_timeout: float = 30.0,
+) -> None:
     (root / "robots").mkdir(parents=True)
     (root / "tasks").mkdir(parents=True)
     robot = {
@@ -86,7 +98,7 @@ def write_profiles(root: Path, *, required_sensors: list[str] | None = None) -> 
             "max_linear_acceleration": 0.5,
             "max_angular_acceleration": 1.0,
         },
-        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
+        "safety": {"heartbeat_timeout": heartbeat_timeout, "estop_topic": "/emergency_stop"},
         "observation_sources": ["odometry", "camera"],
     }
     task = {
@@ -96,7 +108,7 @@ def write_profiles(root: Path, *, required_sensors: list[str] | None = None) -> 
             "name": "destination",
             "goal": {"frame": "odom", "x": 1.0, "y": 2.0, "yaw": 0.0},
             "tolerance": 0.25,
-            "timeout": 30.0,
+            "timeout": stage_timeout,
         }],
         "required_sensors": required_sensors if required_sensors is not None else ["odometry"],
         "evidence": {"sources": ["camera"]},
@@ -158,7 +170,7 @@ def test_safe_execution_starts_typed_task_and_refreshes_heartbeat_during_status(
     now[0] = 1.5
     assert active.task_status()["adapter_state"] == "running"
     assert len(adapter.started) == 1
-    assert adapter.started[0].name == "delivery"
+    assert adapter.started[0].name == "destination"
     active.stop_runtime()
 
 
@@ -221,6 +233,182 @@ def test_physical_estop_monitor_is_bound_directly_to_gateway_latch(tmp_path):
     assert adapter.stop_count >= 3
 
 
+def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_path):
+    transport = type("Transport", (), {})()
+    transport.commands = []
+    transport.odometry = __import__("agent_ros.adapters.base", fromlist=["OdometrySample"]).OdometrySample(
+        0.0, 0.0, 0.0, 0.0
+    )
+    transport.publish = transport.commands.append
+    transport.read_odometry = lambda: transport.odometry
+    transport.subscribe_estop = lambda handler: setattr(transport, "estop", handler)
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    runtime = tmp_path / "runtime"
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda profile: TwistAdapter(profile, transport, clock=lambda: 0.0),
+        audit_writer=AuditWriter(runtime / "audit.jsonl"),
+        clock=lambda: 0.0,
+    )
+    prepare(active)
+
+    active.run_task("delivery")
+
+    assert active.state is SafetyState.RUNNING
+    assert transport.commands[-1].linear_velocity > 0.0
+    active.stop_runtime()
+
+
+def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    robot_path = profiles / "robots" / "robot.yaml"
+    robot = yaml.safe_load(robot_path.read_text())
+    robot["adapter"] = {"kind": "nav2"}
+    robot["interfaces"] = {
+        "navigation": {"action": "/navigate_to_pose", "type": "nav2_msgs/action/NavigateToPose"}
+    }
+    robot_path.write_text(yaml.safe_dump(robot), encoding="utf-8")
+
+    class NavProbe:
+        def probe(self):
+            return GraphSnapshot(actions={"/navigate_to_pose": ("nav2_msgs/action/NavigateToPose",)})
+
+    class Transport:
+        def __init__(self):
+            self.requests = []
+        def send_goal(self, request): self.requests.append(request)
+        def goal_status(self): return {"state": "running"}
+        def cancel_goal(self): return None
+        def publish_zero(self): return None
+        def subscribe_estop(self, handler): self.estop = handler
+
+    transport = Transport()
+    runtime = tmp_path / "runtime"
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=NavProbe(),
+        adapter_factory=lambda profile: Nav2Adapter(profile, transport),
+        audit_writer=AuditWriter(runtime / "audit.jsonl"),
+    )
+    prepare(active)
+
+    active.run_task("delivery")
+
+    assert transport.requests[0].action_type == "nav2_msgs/action/NavigateToPose"
+    assert (transport.requests[0].x, transport.requests[0].y) == (1.0, 2.0)
+    active.stop_runtime()
+
+
+def test_real_hospital_adapter_uses_only_fixed_start_action_through_runtime(tmp_path):
+    actions = []
+
+    def runner(action):
+        actions.append(action)
+        return {"state": "running"}
+
+    active = controller(tmp_path, HospitalDeliveryAdapter(runner))
+    prepare(active)
+
+    active.run_task("delivery")
+
+    assert actions[-1] is HospitalAction.START
+    active.stop_runtime()
+
+
+def test_hospital_hardware_profile_requires_a_real_physical_estop_binding(tmp_path):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    robot_path = profiles / "robots" / "robot.yaml"
+    robot = yaml.safe_load(robot_path.read_text())
+    robot["mode"] = "hardware"
+    robot_path.write_text(yaml.safe_dump(robot), encoding="utf-8")
+    runtime = tmp_path / "runtime"
+    adapter = HospitalDeliveryAdapter(lambda _action: {"state": "running"})
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: adapter,
+        audit_writer=AuditWriter(runtime / "audit.jsonl"),
+    )
+
+    with pytest.raises(RuntimeControllerError, match="PROFILE_INVALID"):
+        active.discover_robot("robot")
+
+    assert active.state is SafetyState.ESTOPPED
+    active.stop_runtime()
+
+
+def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class BlockingAdapter(RecordingAdapter):
+        def start(self, task):
+            entered.set()
+            release.wait(1.0)
+            self.started.append(task)
+            return AdapterStatus("running")
+
+    adapter = BlockingAdapter()
+    active = controller(tmp_path, adapter)
+    prepare(active)
+    errors = []
+    starter = threading.Thread(target=lambda: _capture(errors, active.run_task, "delivery"))
+    starter.start()
+    assert entered.wait(1.0)
+    estopper = threading.Thread(target=lambda: adapter.estop_handler(True))
+    estopper.start()
+    release.set()
+    starter.join(1.0)
+    estopper.join(1.0)
+
+    assert active.state is SafetyState.ESTOPPED
+    assert adapter.stop_count >= 3
+
+
+def _capture(errors, function, *args):
+    try:
+        function(*args)
+    except BaseException as exc:
+        errors.append(exc)
+
+
+def test_owned_monitor_keeps_healthy_runtime_alive_without_mcp_polling(tmp_path):
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    prepare(active)
+    active.run_task("delivery")
+
+    time.sleep(0.08)
+
+    assert active.state is SafetyState.RUNNING
+    active.stop_runtime()
+
+
+def test_owned_monitor_latches_stale_adapter_without_mcp_polling(tmp_path):
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    prepare(active)
+    active.run_task("delivery")
+    adapter.status_error = AdapterError("STALE_FEEDBACK")
+
+    deadline = time.monotonic() + 1.0
+    while active.state is SafetyState.RUNNING and time.monotonic() < deadline:
+        time.sleep(0.005)
+
+    assert active.state is SafetyState.ESTOPPED
+    active.stop_runtime()
+
+
 def test_evidence_store_confines_ids_symlinks_and_resolved_files_to_its_root(tmp_path):
     evidence_root = tmp_path / "evidence"
     evidence_root.mkdir()
@@ -239,6 +427,30 @@ def test_evidence_store_confines_ids_symlinks_and_resolved_files_to_its_root(tmp
     for unsafe in ("../secret", "/tmp/secret", "escape"):
         with pytest.raises(EvidenceError, match="EVIDENCE_INVALID"):
             store.get(unsafe)
+
+
+def test_evidence_atomic_write_never_follows_a_predictable_temp_symlink(tmp_path):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    outside = tmp_path / "outside"
+    outside.write_text("do-not-touch", encoding="utf-8")
+    (root / ".report.json.tmp").symlink_to(outside)
+    store = EvidenceStore(root)
+
+    reference = store.write_json("report", {"ok": True})
+
+    assert json.loads(store.read(reference)) == {"ok": True}
+    assert outside.read_text(encoding="utf-8") == "do-not-touch"
+
+
+def test_evidence_constructor_maps_filesystem_errors_without_leaking_paths(tmp_path):
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("x", encoding="utf-8")
+
+    with pytest.raises(EvidenceError) as captured:
+        EvidenceStore(blocker / "evidence")
+
+    assert str(captured.value) == "EVIDENCE_INVALID"
 
 
 class CompromisedWriter:
@@ -274,3 +486,93 @@ def test_audit_integrity_compromise_persists_quarantine_across_controller_restar
     )
     with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
         restarted.discover_robot("robot")
+
+
+def test_restart_quarantines_schema_invalid_but_parseable_audit_record(tmp_path):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    (runtime / "audit.jsonl").write_text(
+        json.dumps({
+            "operation": "start_task",
+            "state": {"from": "NEW", "to": "RUNNING"},
+            "outcome": "ok",
+            "wall_time": 1.0,
+            "monotonic_time": 1.0,
+            "operation_data": {"payload": "raw"},
+            "endpoint_gids": [],
+        }) + "\n",
+        encoding="utf-8",
+    )
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: RecordingAdapter(),
+    )
+
+    with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
+        active.discover_robot("robot")
+    assert active.stop_runtime() == {"state": "NEW"}
+
+
+def test_physical_binding_failure_is_estopped_and_audited_once(tmp_path):
+    class BrokenBinding(RecordingAdapter):
+        def bind_physical_estop(self, handler):
+            raise RuntimeError("raw device path")
+
+    active = controller(tmp_path, BrokenBinding())
+
+    with pytest.raises(RuntimeControllerError, match="UNSAFE_STATE"):
+        active.discover_robot("robot")
+
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
+    assert [item["operation"] for item in records] == ["estop"]
+    active.stop_runtime()
+
+
+def test_quarantined_runtime_still_allows_owned_cleanup_and_join(tmp_path):
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    prepare(active)
+    active.run_task("delivery")
+    (tmp_path / "runtime" / "audit.quarantine").write_text("AUDIT_INTEGRITY_COMPROMISED\n")
+
+    result = active.stop_runtime()
+
+    assert result["state"] == "STOPPED"
+    assert adapter.stop_count >= 3
+
+
+def test_owned_monitor_enforces_stage_timeout_without_mcp_polling(tmp_path):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles, stage_timeout=0.02)
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter, monitor_interval=0.005)
+    prepare(active)
+    active.run_task("delivery")
+
+    deadline = time.monotonic() + 1.0
+    while active.state is SafetyState.RUNNING and time.monotonic() < deadline:
+        time.sleep(0.005)
+
+    assert active.state is SafetyState.ESTOPPED
+    active.stop_runtime()
+
+
+def test_watchdog_fault_transition_is_audited_once_by_owned_monitor(tmp_path):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles, heartbeat_timeout=0.02)
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter, monitor_interval=0.08)
+    prepare(active)
+    active.run_task("delivery")
+    time.sleep(0.16)
+
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
+    faulted = [item for item in records if item["operation"] == "heartbeat" and item["outcome"] == "faulted"]
+    assert active.state is SafetyState.FAULTED
+    assert len(faulted) == 1
+    active.stop_runtime()

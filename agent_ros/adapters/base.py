@@ -132,7 +132,7 @@ class RobotAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def bind_physical_estop(self, handler: Callable[[bool], None]) -> None:
+    def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         """Connect a non-agent safety input directly to the runtime latch."""
         raise NotImplementedError
 

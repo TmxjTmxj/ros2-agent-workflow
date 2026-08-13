@@ -16,7 +16,7 @@ from agent_ros.adapters.base import (
     Observation,
     RobotAdapter,
 )
-from agent_ros.profiles.models import NAVIGATE_TO_POSE_TYPE, RobotProfile
+from agent_ros.profiles.models import NAVIGATE_TO_POSE_TYPE, RobotProfile, TaskStage
 
 
 _ZERO_BURST_COUNT = 3
@@ -49,6 +49,7 @@ class Nav2Adapter(RobotAdapter):
         self._profile = profile
         self._transport = transport
         self._state = "idle"
+        self._cancel_sent = False
         self.validate()
 
     def probe(self) -> AdapterProbe:
@@ -65,6 +66,8 @@ class Nav2Adapter(RobotAdapter):
             raise AdapterError("PROFILE_INVALID")
 
     def start(self, task: object) -> AdapterStatus:
+        if isinstance(task, TaskStage):
+            task = NavigationGoal(task.goal.frame, task.goal.x, task.goal.y, task.goal.yaw)
         if not isinstance(task, NavigationGoal):
             raise AdapterError("PROFILE_INVALID")
         interface = self._profile.interfaces.navigation
@@ -78,6 +81,7 @@ class Nav2Adapter(RobotAdapter):
             yaw=task.yaw,
         )
         try:
+            self._cancel_sent = False
             self._transport.send_goal(request)
         except Exception:
             self.stop()
@@ -98,16 +102,17 @@ class Nav2Adapter(RobotAdapter):
         raise AdapterError("STALE_FEEDBACK")
 
     def cancel(self) -> AdapterStatus:
-        try:
-            self._transport.cancel_goal()
-        except Exception:
-            raise AdapterError("INTERNAL_ERROR") from None
-        finally:
-            self.stop()
+        self.stop()
         self._state = "cancelled"
         return AdapterStatus(self._state)
 
     def stop(self) -> None:
+        if not self._cancel_sent:
+            try:
+                self._transport.cancel_goal()
+            except Exception:
+                pass
+            self._cancel_sent = True
         for _ in range(_ZERO_BURST_COUNT):
             try:
                 self._transport.publish_zero()
@@ -120,8 +125,9 @@ class Nav2Adapter(RobotAdapter):
             raise AdapterError("PROFILE_INVALID")
         raise AdapterError("STALE_FEEDBACK")
 
-    def bind_physical_estop(self, handler: Callable[[bool], None]) -> None:
+    def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         self._transport.subscribe_estop(handler)
+        return True
 
 
 class RclpyNav2Transport:
@@ -142,6 +148,9 @@ class RclpyNav2Transport:
         self._twist_type = Twist
         self._goal_handle = None
         self._state = "idle"
+        self._cancel_requested = False
+        import threading
+        self._lock = threading.RLock()
         self._estop_handlers: list[Callable[[bool], None]] = []
 
         def estop_callback(message) -> None:
@@ -158,20 +167,56 @@ class RclpyNav2Transport:
         goal.pose.pose.position.y = request.y
         goal.pose.pose.orientation.z = math.sin(request.yaw / 2.0)
         goal.pose.pose.orientation.w = math.cos(request.yaw / 2.0)
-        future = self._client.send_goal_async(goal)
-        future.add_done_callback(self._goal_response)
-        self._state = "pending"
+        with self._lock:
+            self._cancel_requested = False
+            future = self._client.send_goal_async(goal)
+            future.add_done_callback(self._goal_response)
+            self._state = "pending"
 
     def _goal_response(self, future) -> None:
-        self._goal_handle = future.result()
-        self._state = "running" if self._goal_handle.accepted else "rejected"
+        with self._lock:
+            try:
+                handle = future.result()
+            except Exception:
+                self._state = "faulted"
+                return
+            self._goal_handle = handle
+            if self._cancel_requested:
+                if handle is not None and handle.accepted:
+                    handle.cancel_goal_async()
+                self._state = "cancelled"
+                return
+            self._state = "running" if handle is not None and handle.accepted else "rejected"
+            if self._state == "running":
+                try:
+                    result_future = handle.get_result_async()
+                    result_future.add_done_callback(self._goal_result)
+                except Exception:
+                    self._state = "faulted"
+
+    def _goal_result(self, future) -> None:
+        with self._lock:
+            if self._cancel_requested:
+                self._state = "cancelled"
+                return
+            try:
+                result = future.result()
+                status = getattr(result, "status", None)
+            except Exception:
+                self._state = "faulted"
+                return
+            self._state = "succeeded" if status == 4 else "failed"
 
     def goal_status(self) -> object:
-        return {"state": self._state}
+        with self._lock:
+            return {"state": self._state}
 
     def cancel_goal(self) -> None:
-        if self._goal_handle is not None:
-            self._goal_handle.cancel_goal_async()
+        with self._lock:
+            self._cancel_requested = True
+            self._state = "cancelled"
+            if self._goal_handle is not None:
+                self._goal_handle.cancel_goal_async()
 
     def publish_zero(self) -> None:
         self._publisher.publish(self._twist_type())

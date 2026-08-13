@@ -53,10 +53,12 @@ class HospitalDeliveryAdapter(RobotAdapter):
         result = self._invoke(HospitalAction.OBSERVE)
         return Observation(source, self._clock(), result)
 
-    def bind_physical_estop(self, handler: Callable[[bool], None]) -> None:
+    def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         binder = getattr(self._runner, "subscribe_estop", None)
         if binder is not None:
             binder(handler)
+            return True
+        return False
 
     def _status_from(self, action: HospitalAction) -> AdapterStatus:
         result = self._invoke(action)
