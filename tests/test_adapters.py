@@ -1,9 +1,12 @@
 from __future__ import annotations
 
-import sys
+import os
+import selectors
 import subprocess
+import sys
 import threading
 import time
+from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
 
 import pytest
@@ -170,6 +173,76 @@ def test_adapter_context_manager_exposes_close_failure():
             pass
 
 
+@contextmanager
+def ready_subprocess(program: str, *, ready_timeout: float):
+    """Yield one READY child and always reap that exact process."""
+    process = subprocess.Popen(
+        [sys.executable, "-c", program],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        assert process.stdout is not None
+        selector = selectors.DefaultSelector()
+        ready_bytes = bytearray()
+        deadline = time.monotonic() + ready_timeout
+        try:
+            selector.register(process.stdout, selectors.EVENT_READ)
+            while b"\n" not in ready_bytes:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0.0 or not selector.select(remaining):
+                    raise TimeoutError("subprocess readiness timeout")
+                chunk = os.read(process.stdout.fileno(), 4096)
+                if not chunk:
+                    raise RuntimeError("subprocess exited before readiness")
+                ready_bytes.extend(chunk)
+                if len(ready_bytes) > 4096:
+                    raise RuntimeError("subprocess readiness response too large")
+        finally:
+            selector.close()
+        ready_line, _separator, _remainder = ready_bytes.partition(b"\n")
+        if ready_line.strip() != b"READY":
+            raise RuntimeError("subprocess readiness rejected")
+        yield process
+    finally:
+        if process.poll() is None:
+            process.terminate()
+        try:
+            process.wait(timeout=0.5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=0.5)
+        finally:
+            if process.stdout is not None:
+                process.stdout.close()
+            if process.stderr is not None:
+                process.stderr.close()
+
+
+def test_subprocess_readiness_timeout_is_bounded_and_reaps_child(tmp_path):
+    pid_path = tmp_path / "child.pid"
+    program = f"""
+import os
+import signal
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+with open({str(pid_path)!r}, "w", encoding="ascii") as stream:
+    stream.write(str(os.getpid()))
+time.sleep(60.0)
+"""
+    began = time.monotonic()
+
+    with pytest.raises(TimeoutError, match="readiness timeout"):
+        with ready_subprocess(program, ready_timeout=0.2):
+            pytest.fail("a child without READY must never be yielded")
+
+    assert time.monotonic() - began < 1.5
+    child_pid = int(pid_path.read_text(encoding="ascii"))
+    with pytest.raises(ChildProcessError):
+        os.waitpid(child_pid, os.WNOHANG)
+
+
 def test_caller_omitting_adapter_close_remains_alive_until_harness_termination():
     program = """
 from tests.test_adapters import TwistAdapter, TwistTransport, bind_permit, robot_profile
@@ -178,24 +251,13 @@ adapter = TwistAdapter(robot_profile(), TwistTransport(), clock=lambda: 0.0)
 bind_permit(adapter)
 print("READY", flush=True)
 """
-    process = subprocess.Popen(
-        [sys.executable, "-c", program],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-    )
-    try:
-        assert process.stdout is not None
-        assert process.stdout.readline().strip() == "READY"
+    with ready_subprocess(program, ready_timeout=2.0) as process:
         with pytest.raises(subprocess.TimeoutExpired):
             process.wait(timeout=0.1)
-    finally:
-        process.terminate()
-        try:
-            process.wait(timeout=1.0)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=1.0)
+
+    assert process.returncode is not None
+    assert process.stdout is not None and process.stdout.closed
+    assert process.stderr is not None and process.stderr.closed
 
 
 class CallbackFuture:
