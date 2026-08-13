@@ -21,6 +21,11 @@ class RclpyAdapterFactory:
         self._executor = None
         self._thread: threading.Thread | None = None
         self._adapter: RobotAdapter | None = None
+        self._executor_shutdown = False
+        self._thread_joined = False
+        self._node_removed = False
+        self._node_destroyed = False
+        self._context_shutdown = False
         self._closed = False
 
     def __call__(self, profile: RobotProfile) -> RobotAdapter:
@@ -137,38 +142,46 @@ class RclpyAdapterFactory:
     def _close_locked(self, timeout: float) -> bool:
         if self._closed:
             return True
-        self._closed = True
         deadline = time.monotonic() + timeout
-        successful = True
         executor = self._executor
         thread = self._thread
         node = self._node
         context = self._context
-        if executor is not None:
+        if executor is not None and not self._executor_shutdown:
             try:
                 result = executor.shutdown(timeout_sec=max(0.0, deadline - time.monotonic()))
-                successful = result is not False and successful
+                if result is False:
+                    return False
+                self._executor_shutdown = True
             except Exception:
-                successful = False
-        if thread is not None and thread is not threading.current_thread():
+                return False
+        if thread is not None and not self._thread_joined:
+            if thread is threading.current_thread():
+                return False
             thread.join(max(0.0, deadline - time.monotonic()))
-            successful = not thread.is_alive() and successful
-        if executor is not None and node is not None:
+            if thread.is_alive():
+                return False
+            self._thread_joined = True
+        if executor is not None and node is not None and not self._node_removed:
             try:
                 executor.remove_node(node)
+                self._node_removed = True
             except Exception:
-                successful = False
-        if node is not None:
+                return False
+        if node is not None and not self._node_destroyed:
             try:
                 node.destroy_node()
+                self._node_destroyed = True
             except Exception:
-                successful = False
-        if context is not None:
+                return False
+        if context is not None and not self._context_shutdown:
             try:
                 context.shutdown()
+                self._context_shutdown = True
             except Exception:
-                successful = False
-        return successful
+                return False
+        self._closed = True
+        return True
 
 
 __all__ = ("RclpyAdapterFactory",)

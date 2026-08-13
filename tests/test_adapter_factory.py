@@ -76,6 +76,22 @@ class FakeExecutor:
         return True
 
 
+class RetryableShutdownExecutor(FakeExecutor):
+    instances = []
+
+    def __init__(self, *, context) -> None:
+        super().__init__(context=context)
+        self.shutdown_attempts = 0
+
+    def shutdown(self, *, timeout_sec) -> bool:
+        self.shutdown_timeouts.append(timeout_sec)
+        self.shutdown_attempts += 1
+        if self.shutdown_attempts == 1:
+            return False
+        self.stop.set()
+        return True
+
+
 def _install_fake_ros(monkeypatch) -> None:
     FakeExecutor.instances.clear()
 
@@ -166,6 +182,28 @@ def _trajectory_profile() -> RobotProfile:
     })
 
 
+def _twist_profile() -> RobotProfile:
+    return RobotProfile.from_mapping({
+        "name": "base",
+        "mode": "simulation",
+        "namespace": "/base",
+        "frames": {"base": "base_link", "odom": "odom"},
+        "adapter": {"kind": "twist"},
+        "interfaces": {
+            "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
+            "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
+        },
+        "limits": {
+            "max_linear_velocity": 0.5,
+            "max_angular_velocity": 1.0,
+            "max_linear_acceleration": 0.5,
+            "max_angular_acceleration": 1.0,
+        },
+        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
+        "observation_sources": ["odometry"],
+    })
+
+
 def test_production_singleton_discovers_with_repository_owned_twist_factory(
     monkeypatch, tmp_path
 ):
@@ -202,27 +240,8 @@ def test_production_factory_rejects_unsupported_trajectory_without_starting_ros(
 
 def test_adapter_close_reaps_owned_executor_thread(monkeypatch):
     _install_fake_ros(monkeypatch)
-    profile = RobotProfile.from_mapping({
-        "name": "base",
-        "mode": "simulation",
-        "namespace": "/base",
-        "frames": {"base": "base_link", "odom": "odom"},
-        "adapter": {"kind": "twist"},
-        "interfaces": {
-            "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
-            "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
-        },
-        "limits": {
-            "max_linear_velocity": 0.5,
-            "max_angular_velocity": 1.0,
-            "max_linear_acceleration": 0.5,
-            "max_angular_acceleration": 1.0,
-        },
-        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
-        "observation_sources": ["odometry"],
-    })
     factory = RclpyAdapterFactory()
-    adapter = factory(profile)
+    adapter = factory(_twist_profile())
     executor = FakeExecutor.instances[0]
     assert executor.spin_started.wait(0.2)
     owned_thread = factory._thread
@@ -236,3 +255,77 @@ def test_adapter_close_reaps_owned_executor_thread(monkeypatch):
     assert executor.nodes == []
     assert executor.context.shutdown_called
     assert factory.close(0.1)
+
+
+def test_factory_retries_only_incomplete_teardown_after_shutdown_failure(monkeypatch):
+    _install_fake_ros(monkeypatch)
+    RetryableShutdownExecutor.instances.clear()
+    monkeypatch.setattr(
+        sys.modules["rclpy.executors"],
+        "SingleThreadedExecutor",
+        RetryableShutdownExecutor,
+    )
+    factory = RclpyAdapterFactory()
+    factory(_twist_profile())
+    executor = RetryableShutdownExecutor.instances[0]
+    node = executor.nodes[0]
+    owned_thread = factory._thread
+    assert owned_thread is not None
+    try:
+        assert factory.close(0.05) is False
+        assert owned_thread.is_alive()
+        assert executor.shutdown_attempts == 1
+        assert executor.nodes == [node]
+        assert node.destroyed is False
+        assert executor.context.shutdown_called is False
+
+        assert factory.close(0.2) is True
+        assert executor.shutdown_attempts == 2
+        assert not owned_thread.is_alive()
+        assert executor.nodes == []
+        assert node.destroyed is True
+        assert executor.context.shutdown_called is True
+    finally:
+        executor.stop.set()
+        owned_thread.join(0.2)
+
+
+def test_singleton_retry_clears_poison_only_after_owned_executor_is_reaped(
+    monkeypatch, tmp_path
+):
+    _install_fake_ros(monkeypatch)
+    RetryableShutdownExecutor.instances.clear()
+    monkeypatch.setattr(
+        sys.modules["rclpy.executors"],
+        "SingleThreadedExecutor",
+        RetryableShutdownExecutor,
+    )
+    monkeypatch.setattr(subprocess, "run", _graph_cli)
+    monkeypatch.setattr(ros2_mcp_server, "_RUNTIME_ROOT", tmp_path / "runtime")
+    monkeypatch.setattr(ros2_mcp_server, "_EVIDENCE_ROOT", tmp_path / "evidence")
+    controller = ros2_mcp_server.get_runtime_controller()
+    controller.discover_robot("hospital-amr")
+    executor = RetryableShutdownExecutor.instances[0]
+    owned_thread = controller._adapter._runtime_owner_close.__self__._thread
+    assert owned_thread is not None
+    try:
+        assert ros2_mcp_server.close_runtime_controller() is False
+        assert owned_thread.is_alive()
+        with pytest.raises(ros2_mcp_server.RuntimeControllerError, match="CLEANUP_FAILED"):
+            ros2_mcp_server.get_runtime_controller()
+
+        assert ros2_mcp_server.close_runtime_controller() is True
+        assert executor.shutdown_attempts == 2
+        assert not owned_thread.is_alive()
+        with ros2_mcp_server._controller_condition:
+            assert ros2_mcp_server._controller is None
+            assert ros2_mcp_server._controller_cleanup_failed is False
+    finally:
+        executor.stop.set()
+        owned_thread.join(0.2)
+        with ros2_mcp_server._controller_condition:
+            ros2_mcp_server._controller = None
+            ros2_mcp_server._evidence_store = None
+            ros2_mcp_server._controller_closing = False
+            ros2_mcp_server._controller_cleanup_failed = False
+            ros2_mcp_server._controller_condition.notify_all()
