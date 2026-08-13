@@ -181,6 +181,9 @@ def ready_subprocess(program: str, *, ready_timeout: float):
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
     )
+    body_error = None
+    body_traceback = None
+    close_errors = []
     try:
         assert process.stdout is not None
         selector = selectors.DefaultSelector()
@@ -199,19 +202,53 @@ def ready_subprocess(program: str, *, ready_timeout: float):
                 if len(ready_bytes) > 4096:
                     raise RuntimeError("subprocess readiness response too large")
         finally:
-            selector.close()
+            try:
+                selector.close()
+            except BaseException as exc:
+                close_errors.append(("selector", exc))
+        if close_errors:
+            raise close_errors[0][1]
         ready_line, _separator, _remainder = ready_bytes.partition(b"\n")
         if ready_line.strip() != b"READY":
             raise RuntimeError("subprocess readiness rejected")
         yield process
+    except BaseException as exc:
+        body_error = exc
+        body_traceback = exc.__traceback__
     finally:
+        process_error = None
         try:
             _cleanup_subprocess(process)
-        finally:
-            if process.stdout is not None:
-                process.stdout.close()
-            if process.stderr is not None:
-                process.stderr.close()
+        except BaseException as exc:
+            process_error = exc
+        for name, stream in (("stdout", process.stdout), ("stderr", process.stderr)):
+            if stream is None:
+                continue
+            try:
+                stream.close()
+            except BaseException as exc:
+                close_errors.append((name, exc))
+
+        if process_error is not None:
+            if body_error is not None:
+                _add_error_note(process_error, "suppressed body error", body_error)
+            for name, error in close_errors:
+                _add_error_note(process_error, f"suppressed {name} close error", error)
+            raise process_error
+        if body_error is not None:
+            for name, error in close_errors:
+                if error is not body_error:
+                    _add_error_note(body_error, f"suppressed {name} close error", error)
+            raise body_error.with_traceback(body_traceback)
+        if close_errors:
+            _name, primary_error = close_errors[0]
+            for name, error in close_errors[1:]:
+                _add_error_note(primary_error, f"suppressed {name} close error", error)
+            raise primary_error
+
+
+def _add_error_note(primary: BaseException, label: str, error: BaseException) -> None:
+    primary.add_note(f"{label}: {type(error).__name__}: {error}")
 
 
 def _cleanup_subprocess(process) -> None:
@@ -219,6 +256,7 @@ def _cleanup_subprocess(process) -> None:
     errors: list[BaseException] = []
     reaped = False
     killed = False
+    final_wait_error = None
 
     try:
         reaped = process.poll() is not None
@@ -253,13 +291,26 @@ def _cleanup_subprocess(process) -> None:
             process.wait()
             reaped = True
         except BaseException as exc:
+            final_wait_error = exc
             errors.append(exc)
 
     if not reaped:
-        cause = errors[0] if errors else None
-        raise RuntimeError("subprocess cleanup failed") from cause
+        cause = final_wait_error
+        if cause is None:
+            cause = next(
+                (error for error in errors if not isinstance(error, subprocess.TimeoutExpired)),
+                errors[-1] if errors else None,
+            )
+        cleanup_error = RuntimeError("subprocess cleanup failed")
+        for error in errors:
+            if error is not cause:
+                _add_error_note(cleanup_error, "earlier process cleanup error", error)
+        raise cleanup_error from cause
     for error in errors:
         if not isinstance(error, subprocess.TimeoutExpired):
+            for other_error in errors:
+                if other_error is not error:
+                    _add_error_note(error, "suppressed process cleanup error", other_error)
             raise error
 
 
@@ -427,19 +478,36 @@ def test_ready_subprocess_reaps_then_propagates_unexpected_wait_error(monkeypatc
             ],
             "subprocess cleanup failed",
         ),
+        ("selector_close", ["poll"], "controlled selector close failure"),
+        ("body", ["poll"], "controlled body failure"),
+        ("pipe_close", ["poll"], "controlled stdout close failure"),
     ],
 )
 def test_ready_subprocess_cleanup_never_short_circuits_after_step_error(
     monkeypatch, failure_step, expected_calls, expected_error
 ):
+    close_calls = []
+    body_error = ValueError("controlled body failure")
+
     class FakePipe:
         closed = False
+
+        def __init__(self, name):
+            self._name = name
 
         def fileno(self):
             return 123
 
         def close(self):
             self.closed = True
+            close_calls.append(f"{self._name}.close")
+            if failure_step in {
+                "final_wait",
+                "selector_close",
+                "body",
+                "pipe_close",
+            }:
+                raise RuntimeError(f"controlled {self._name} close failure")
 
     class FakeSelector:
         def register(self, _stream, _event):
@@ -449,12 +517,13 @@ def test_ready_subprocess_cleanup_never_short_circuits_after_step_error(
             return [(object(), selectors.EVENT_READ)]
 
         def close(self):
-            return None
+            if failure_step == "selector_close":
+                raise RuntimeError("controlled selector close failure")
 
     class FakeProcess:
         def __init__(self):
-            self.stdout = FakePipe()
-            self.stderr = FakePipe()
+            self.stdout = FakePipe("stdout")
+            self.stderr = FakePipe("stderr")
             self.returncode = None
             self.calls = []
             self.timed_waits = 0
@@ -463,6 +532,8 @@ def test_ready_subprocess_cleanup_never_short_circuits_after_step_error(
             self.calls.append("poll")
             if failure_step == "poll":
                 raise RuntimeError("controlled poll failure")
+            if failure_step in {"selector_close", "body", "pipe_close"}:
+                self.returncode = 0
             return self.returncode
 
         def terminate(self):
@@ -502,14 +573,40 @@ def test_ready_subprocess_cleanup_never_short_circuits_after_step_error(
 
     with pytest.raises(RuntimeError, match=expected_error) as captured:
         with ready_subprocess("controlled", ready_timeout=0.1):
-            pass
+            if failure_step == "final_wait":
+                raise body_error
+            if failure_step == "body":
+                raise RuntimeError("controlled body failure")
 
     assert process.calls == expected_calls
+    assert close_calls == ["stdout.close", "stderr.close"]
     assert process.stdout.closed
     assert process.stderr.closed
     if failure_step == "final_wait":
-        assert isinstance(captured.value.__cause__, subprocess.TimeoutExpired)
+        assert str(captured.value.__cause__) == "controlled final wait failure"
+        assert captured.value.__notes__ == [
+            "earlier process cleanup error: TimeoutExpired: "
+            "Command 'controlled-child' timed out after 0.5 seconds",
+            "earlier process cleanup error: TimeoutExpired: "
+            "Command 'controlled-child' timed out after 0.5 seconds",
+            "suppressed body error: ValueError: controlled body failure",
+            "suppressed stdout close error: RuntimeError: controlled stdout close failure",
+            "suppressed stderr close error: RuntimeError: controlled stderr close failure",
+        ]
         assert process.returncode is None
+    elif failure_step in {"selector_close", "body"}:
+        assert captured.value.__cause__ is None
+        assert captured.value.__context__ is None
+        assert captured.value.__notes__ == [
+            "suppressed stdout close error: RuntimeError: controlled stdout close failure",
+            "suppressed stderr close error: RuntimeError: controlled stderr close failure",
+        ]
+    elif failure_step == "pipe_close":
+        assert captured.value.__cause__ is None
+        assert captured.value.__context__ is None
+        assert captured.value.__notes__ == [
+            "suppressed stderr close error: RuntimeError: controlled stderr close failure",
+        ]
     else:
         assert process.returncode is not None
 
