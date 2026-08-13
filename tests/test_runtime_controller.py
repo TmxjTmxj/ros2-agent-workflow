@@ -1401,7 +1401,7 @@ def test_evidence_store_confines_ids_symlinks_and_resolved_files_to_its_root(tmp
     assert reference.report_id == "report"
     assert reference.relative_path == "report.json"
     assert reference.media_type == "application/json"
-    assert json.loads(store.read(reference)) == {"result": "pass"}
+    assert json.loads(store.read(reference, max_bytes=1024)) == {"result": "pass"}
 
     for unsafe in ("../secret", "/tmp/secret", "escape"):
         with pytest.raises(EvidenceError, match="EVIDENCE_INVALID"):
@@ -1418,7 +1418,7 @@ def test_evidence_atomic_write_never_follows_a_predictable_temp_symlink(tmp_path
 
     reference = store.write_json("report", {"ok": True})
 
-    assert json.loads(store.read(reference)) == {"ok": True}
+    assert json.loads(store.read(reference, max_bytes=1024)) == {"ok": True}
     assert outside.read_text(encoding="utf-8") == "do-not-touch"
 
 
@@ -1430,6 +1430,71 @@ def test_evidence_constructor_maps_filesystem_errors_without_leaking_paths(tmp_p
         EvidenceStore(blocker / "evidence")
 
     assert str(captured.value) == "EVIDENCE_INVALID"
+
+
+@pytest.mark.parametrize("replacement", [b"different-size", b"XXXXXXXX"])
+def test_evidence_snapshot_rejects_replacement_after_reference_resolution(
+    tmp_path, replacement
+):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    target = root / "report.json"
+    target.write_bytes(b"12345678")
+    store = EvidenceStore(root)
+    reference = store.get("report")
+    temporary = root / "replacement"
+    temporary.write_bytes(replacement)
+    temporary.replace(target)
+
+    with pytest.raises(EvidenceError, match="EVIDENCE_INVALID"):
+        store.read(reference, max_bytes=1024)
+
+
+def test_evidence_snapshot_rejects_growth_while_reading(monkeypatch, tmp_path):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    target = root / "report.json"
+    target.write_bytes(b"A" * 65536)
+    store = EvidenceStore(root)
+    reference = store.get("report")
+    real_read = __import__("os").read
+    calls = []
+
+    def growing_read(descriptor, size):
+        chunk = real_read(descriptor, size)
+        calls.append(len(chunk))
+        if len(calls) == 1:
+            with target.open("ab") as handle:
+                handle.write(b"B" * 65536)
+        return chunk
+
+    monkeypatch.setattr("agent_ros.runtime.evidence.os.read", growing_read)
+
+    with pytest.raises(EvidenceError, match="EVIDENCE_INVALID"):
+        store.read(reference, max_bytes=200000)
+
+    assert len(calls) <= 3
+
+
+def test_evidence_snapshot_rejects_declared_size_above_bound_before_reading(
+    monkeypatch, tmp_path
+):
+    root = tmp_path / "evidence"
+    root.mkdir()
+    target = root / "report.json"
+    target.write_bytes(b"A" * 32)
+    store = EvidenceStore(root)
+    reference = store.get("report")
+    reads = []
+    monkeypatch.setattr(
+        "agent_ros.runtime.evidence.os.read",
+        lambda descriptor, size: reads.append((descriptor, size)) or b"",
+    )
+
+    with pytest.raises(EvidenceError, match="EVIDENCE_INVALID"):
+        store.read(reference, max_bytes=16)
+
+    assert reads == []
 
 
 class CompromisedWriter:

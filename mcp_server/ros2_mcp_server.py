@@ -9,6 +9,7 @@ or filesystem paths.
 from __future__ import annotations
 
 import io
+import logging
 import math
 import threading
 from collections.abc import Mapping
@@ -21,11 +22,13 @@ from typing import Annotated, TypeAlias
 from fastmcp import FastMCP
 from fastmcp.tools import ToolResult
 from fastmcp.utilities.types import Image
+from jsonschema import Draft202012Validator
 from mcp.types import ToolAnnotations
 from PIL import Image as PillowImage
 from pydantic import Field
 
 from agent_ros.adapters.base import Observation
+from agent_ros.adapters.factory import RclpyAdapterFactory
 from agent_ros.runtime import (
     EvidenceError,
     EvidenceReference,
@@ -66,9 +69,12 @@ _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _MAX_EVIDENCE_BYTES = 16 * 1024 * 1024
 _MAX_IMAGE_PIXELS = 16_000_000
 _DEFAULT_TIMEOUT = 15.0
-_controller_lock = threading.Lock()
+_controller_condition = threading.Condition(threading.RLock())
 _controller: RuntimeController | None = None
 _evidence_store: EvidenceStore | None = None
+_controller_closing = False
+_controller_cleanup_failed = False
+_logger = logging.getLogger(__name__)
 
 _REMEDIATION = {
     "UNSAFE_STATE": "Inspect connection_status, validate the reviewed profile, and retry safely.",
@@ -82,52 +88,158 @@ _REMEDIATION = {
     "OPERATOR_REQUIRED": "Have an operator create a fresh out-of-band hardware challenge.",
     "CLEANUP_FAILED": "Keep the robot stopped and inspect managed runtime cleanup.",
 }
-_RESPONSE_SCHEMA = {
+_STATE = {
+    "type": "string",
+    "enum": ["NEW", "DISCOVERED", "VALIDATED", "ARMED", "RUNNING", "STOPPED", "ESTOPPED", "FAULTED"],
+}
+_TEXT = {"type": "string", "minLength": 1}
+_ERROR_SCHEMA = {
     "type": "object",
     "properties": {
-        "ok": {"type": "boolean"},
-        "data": {"type": "object"},
+        "ok": {"const": False},
         "error": {
             "type": "object",
             "properties": {
                 "code": {"type": "string", "enum": sorted(_REMEDIATION)},
-                "remediation": {"type": "string"},
+                "remediation": {"type": "string", "minLength": 1},
             },
             "required": ["code", "remediation"],
             "additionalProperties": False,
         },
     },
-    "required": ["ok"],
+    "required": ["ok", "error"],
     "additionalProperties": False,
+}
+
+
+def _object(properties, required):
+    return {
+        "type": "object",
+        "properties": properties,
+        "required": list(required),
+        "additionalProperties": False,
+    }
+
+
+def _response(data_schema):
+    return {
+        "type": "object",
+        "properties": {
+            "ok": {"type": "boolean"},
+            "data": data_schema,
+            "error": _ERROR_SCHEMA["properties"]["error"],
+        },
+        "oneOf": [
+            _object({"ok": {"const": True}, "data": data_schema}, ("ok", "data")),
+            _ERROR_SCHEMA,
+        ],
+        "additionalProperties": False,
+    }
+
+
+_RESPONSE_SCHEMAS = {
+    "discover_robot": _response(_object({
+        "profile": _TEXT,
+        "state": _STATE,
+        "capabilities": {"type": "array", "items": _TEXT},
+        "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
+    }, ("profile", "state", "capabilities", "hardware_safety_channel"))),
+    "validate_profile": _response(_object({
+        "profile": _TEXT,
+        "state": _STATE,
+        "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
+    }, ("profile", "state", "hardware_safety_channel"))),
+    "connection_status": _response(_object({"state": _STATE}, ("state",))),
+    "list_capabilities": _response(_object({
+        "capabilities": {"type": "array", "items": _TEXT},
+    }, ("capabilities",))),
+    "arm_robot": _response(_object({
+        "profile": _TEXT,
+        "state": _STATE,
+        "dry_run": {"type": "boolean"},
+    }, ("profile", "state"))),
+    "run_task": _response(_object({
+        "task": _TEXT,
+        "state": _STATE,
+        "profile": _TEXT,
+        "dry_run": {"type": "boolean"},
+    }, ("task",))),
+    "task_status": _response(_object({
+        "state": _STATE,
+        "task": {"oneOf": [_TEXT, {"type": "null"}]},
+        "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
+        "adapter_state": _TEXT,
+        "code": {"oneOf": [_TEXT, {"type": "null"}]},
+    }, ("state", "task", "hardware_safety_channel"))),
+    "cancel_task": _response(_object({"state": _STATE, "adapter_state": _TEXT}, ("state", "adapter_state"))),
+    "emergency_stop": _response(_object({"state": _STATE}, ("state",))),
+    "observe": _response(_object({
+        "source": {"type": "string", "enum": ["odometry", "camera", "scan"]},
+        "timestamp": {"type": "number"},
+        "values": _object({
+            "x": {"type": "number"},
+            "y": {"type": "number"},
+            "yaw": {"type": "number"},
+        }, ()),
+    }, ("source", "timestamp", "values"))),
+    "get_evidence": _response(_object({
+        "report_id": _TEXT,
+        "relative_path": _TEXT,
+        "media_type": {"type": "string", "enum": ["application/json", "image/png"]},
+        "size": {"type": "integer", "minimum": 0},
+    }, ("report_id", "relative_path", "media_type", "size"))),
+    "stop_runtime": _response(_object({"state": _STATE}, ("state",))),
 }
 
 
 def get_runtime_controller() -> RuntimeController:
     """Return the one process-owned runtime controller, creating it lazily."""
     global _controller, _evidence_store
-    with _controller_lock:
+    with _controller_condition:
+        while _controller_closing:
+            _controller_condition.wait()
+        if _controller_cleanup_failed:
+            raise RuntimeControllerError("CLEANUP_FAILED")
         if _controller is None:
             _evidence_store = EvidenceStore(_EVIDENCE_ROOT)
+            adapter_factory = RclpyAdapterFactory()
             _controller = RuntimeController(
                 profiles_root=_PROFILES_ROOT,
                 evidence_dir=_EVIDENCE_ROOT,
                 runtime_dir=_RUNTIME_ROOT,
+                adapter_factory=adapter_factory,
             )
         return _controller
 
 
-def close_runtime_controller() -> None:
-    """Close and forget the process singleton without exposing it as a tool."""
-    global _controller, _evidence_store
-    with _controller_lock:
+def close_runtime_controller() -> bool:
+    """Close the singleton before allowing another instance to be created."""
+    global _controller, _evidence_store, _controller_closing, _controller_cleanup_failed
+    with _controller_condition:
+        while _controller_closing:
+            _controller_condition.wait()
         controller = _controller
-        _controller = None
-        _evidence_store = None
-    if controller is not None:
+        if controller is None:
+            return True
+        _controller_closing = True
+    successful = False
+    try:
         try:
             controller.stop_runtime()
+            successful = True
         except RuntimeControllerError:
-            pass
+            successful = False
+    finally:
+        with _controller_condition:
+            if successful:
+                _controller = None
+                _evidence_store = None
+                _controller_cleanup_failed = False
+            else:
+                _controller_cleanup_failed = True
+            _controller_closing = False
+            _controller_condition.notify_all()
+    return successful
 
 
 def _default_evidence_store() -> EvidenceStore:
@@ -200,11 +312,12 @@ def _validate_json_value(value: object) -> object:
     raise ValueError
 
 
-def _success(data: object, *, content=None) -> ToolResult:
+def _success(data: object, schema: dict[str, object], *, content=None) -> ToolResult:
     validated = _validate_json_value(data)
     if not isinstance(validated, dict):
         raise ValueError
     structured = {"ok": True, "data": validated}
+    Draft202012Validator(schema).validate(structured)
     return ToolResult(
         content=structured if content is None else content,
         structured_content=structured,
@@ -223,9 +336,9 @@ def _error(code: str) -> ToolResult:
     return ToolResult(content=structured, structured_content=structured, is_error=True)
 
 
-def _invoke(operation) -> ToolResult:
+def _invoke(operation, schema: dict[str, object]) -> ToolResult:
     try:
-        return _success(operation())
+        return _success(operation(), schema)
     except RuntimeControllerError as exc:
         return _error(exc.code)
     except Exception:
@@ -236,19 +349,23 @@ def _evidence_result(
     controller: RuntimeController,
     store: EvidenceStore,
     report_id: str | None,
+    schema: dict[str, object],
 ) -> ToolResult:
     try:
         reference = controller.get_evidence(report_id)
         if not isinstance(reference, EvidenceReference):
             raise EvidenceError()
-        metadata = _validate_json_value(asdict(reference))
-        if not isinstance(metadata, dict):
-            raise EvidenceError()
+        metadata = {
+            "report_id": reference.report_id,
+            "relative_path": reference.relative_path,
+            "media_type": reference.media_type,
+            "size": reference.size,
+        }
         if reference.media_type != "image/png":
-            return _success(metadata)
+            return _success(metadata, schema)
         if reference.size < len(_PNG_SIGNATURE) or reference.size > _MAX_EVIDENCE_BYTES:
             raise EvidenceError()
-        data = store.read(reference)
+        data = store.read(reference, max_bytes=_MAX_EVIDENCE_BYTES)
         if len(data) != reference.size or not data.startswith(_PNG_SIGNATURE):
             raise EvidenceError()
         try:
@@ -263,7 +380,7 @@ def _evidence_result(
                 decoded.load()
         except (OSError, ValueError, PillowImage.DecompressionBombError):
             raise EvidenceError() from None
-        return _success(metadata, content=[Image(data=data, format="png")])
+        return _success(metadata, schema, content=[Image(data=data, format="png")])
     except (RuntimeControllerError, EvidenceError) as exc:
         return _error(getattr(exc, "code", "EVIDENCE_INVALID"))
     except Exception:
@@ -293,7 +410,8 @@ def create_server(
     async def lifespan(_server):
         yield {}
         if controller is None:
-            close_runtime_controller()
+            if not close_runtime_controller():
+                _logger.error("CLEANUP_FAILED")
 
     server = FastMCP(
         "agent-ros2",
@@ -311,7 +429,7 @@ def create_server(
             annotations=_annotations(name),
             meta=_meta(name, operation_timeout),
             timeout=operation_timeout,
-            output_schema=_RESPONSE_SCHEMA,
+            output_schema=_RESPONSE_SCHEMAS[name],
         )
 
     @register("discover_robot", "Discover a robot through a reviewed repository profile.")
@@ -329,21 +447,21 @@ def create_server(
                 capabilities = tuple(raw)
             return result
 
-        return _invoke(operation)
+        return _invoke(operation, _RESPONSE_SCHEMAS["discover_robot"])
 
     @register("validate_profile", "Validate the active reviewed robot profile.")
     def validate_profile(profile_name: ProfileName) -> ToolResult:
-        return _invoke(lambda: controller_for_call().validate_profile(profile_name.value))
+        return _invoke(lambda: controller_for_call().validate_profile(profile_name.value), _RESPONSE_SCHEMAS["validate_profile"])
 
     @register("connection_status", "Read the current bounded runtime connection state.")
     def connection_status() -> ToolResult:
-        return _invoke(lambda: {"state": controller_for_call().state.value})
+        return _invoke(lambda: {"state": controller_for_call().state.value}, _RESPONSE_SCHEMAS["connection_status"])
 
     @register("list_capabilities", "List capabilities established by the latest discovery.")
     def list_capabilities() -> ToolResult:
         with capabilities_lock:
             current = list(capabilities)
-        return _success({"capabilities": current})
+        return _success({"capabilities": current}, _RESPONSE_SCHEMAS["list_capabilities"])
 
     @register("arm_robot", "Arm a reviewed profile; hardware remains dry-run by default.")
     def arm_robot(
@@ -356,24 +474,25 @@ def create_server(
                 profile_name.value,
                 challenge,
                 dry_run=dry_run,
-            )
+            ),
+            _RESPONSE_SCHEMAS["arm_robot"],
         )
 
     @register("run_task", "Run a reviewed task profile after safety authorization.")
     def run_task(task_name: TaskName, dry_run: bool = False) -> ToolResult:
-        return _invoke(lambda: controller_for_call().run_task(task_name.value, dry_run=dry_run))
+        return _invoke(lambda: controller_for_call().run_task(task_name.value, dry_run=dry_run), _RESPONSE_SCHEMAS["run_task"])
 
     @register("task_status", "Read the active task and adapter status.")
     def task_status() -> ToolResult:
-        return _invoke(controller_for_call().task_status)
+        return _invoke(controller_for_call().task_status, _RESPONSE_SCHEMAS["task_status"])
 
     @register("cancel_task", "Cancel the active bounded task and stop motion.")
     def cancel_task() -> ToolResult:
-        return _invoke(controller_for_call().cancel_task)
+        return _invoke(controller_for_call().cancel_task, _RESPONSE_SCHEMAS["cancel_task"])
 
     @register("emergency_stop", "Latch the runtime emergency stop; no reset is exposed.")
     def emergency_stop() -> ToolResult:
-        return _invoke(controller_for_call().emergency_stop)
+        return _invoke(controller_for_call().emergency_stop, _RESPONSE_SCHEMAS["emergency_stop"])
 
     @register("observe", "Read one reviewed observation source.")
     def observe(source: ObservationSource) -> ToolResult:
@@ -387,15 +506,15 @@ def create_server(
                 "values": dict(observation.values),
             }
 
-        return _invoke(operation)
+        return _invoke(operation, _RESPONSE_SCHEMAS["observe"])
 
     @register("get_evidence", "Read a managed evidence report by opaque identifier.")
     def get_evidence(report_id: ReportId | None = None) -> ToolResult:
-        return _evidence_result(controller_for_call(), evidence_for_call(), report_id)
+        return _evidence_result(controller_for_call(), evidence_for_call(), report_id, _RESPONSE_SCHEMAS["get_evidence"])
 
     @register("stop_runtime", "Safely stop and close the managed ROS runtime.")
     def stop_runtime() -> ToolResult:
-        return _invoke(controller_for_call().stop_runtime)
+        return _invoke(controller_for_call().stop_runtime, _RESPONSE_SCHEMAS["stop_runtime"])
 
     return server
 

@@ -28,6 +28,9 @@ class EvidenceReference:
     relative_path: str
     media_type: str
     size: int
+    _device: int = 0
+    _inode: int = 0
+    _mtime_ns: int = 0
 
 
 class EvidenceStore:
@@ -64,10 +67,26 @@ class EvidenceStore:
                 raise EvidenceError()
             name, info = candidates[0]
         suffix = Path(name).suffix
-        return EvidenceReference(report_id, name, _MEDIA_TYPES[suffix], info.st_size)
+        return EvidenceReference(
+            report_id,
+            name,
+            _MEDIA_TYPES[suffix],
+            info.st_size,
+            info.st_dev,
+            info.st_ino,
+            info.st_mtime_ns,
+        )
 
-    def read(self, reference: EvidenceReference) -> bytes:
+    def read(self, reference: EvidenceReference, *, max_bytes: int) -> bytes:
         if not isinstance(reference, EvidenceReference):
+            raise EvidenceError()
+        if (
+            not isinstance(max_bytes, int)
+            or isinstance(max_bytes, bool)
+            or max_bytes < 1
+            or reference.size < 0
+            or reference.size > max_bytes
+        ):
             raise EvidenceError()
         self._validate_id(reference.report_id)
         suffix = Path(reference.relative_path).suffix
@@ -79,15 +98,22 @@ class EvidenceStore:
         try:
             root_fd = self._open_root()
             descriptor = os.open(name, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=root_fd)
-            info = os.fstat(descriptor)
-            if not stat.S_ISREG(info.st_mode):
-                raise OSError
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or not self._matches(reference, before):
+                raise EvidenceError()
             chunks = []
-            while True:
-                chunk = os.read(descriptor, 65536)
+            remaining = reference.size
+            while remaining:
+                chunk = os.read(descriptor, min(65536, remaining))
                 if not chunk:
-                    break
+                    raise EvidenceError()
                 chunks.append(chunk)
+                remaining -= len(chunk)
+            if os.read(descriptor, 1):
+                raise EvidenceError()
+            after = os.fstat(descriptor)
+            if not self._matches(reference, after) or not self._same_snapshot(before, after):
+                raise EvidenceError()
             return b"".join(chunks)
         except OSError:
             raise EvidenceError() from None
@@ -180,6 +206,24 @@ class EvidenceStore:
 
     def _open_root(self) -> int:
         return os.open(self._root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0))
+
+    @staticmethod
+    def _matches(reference: EvidenceReference, info: os.stat_result) -> bool:
+        return (
+            reference._device == info.st_dev
+            and reference._inode == info.st_ino
+            and reference.size == info.st_size
+            and reference._mtime_ns == info.st_mtime_ns
+        )
+
+    @staticmethod
+    def _same_snapshot(before: os.stat_result, after: os.stat_result) -> bool:
+        return (
+            before.st_dev == after.st_dev
+            and before.st_ino == after.st_ino
+            and before.st_size == after.st_size
+            and before.st_mtime_ns == after.st_mtime_ns
+        )
 
     @staticmethod
     def _close(descriptor: int) -> None:

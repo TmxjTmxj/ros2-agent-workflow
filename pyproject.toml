@@ -11,6 +11,7 @@ dependencies = [
     "FastMCP==3.4.7",
     "Pillow>=11.0",
     "PyYAML>=6.0",
+    "jsonschema>=4.20",
 ]
 
 [tool.pytest.ini_options]

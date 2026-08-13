@@ -170,18 +170,33 @@ class RobotAdapter(ABC):
         from agent_ros.adapters._safety import _EmergencyStopChannel
         from agent_ros.safety.sequencer import _SafetySequencer
 
-        sequencer = getattr(self, "_safety_sequencer", None)
-        if not isinstance(sequencer, _SafetySequencer):
-            return True
         deadline = time.monotonic() + max(0.0, timeout)
-        sequencer.begin_close()
-        channel = self._emergency_stop_channel()
-        if not isinstance(channel, _EmergencyStopChannel):
-            sequencer.close(max(0.0, deadline - time.monotonic()))
-            return False
-        channel_closed = channel._close(max(0.0, deadline - time.monotonic()))
-        sequencer_closed = sequencer.close(max(0.0, deadline - time.monotonic()))
-        return channel_closed and sequencer_closed
+        successful = True
+        sequencer = getattr(self, "_safety_sequencer", None)
+        if isinstance(sequencer, _SafetySequencer):
+            sequencer.begin_close()
+            channel = self._emergency_stop_channel()
+            if not isinstance(channel, _EmergencyStopChannel):
+                successful = False
+            else:
+                successful = channel._close(max(0.0, deadline - time.monotonic()))
+            successful = (
+                sequencer.close(max(0.0, deadline - time.monotonic()))
+                and successful
+            )
+        owner_close = getattr(self, "_runtime_owner_close", None)
+        if owner_close is not None:
+            try:
+                successful = owner_close(max(0.0, deadline - time.monotonic())) and successful
+            except Exception:
+                successful = False
+        return successful
+
+    def _bind_runtime_owner(self, close: Callable[[float], bool]) -> None:
+        """Bind a repository-owned transport lifecycle exactly once."""
+        if not callable(close) or hasattr(self, "_runtime_owner_close"):
+            raise AdapterError("PROFILE_INVALID")
+        self._runtime_owner_close = close
 
     def _validate_runtime_safety(self, mode: str) -> None:
         from agent_ros.adapters._safety import _EmergencyStopChannel
