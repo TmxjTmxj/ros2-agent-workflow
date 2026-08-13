@@ -183,6 +183,58 @@ def prepare(active: RuntimeController) -> None:
     active.validate_profile("robot")
 
 
+def test_failed_discovery_preserves_factory_cleanup_code_and_controller_ownership(
+    tmp_path,
+):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+
+    class FailingOwnedFactory:
+        def __init__(self) -> None:
+            self.create_calls = 0
+            self.close_timeouts = []
+            self.cleanup_allowed = False
+
+        def __call__(self, _profile):
+            self.create_calls += 1
+            raise AdapterError("CLEANUP_FAILED")
+
+        def close(self, timeout):
+            self.close_timeouts.append(timeout)
+            return self.cleanup_allowed
+
+    factory = FailingOwnedFactory()
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=Probe(),
+        adapter_factory=factory,
+        cleanup_timeout=0.02,
+    )
+    try:
+        with pytest.raises(RuntimeControllerError) as discovery_failure:
+            active.discover_robot("robot")
+        assert discovery_failure.value.code == "CLEANUP_FAILED"
+        assert active._gateway is None
+        assert active._adapter is None
+
+        with pytest.raises(RuntimeControllerError) as first_cleanup:
+            active.stop_runtime()
+        assert first_cleanup.value.code == "CLEANUP_FAILED"
+        assert factory.create_calls == 1
+        assert len(factory.close_timeouts) == 1
+        assert 0.0 <= factory.close_timeouts[0] <= 0.02
+
+        factory.cleanup_allowed = True
+        assert active.stop_runtime() == {"state": "NEW"}
+        assert len(factory.close_timeouts) == 2
+        assert 0.0 <= factory.close_timeouts[1] <= 0.02
+    finally:
+        factory.cleanup_allowed = True
+        active.stop_runtime()
+
+
 def test_register_transition_rejects_a_forged_equal_gateway_receipt(tmp_path, runtime_owner):
     active = controller(tmp_path, RecordingAdapter(), owner=runtime_owner)
     active.discover_robot("robot")

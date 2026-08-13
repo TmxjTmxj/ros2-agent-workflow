@@ -105,6 +105,23 @@ class RetryableShutdownExecutor(FakeExecutor):
         return True
 
 
+class GatedShutdownExecutor(FakeExecutor):
+    instances = []
+    shutdown_allowed = False
+
+    def __init__(self, *, context) -> None:
+        super().__init__(context=context)
+        self.shutdown_attempts = 0
+
+    def shutdown(self, *, timeout_sec) -> bool:
+        self.shutdown_timeouts.append(timeout_sec)
+        self.shutdown_attempts += 1
+        if not type(self).shutdown_allowed:
+            return False
+        self.stop.set()
+        return True
+
+
 def _install_fake_ros(monkeypatch) -> None:
     FakeExecutor.instances.clear()
     FakeContext.instances.clear()
@@ -376,6 +393,125 @@ def test_factory_retries_only_incomplete_teardown_after_shutdown_failure(monkeyp
     finally:
         executor.stop.set()
         owned_thread.join(0.2)
+
+
+def test_failed_startup_cleanup_is_retried_before_any_new_runtime_is_created(
+    monkeypatch,
+):
+    _install_fake_ros(monkeypatch)
+    GatedShutdownExecutor.instances.clear()
+    GatedShutdownExecutor.shutdown_allowed = False
+    monkeypatch.setattr(
+        sys.modules["rclpy.executors"],
+        "SingleThreadedExecutor",
+        GatedShutdownExecutor,
+    )
+    from agent_ros.adapters import factory as factory_module
+
+    real_twist_adapter = factory_module.TwistAdapter
+    construction_attempts = 0
+
+    def fail_first_adapter_construction(*args, **kwargs):
+        nonlocal construction_attempts
+        construction_attempts += 1
+        if construction_attempts == 1:
+            raise RuntimeError("private ROS adapter construction detail")
+        return real_twist_adapter(*args, **kwargs)
+
+    monkeypatch.setattr(factory_module, "TwistAdapter", fail_first_adapter_construction)
+    factory = RclpyAdapterFactory()
+    first_thread = None
+    try:
+        with pytest.raises(AdapterError) as first_failure:
+            factory(_twist_profile())
+        assert first_failure.value.code == "CLEANUP_FAILED"
+        assert len(GatedShutdownExecutor.instances) == 1
+        first_executor = GatedShutdownExecutor.instances[0]
+        first_thread = factory._thread
+        assert first_thread is not None and first_thread.is_alive()
+        old_resources = (factory._context, factory._node, factory._executor, factory._thread)
+
+        with pytest.raises(AdapterError) as retry_failure:
+            factory(_twist_profile())
+        assert retry_failure.value.code == "CLEANUP_FAILED"
+        assert len(GatedShutdownExecutor.instances) == 1
+        assert (factory._context, factory._node, factory._executor, factory._thread) == old_resources
+        assert first_executor.shutdown_attempts == 2
+        assert construction_attempts == 1
+
+        GatedShutdownExecutor.shutdown_allowed = True
+        adapter = factory(_twist_profile())
+
+        assert isinstance(adapter, TwistAdapter)
+        assert len(GatedShutdownExecutor.instances) == 2
+        assert construction_attempts == 2
+        assert not first_thread.is_alive()
+        assert factory.close(0.2)
+    finally:
+        GatedShutdownExecutor.shutdown_allowed = True
+        for executor in GatedShutdownExecutor.instances:
+            executor.stop.set()
+        if first_thread is not None:
+            first_thread.join(0.2)
+        factory.close(0.2)
+
+
+def test_singleton_keeps_partial_startup_poisoned_until_factory_cleanup_succeeds(
+    monkeypatch, tmp_path
+):
+    _install_fake_ros(monkeypatch)
+    GatedShutdownExecutor.instances.clear()
+    GatedShutdownExecutor.shutdown_allowed = False
+    monkeypatch.setattr(
+        sys.modules["rclpy.executors"],
+        "SingleThreadedExecutor",
+        GatedShutdownExecutor,
+    )
+    from agent_ros.adapters import factory as factory_module
+
+    def fail_adapter_construction(*_args, **_kwargs):
+        raise RuntimeError("private ROS adapter construction detail")
+
+    monkeypatch.setattr(factory_module, "TwistAdapter", fail_adapter_construction)
+    monkeypatch.setattr(subprocess, "run", _graph_cli)
+    monkeypatch.setattr(ros2_mcp_server, "_RUNTIME_ROOT", tmp_path / "runtime")
+    monkeypatch.setattr(ros2_mcp_server, "_EVIDENCE_ROOT", tmp_path / "evidence")
+    controller = ros2_mcp_server.get_runtime_controller()
+    owned_thread = None
+    try:
+        with pytest.raises(ros2_mcp_server.RuntimeControllerError) as startup_failure:
+            controller.discover_robot("hospital-amr")
+        assert startup_failure.value.code == "CLEANUP_FAILED"
+        assert len(GatedShutdownExecutor.instances) == 1
+        executor = GatedShutdownExecutor.instances[0]
+        owned_thread = controller._adapter_factory._thread
+        assert owned_thread is not None and owned_thread.is_alive()
+
+        assert ros2_mcp_server.close_runtime_controller() is False
+        assert executor.shutdown_attempts == 2
+        with pytest.raises(ros2_mcp_server.RuntimeControllerError) as poisoned:
+            ros2_mcp_server.get_runtime_controller()
+        assert poisoned.value.code == "CLEANUP_FAILED"
+
+        GatedShutdownExecutor.shutdown_allowed = True
+        assert ros2_mcp_server.close_runtime_controller() is True
+        assert executor.shutdown_attempts == 3
+        assert not owned_thread.is_alive()
+        with ros2_mcp_server._controller_condition:
+            assert ros2_mcp_server._controller is None
+            assert ros2_mcp_server._controller_cleanup_failed is False
+    finally:
+        GatedShutdownExecutor.shutdown_allowed = True
+        for executor in GatedShutdownExecutor.instances:
+            executor.stop.set()
+        if owned_thread is not None:
+            owned_thread.join(0.2)
+        with ros2_mcp_server._controller_condition:
+            ros2_mcp_server._controller = None
+            ros2_mcp_server._evidence_store = None
+            ros2_mcp_server._controller_closing = False
+            ros2_mcp_server._controller_cleanup_failed = False
+            ros2_mcp_server._controller_condition.notify_all()
 
 
 def test_singleton_retry_clears_poison_only_after_owned_executor_is_reaped(

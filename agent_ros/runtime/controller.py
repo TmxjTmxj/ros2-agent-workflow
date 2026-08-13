@@ -8,6 +8,7 @@ import time
 import threading
 from collections.abc import Callable
 from pathlib import Path
+from typing import Protocol
 
 from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
 from agent_ros.adapters.base import AdapterError, HospitalAction, Observation, RobotAdapter
@@ -59,6 +60,14 @@ class RuntimeControllerError(RuntimeError):
 AdapterFactory = Callable[[RobotProfile], RobotAdapter]
 
 
+class AdapterFactoryOwner(Protocol):
+    """Callable adapter construction boundary with an optional owned lifecycle."""
+
+    def __call__(self, profile: RobotProfile) -> RobotAdapter: ...
+
+    def close(self, timeout: float) -> bool: ...
+
+
 class RuntimeController:
     """Own exactly one active robot, safety gateway, adapter, and audit writer."""
 
@@ -69,7 +78,7 @@ class RuntimeController:
         evidence_dir: Path,
         runtime_dir: Path,
         graph_probe: RosGraphProbe | None = None,
-        adapter_factory: AdapterFactory | None = None,
+        adapter_factory: AdapterFactory | AdapterFactoryOwner | None = None,
         audit_writer: AuditWriter | None = None,
         clock: Callable[[], float] = time.monotonic,
         boot_id: Callable[[], str] | None = None,
@@ -85,6 +94,11 @@ class RuntimeController:
         self._quarantine_path = self._runtime_dir / "audit.quarantine"
         self._graph_probe = graph_probe or RosGraphProbe()
         self._adapter_factory = adapter_factory
+        try:
+            factory_close = getattr(adapter_factory, "close", None)
+        except Exception:
+            factory_close = None
+        self._adapter_factory_close = factory_close if callable(factory_close) else None
         self._audit_writer = audit_writer or AuditWriter(self._audit_path)
         self._audit_worker = _AuditAppendWorker(self._audit_writer)
         self._clock = clock
@@ -459,6 +473,30 @@ class RuntimeController:
                 )
             except Exception:
                 cleanup_failed = True
+        else:
+            cleanup_failed = (
+                not self._activation_issuer.close(remaining())
+                or cleanup_failed
+            )
+        try:
+            adapter_owner_close = None if adapter is None else getattr(
+                adapter, "_runtime_owner_close", None
+            )
+            adapter_owner = (
+                getattr(adapter_owner_close, "__self__", None)
+                if callable(adapter_owner_close)
+                else None
+            )
+        except Exception:
+            adapter_owner = None
+        if self._adapter_factory_close is not None and adapter_owner is not self._adapter_factory:
+            try:
+                cleanup_failed = (
+                    not self._adapter_factory_close(remaining())
+                    or cleanup_failed
+                )
+            except Exception:
+                cleanup_failed = True
         if cleanup_failed:
             raise RuntimeControllerError("CLEANUP_FAILED")
         return result
@@ -487,6 +525,8 @@ class RuntimeController:
             raise RuntimeControllerError("PROFILE_INVALID")
         try:
             adapter = self._adapter_factory(profile)
+        except AdapterError as exc:
+            raise self._adapter_error(exc) from None
         except Exception:
             raise RuntimeControllerError("PROFILE_INVALID") from None
         if not isinstance(adapter, RobotAdapter):

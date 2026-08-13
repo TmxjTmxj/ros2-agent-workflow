@@ -29,12 +29,17 @@ class RclpyAdapterFactory:
         self._closed = False
 
     def __call__(self, profile: RobotProfile) -> RobotAdapter:
-        if not isinstance(profile, RobotProfile):
-            raise AdapterError("PROFILE_INVALID")
-        constructor = self._adapter_constructor(profile)
         with self._lock:
             if self._closed or self._adapter is not None:
                 raise AdapterError("PROFILE_INVALID")
+            deadline = time.monotonic() + 1.0
+            if self._owns_resources():
+                if not self._close_locked(max(0.0, deadline - time.monotonic())):
+                    raise AdapterError("CLEANUP_FAILED")
+                self._reset_resources()
+            if not isinstance(profile, RobotProfile):
+                raise AdapterError("PROFILE_INVALID")
+            constructor = self._adapter_constructor(profile)
             try:
                 self._start_runtime()
                 adapter = constructor(self._node)
@@ -42,17 +47,26 @@ class RclpyAdapterFactory:
                 self._adapter = adapter
                 return adapter
             except AdapterError:
-                self._close_locked(1.0)
+                if not self._close_locked(max(0.0, deadline - time.monotonic())):
+                    raise AdapterError("CLEANUP_FAILED") from None
+                self._reset_resources()
                 raise
             except Exception:
-                self._close_locked(1.0)
+                if not self._close_locked(max(0.0, deadline - time.monotonic())):
+                    raise AdapterError("CLEANUP_FAILED") from None
+                self._reset_resources()
                 raise AdapterError("PROFILE_INVALID") from None
 
     def close(self, timeout: float = 1.0) -> bool:
         if not isinstance(timeout, (int, float)) or isinstance(timeout, bool):
             return False
         with self._lock:
-            return self._close_locked(max(0.0, float(timeout)))
+            if self._closed:
+                return True
+            successful = self._close_locked(max(0.0, float(timeout)))
+            if successful:
+                self._closed = True
+            return successful
 
     def _adapter_constructor(self, profile: RobotProfile):
         estop_topic = profile.safety.estop_topic
@@ -136,17 +150,13 @@ class RclpyAdapterFactory:
         try:
             thread.start()
         except Exception:
-            self._close_locked(1.0)
             raise AdapterError("PROFILE_INVALID") from None
         self._thread = thread
         self._thread_joined = False
         if not entered.wait(1.0) or not thread.is_alive():
-            self._close_locked(1.0)
             raise AdapterError("PROFILE_INVALID")
 
     def _close_locked(self, timeout: float) -> bool:
-        if self._closed:
-            return True
         deadline = time.monotonic() + timeout
         executor = self._executor
         thread = self._thread
@@ -189,8 +199,25 @@ class RclpyAdapterFactory:
                 self._context_shutdown = True
             except Exception:
                 return False
-        self._closed = True
         return True
+
+    def _owns_resources(self) -> bool:
+        return any(
+            resource is not None
+            for resource in (self._context, self._node, self._executor, self._thread)
+        )
+
+    def _reset_resources(self) -> None:
+        self._context = None
+        self._node = None
+        self._executor = None
+        self._thread = None
+        self._adapter = None
+        self._executor_shutdown = True
+        self._thread_joined = True
+        self._node_removed = True
+        self._node_destroyed = True
+        self._context_shutdown = True
 
 
 __all__ = ("RclpyAdapterFactory",)
