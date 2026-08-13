@@ -23,9 +23,15 @@ _ZERO_BURST_COUNT = 3
 
 
 class TwistTransport(Protocol):
-    def publish(self, command: TwistCommand) -> None: ...
-
     def read_odometry(self) -> OdometrySample: ...
+
+    def start_waypoint(self, stage: TaskStage) -> None: ...
+
+    def waypoint_status(self) -> AdapterStatus: ...
+
+    def cancel_waypoint(self) -> None: ...
+
+    def stop_waypoint(self) -> None: ...
 
     def subscribe_estop(self, handler: Callable[[bool], None]) -> None: ...
 
@@ -45,10 +51,6 @@ class TwistAdapter(RobotAdapter):
         self._clock = clock
         self._stale_after = stale_after if stale_after is not None else profile.safety.heartbeat_timeout
         self._future_skew = future_skew
-        self._state = "idle"
-        self._stage: TaskStage | None = None
-        self._last_command: TwistCommand | None = None
-        self._last_command_time: float | None = None
         self.validate()
 
     def probe(self) -> AdapterProbe:
@@ -66,49 +68,39 @@ class TwistAdapter(RobotAdapter):
             raise AdapterError("PROFILE_INVALID")
 
     def start(self, task: object) -> AdapterStatus:
-        if isinstance(task, TaskStage):
-            sample = self._fresh_odometry()
-            self._stage = task
-            self._publish_desired(self._command_for_stage(task, sample))
-            self._state = "running"
-            return AdapterStatus(self._state)
-        if not isinstance(task, TwistCommand):
+        if not isinstance(task, TaskStage):
             raise AdapterError("PROFILE_INVALID")
-        limits = self._profile.limits
-        command = TwistCommand(
-            linear_velocity=max(-limits.max_linear_velocity, min(limits.max_linear_velocity, task.linear_velocity)),
-            angular_velocity=max(-limits.max_angular_velocity, min(limits.max_angular_velocity, task.angular_velocity)),
-        )
-        self._publish_desired(command, enforce_acceleration=False)
-        self._state = "running"
-        return AdapterStatus(self._state)
+        self._fresh_odometry()
+        try:
+            self._transport.start_waypoint(task)
+        except Exception:
+            self.stop()
+            raise AdapterError("INTERNAL_ERROR") from None
+        return AdapterStatus("running")
 
     def status(self) -> AdapterStatus:
-        sample = self._fresh_odometry()
-        if self._stage is not None:
-            distance = math.hypot(self._stage.goal.x - sample.x, self._stage.goal.y - sample.y)
-            if distance <= self._stage.tolerance:
-                self.stop()
-                self._state = "succeeded"
-                return AdapterStatus(self._state)
-            self._publish_desired(self._command_for_stage(self._stage, sample))
-        return AdapterStatus(self._state, values={"odometry_timestamp": sample.timestamp})
+        try:
+            status = self._transport.waypoint_status()
+        except Exception:
+            self.stop()
+            raise AdapterError("STALE_FEEDBACK") from None
+        if not isinstance(status, AdapterStatus):
+            raise AdapterError("STALE_FEEDBACK")
+        return status
 
     def cancel(self) -> AdapterStatus:
-        self.stop()
-        self._state = "cancelled"
-        return AdapterStatus(self._state)
+        try:
+            self._transport.cancel_waypoint()
+        except Exception:
+            self.stop()
+            raise AdapterError("INTERNAL_ERROR") from None
+        return AdapterStatus("cancelled")
 
     def stop(self) -> None:
-        for _ in range(_ZERO_BURST_COUNT):
-            try:
-                self._transport.publish(TwistCommand.zero())
-            except Exception:
-                continue
-        self._state = "stopped"
-        self._stage = None
-        self._last_command = TwistCommand.zero()
-        self._last_command_time = self._clock()
+        try:
+            self._transport.stop_waypoint()
+        except Exception:
+            return
 
     def observe(self, source: str) -> Observation:
         if source != "odometry" or source not in self._profile.observation_sources:
@@ -141,44 +133,12 @@ class TwistAdapter(RobotAdapter):
             raise AdapterError("STALE_FEEDBACK")
         return sample
 
-    def _command_for_stage(self, stage: TaskStage, sample: OdometrySample) -> TwistCommand:
-        dx = stage.goal.x - sample.x
-        dy = stage.goal.y - sample.y
-        distance = math.hypot(dx, dy)
-        heading = math.atan2(dy, dx)
-        heading_error = math.atan2(math.sin(heading - sample.yaw), math.cos(heading - sample.yaw))
-        linear = min(self._profile.limits.max_linear_velocity, distance)
-        if abs(heading_error) > math.pi / 2.0:
-            linear = 0.0
-        angular = max(
-            -self._profile.limits.max_angular_velocity,
-            min(self._profile.limits.max_angular_velocity, heading_error),
-        )
-        return TwistCommand(linear, angular)
-
-    def _publish_desired(self, command: TwistCommand, *, enforce_acceleration: bool = True) -> None:
-        now = self._clock()
-        if enforce_acceleration and self._last_command is not None and self._last_command_time is not None:
-            elapsed = max(0.0, now - self._last_command_time)
-            linear_delta = self._profile.limits.max_linear_acceleration * elapsed
-            angular_delta = self._profile.limits.max_angular_acceleration * elapsed
-            command = TwistCommand(
-                max(self._last_command.linear_velocity - linear_delta, min(self._last_command.linear_velocity + linear_delta, command.linear_velocity)),
-                max(self._last_command.angular_velocity - angular_delta, min(self._last_command.angular_velocity + angular_delta, command.angular_velocity)),
-            )
-        try:
-            self._transport.publish(command)
-        except Exception:
-            self.stop()
-            raise AdapterError("INTERNAL_ERROR") from None
-        self._last_command = command
-        self._last_command_time = now
 
 
 class RclpyTwistTransport:
     """Structured rclpy transport, imported lazily so non-ROS tooling remains usable."""
 
-    def __init__(self, node, command_topic: str, odometry_topic: str, estop_topic: str) -> None:
+    def __init__(self, node, command_topic: str, odometry_topic: str, estop_topic: str, limits=None, *, control_period: float = 0.05, stale_after: float = 1.0) -> None:
         try:
             from geometry_msgs.msg import Twist
             from nav_msgs.msg import Odometry
@@ -189,6 +149,13 @@ class RclpyTwistTransport:
         self._twist_type = Twist
         self._publisher = node.create_publisher(Twist, command_topic, 10)
         self._sample: OdometrySample | None = None
+        self._limits = limits
+        self._period = control_period
+        self._stale_after = stale_after
+        self._stage: TaskStage | None = None
+        self._state = AdapterStatus("idle")
+        self._last_command = TwistCommand.zero()
+        self._timer = node.create_timer(control_period, self._control_step)
         self._estop_handlers: list[Callable[[bool], None]] = []
 
         def odometry_callback(message) -> None:
@@ -211,6 +178,55 @@ class RclpyTwistTransport:
         message.linear.x = command.linear_velocity
         message.angular.z = command.angular_velocity
         self._publisher.publish(message)
+
+    def start_waypoint(self, stage: TaskStage) -> None:
+        self._stage = stage
+        self._state = AdapterStatus("running")
+
+    def waypoint_status(self) -> AdapterStatus:
+        return self._state
+
+    def cancel_waypoint(self) -> None:
+        self.stop_waypoint()
+        self._state = AdapterStatus("cancelled")
+
+    def stop_waypoint(self) -> None:
+        self._stage = None
+        for _ in range(_ZERO_BURST_COUNT):
+            self.publish(TwistCommand.zero())
+        self._last_command = TwistCommand.zero()
+        self._state = AdapterStatus("stopped")
+
+    def _control_step(self) -> None:
+        stage = self._stage
+        sample = self._sample
+        if stage is None:
+            return
+        if sample is None or self._clock() - sample.timestamp > self._stale_after or sample.timestamp - self._clock() > 0.05:
+            self.stop_waypoint()
+            self._state = AdapterStatus("faulted", "STALE_FEEDBACK")
+            return
+        distance = math.hypot(stage.goal.x - sample.x, stage.goal.y - sample.y)
+        if distance <= stage.tolerance:
+            self.stop_waypoint()
+            self._state = AdapterStatus("succeeded")
+            return
+        heading = math.atan2(stage.goal.y - sample.y, stage.goal.x - sample.x)
+        error = math.atan2(math.sin(heading - sample.yaw), math.cos(heading - sample.yaw))
+        if self._limits is None:
+            self.stop_waypoint()
+            self._state = AdapterStatus("faulted", "PROFILE_INVALID")
+            return
+        desired_linear = min(self._limits.max_linear_velocity, distance) if abs(error) <= math.pi / 2 else 0.0
+        desired_angular = max(-self._limits.max_angular_velocity, min(self._limits.max_angular_velocity, error))
+        linear_delta = self._limits.max_linear_acceleration * self._period
+        angular_delta = self._limits.max_angular_acceleration * self._period
+        command = TwistCommand(
+            max(self._last_command.linear_velocity - linear_delta, min(self._last_command.linear_velocity + linear_delta, desired_linear)),
+            max(self._last_command.angular_velocity - angular_delta, min(self._last_command.angular_velocity + angular_delta, desired_angular)),
+        )
+        self.publish(command)
+        self._last_command = command
 
     def read_odometry(self) -> OdometrySample:
         if self._sample is None:

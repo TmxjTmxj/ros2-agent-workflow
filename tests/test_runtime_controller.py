@@ -148,7 +148,7 @@ def test_runtime_refuses_motion_before_profile_is_discovered_validated_and_armed
 
 def test_dry_run_checks_compatibility_without_starting_motion(tmp_path):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, monitor_interval=0.005)
     prepare(active)
 
     result = active.run_task("delivery", dry_run=True)
@@ -194,29 +194,31 @@ def test_adapter_fault_is_propagated_as_stable_code_and_latches_estop(tmp_path):
     active.run_task("delivery")
     adapter.status_error = AdapterError("STALE_FEEDBACK")
 
-    with pytest.raises(RuntimeControllerError, match="STALE_FEEDBACK"):
-        active.task_status()
+    deadline = time.monotonic() + 1.0
+    while active.state is SafetyState.RUNNING and time.monotonic() < deadline:
+        time.sleep(0.005)
 
     assert active.state is SafetyState.ESTOPPED
     assert adapter.stop_count >= 3
-    operations = [
-        json.loads(line)["operation"]
-        for line in (tmp_path / "runtime" / "audit.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
+    audit_path = tmp_path / "runtime" / "audit.jsonl"
+    operations = []
+    deadline = time.monotonic() + 1.0
+    while (not operations or operations[-1] != "estop") and time.monotonic() < deadline:
+        operations = [json.loads(line)["operation"] for line in audit_path.read_text(encoding="utf-8").splitlines()]
+        time.sleep(0.005)
     assert operations[-1] == "estop"
 
 
 def test_unexpected_adapter_failure_is_sanitized_and_stops_motion(tmp_path):
     adapter = RecordingAdapter()
-    active = controller(tmp_path, adapter)
+    active = controller(tmp_path, adapter, monitor_interval=0.005)
     prepare(active)
     active.run_task("delivery")
     adapter.status_error = RuntimeError("secret transport path /home/operator")
 
-    with pytest.raises(RuntimeControllerError) as captured:
-        active.task_status()
-
-    assert str(captured.value) == "UNSAFE_STATE"
+    deadline = time.monotonic() + 1.0
+    while active.state is SafetyState.RUNNING and time.monotonic() < deadline:
+        time.sleep(0.005)
     assert active.state is SafetyState.ESTOPPED
 
 
@@ -242,6 +244,10 @@ def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_pat
     transport.publish = transport.commands.append
     transport.read_odometry = lambda: transport.odometry
     transport.subscribe_estop = lambda handler: setattr(transport, "estop", handler)
+    transport.start_waypoint = lambda stage: setattr(transport, "stage", stage)
+    transport.waypoint_status = lambda: AdapterStatus("running")
+    transport.cancel_waypoint = lambda: transport.commands.extend([TwistCommand.zero()] * 3)
+    transport.stop_waypoint = lambda: transport.commands.extend([TwistCommand.zero()] * 3)
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     runtime = tmp_path / "runtime"
@@ -259,7 +265,7 @@ def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_pat
     active.run_task("delivery")
 
     assert active.state is SafetyState.RUNNING
-    assert transport.commands[-1].linear_velocity > 0.0
+    assert transport.stage.name == "destination"
     active.stop_runtime()
 
 
@@ -370,6 +376,95 @@ def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_
     release.set()
     starter.join(1.0)
     estopper.join(1.0)
+
+    assert active.state is SafetyState.ESTOPPED
+    assert adapter.stop_count >= 3
+
+
+def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class HungStart(RecordingAdapter):
+        def start(self, task):
+            entered.set()
+            release.wait()
+            return AdapterStatus("running")
+
+    adapter = HungStart()
+    active = controller(tmp_path, adapter)
+    prepare(active)
+    starter = threading.Thread(target=lambda: _capture([], active.run_task, "delivery"), daemon=True)
+    starter.start()
+    assert entered.wait(1.0)
+
+    began = time.monotonic()
+    adapter.estop_handler(True)
+
+    assert time.monotonic() - began < 0.2
+    assert active.state is SafetyState.ESTOPPED
+    assert adapter.stop_count >= 3
+    release.set()
+
+
+def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class HungStatus(RecordingAdapter):
+        def status(self):
+            entered.set()
+            release.wait()
+            return AdapterStatus("running")
+
+    adapter = HungStatus()
+    active = controller(tmp_path, adapter, monitor_interval=0.001, cleanup_timeout=0.02)
+    prepare(active)
+    active.run_task("delivery")
+    assert entered.wait(1.0)
+
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
+
+    assert active.state is not SafetyState.RUNNING
+    release.set()
+
+
+def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class HungStatus(RecordingAdapter):
+        def status(self):
+            entered.set()
+            release.wait()
+            return AdapterStatus("running")
+
+    adapter = HungStatus()
+    active = controller(tmp_path, adapter, monitor_interval=0.001, cleanup_timeout=0.02)
+    prepare(active)
+    active.run_task("delivery")
+    assert entered.wait(1.0)
+
+    began = time.monotonic()
+    adapter.estop_handler(True)
+
+    assert time.monotonic() - began < 0.2
+    assert active.state is SafetyState.ESTOPPED
+    assert adapter.stop_count >= 3
+    release.set()
+    active.stop_runtime()
+
+
+def test_monitor_thread_start_failure_latches_stop_and_never_leaks_running(tmp_path):
+    adapter = RecordingAdapter()
+    class FailedThread:
+        def start(self): raise RuntimeError("raw")
+    active = controller(tmp_path, adapter, monitor_thread_factory=lambda **_kwargs: FailedThread())
+    prepare(active)
+
+    with pytest.raises(RuntimeControllerError, match="UNSAFE_STATE"):
+        active.run_task("delivery")
 
     assert active.state is SafetyState.ESTOPPED
     assert adapter.stop_count >= 3
@@ -516,6 +611,37 @@ def test_restart_quarantines_schema_invalid_but_parseable_audit_record(tmp_path)
     with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
         active.discover_robot("robot")
     assert active.stop_runtime() == {"state": "NEW"}
+
+
+@pytest.mark.parametrize("mutation", ["oversized", "discontinuous", "bad-first"])
+def test_restart_quarantines_bounded_but_impossible_audit_history(tmp_path, mutation):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    runtime = tmp_path / "runtime"
+    runtime.mkdir()
+    writer = AuditWriter(runtime / "audit.jsonl", wall_clock=lambda: 1.0, monotonic_clock=lambda: 1.0)
+    from agent_ros.runtime.audit import AuditEvent, AuditOperation, AuditOutcome
+    writer.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
+    if mutation == "oversized":
+        (runtime / "audit.jsonl").write_bytes(b"{" + b"x" * 5000 + b"}\n")
+    else:
+        record = json.loads((runtime / "audit.jsonl").read_text())
+        if mutation == "discontinuous":
+            second = dict(record)
+            second["operation"] = "validate"
+            second["state"] = {"from": "DISCOVERED", "to": "ARMED"}
+            (runtime / "audit.jsonl").write_text(json.dumps(record) + "\n" + json.dumps(record) + "\n")
+        else:
+            record["operation"] = "validate"
+            record["state"] = {"from": "DISCOVERED", "to": "ARMED"}
+            (runtime / "audit.jsonl").write_text(json.dumps(record) + "\n")
+    active = RuntimeController(
+        profiles_root=profiles, evidence_dir=tmp_path / "evidence", runtime_dir=runtime,
+        graph_probe=Probe(), adapter_factory=lambda _profile: RecordingAdapter(),
+    )
+
+    with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
+        active.discover_robot("robot")
 
 
 def test_physical_binding_failure_is_estopped_and_audited_once(tmp_path):

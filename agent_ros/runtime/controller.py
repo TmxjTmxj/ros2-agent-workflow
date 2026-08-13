@@ -23,6 +23,7 @@ from agent_ros.runtime.audit import (
     AuditOperation,
     AuditOutcome,
     AuditWriter,
+    validate_audit_history,
 )
 from agent_ros.runtime.evidence import EvidenceError, EvidenceReference, EvidenceStore
 from agent_ros.safety.gateway import SafetyError, SafetyGateway
@@ -40,6 +41,7 @@ _PUBLIC_CODES = frozenset({
     "AUDIT_INTEGRITY_COMPROMISED",
     "ESTOP_LATCHED",
     "OPERATOR_REQUIRED",
+    "CLEANUP_FAILED",
 })
 
 
@@ -69,6 +71,8 @@ class RuntimeController:
         clock: Callable[[], float] = time.monotonic,
         boot_id: Callable[[], str] | None = None,
         monitor_interval: float = 0.05,
+        cleanup_timeout: float = 1.0,
+        monitor_thread_factory: Callable[..., threading.Thread] = threading.Thread,
     ) -> None:
         self._profiles_root = Path(profiles_root)
         self._runtime_dir = Path(runtime_dir)
@@ -82,6 +86,8 @@ class RuntimeController:
         self._clock = clock
         self._boot_id = boot_id
         self._monitor_interval = monitor_interval
+        self._cleanup_timeout = cleanup_timeout
+        self._monitor_thread_factory = monitor_thread_factory
         self._lock = threading.RLock()
         self._monitor_stop = threading.Event()
         self._monitor_thread: threading.Thread | None = None
@@ -93,6 +99,9 @@ class RuntimeController:
         self._stage_index = 0
         self._stage_deadline: float | None = None
         self._observed_gateway_state = SafetyState.NEW
+        self._generation = 0
+        self._cancel_requested = False
+        self._last_status = None
         self._report = None
         self._quarantined = self._quarantine_path.exists() or not self._existing_audit_is_valid()
         if self._quarantined and not self._quarantine_path.exists():
@@ -130,13 +139,14 @@ class RuntimeController:
         gateway = SafetyGateway(
             profile,
             runtime_dir=self._runtime_dir,
-            stop_callback=adapter.stop,
+            stop_callback=lambda: self._issue_adapter_stop(adapter),
             clock=self._clock,
             boot_id=self._boot_id,
         )
         self._profile = profile
         self._adapter = adapter
         self._gateway = gateway
+        self._generation += 1
         self._report = report
         try:
             bound = adapter.bind_physical_estop(self._physical_estop)
@@ -212,44 +222,62 @@ class RuntimeController:
             if dry_run:
                 return {"dry_run": True, "profile": profile.name, "task": task.name}
             before = gateway.state
+            generation = self._generation
+            gateway.start_task()
+            request = HospitalAction.START if isinstance(adapter, HospitalDeliveryAdapter) else task.stages[0]
+        try:
+            start_status = adapter.start(request)
+            if gateway.state is not SafetyState.RUNNING:
+                adapter.stop()
+                raise RuntimeControllerError("ESTOP_LATCHED")
+            gateway.heartbeat()
+        except RuntimeControllerError:
+            self._latch_adapter_fault()
+            raise
+        except AdapterError as exc:
+            self._latch_adapter_fault()
+            raise self._adapter_error(exc) from None
+        except SafetyError as exc:
+            self._latch_adapter_fault()
+            raise self._safety_error(exc) from None
+        except Exception:
+            self._latch_adapter_fault()
+            raise RuntimeControllerError("UNSAFE_STATE") from None
+        with self._lock:
+            stale_start = generation != self._generation or gateway.state is not SafetyState.RUNNING
+        if stale_start:
             try:
-                gateway.start_task()
-                request = HospitalAction.START if isinstance(adapter, HospitalDeliveryAdapter) else task.stages[0]
-                adapter.start(request)
-                if gateway.state is not SafetyState.RUNNING:
-                    adapter.stop()
-                    raise RuntimeControllerError("ESTOP_LATCHED")
-                gateway.heartbeat()
-            except RuntimeControllerError:
-                self._latch_adapter_fault()
-                raise
-            except AdapterError as exc:
-                self._latch_adapter_fault()
-                raise self._adapter_error(exc) from None
-            except SafetyError as exc:
-                self._latch_adapter_fault()
-                raise self._safety_error(exc) from None
-            except Exception:
-                self._latch_adapter_fault()
-                raise RuntimeControllerError("UNSAFE_STATE") from None
+                adapter.stop()
+            finally:
+                raise RuntimeControllerError("ESTOP_LATCHED")
+        with self._lock:
             self._task = task
+            self._last_status = start_status
+            self._cancel_requested = False
             self._stage_index = 0
             self._stage_deadline = self._clock() + task.stages[0].timeout
+            self._observed_gateway_state = gateway.state
+        try:
             self._append_audit(
                 AuditOperation.START_TASK,
                 before,
                 gateway.state,
                 operation_data={"task": task.name},
             )
-            self._observed_gateway_state = gateway.state
             self._start_monitor()
-            return {"state": gateway.state.value, "task": task.name}
+        except RuntimeControllerError:
+            self._latch_adapter_fault()
+            raise
+        except Exception:
+            self._latch_adapter_fault()
+            raise RuntimeControllerError("UNSAFE_STATE") from None
+        return {"state": gateway.state.value, "task": task.name}
 
     def task_status(self) -> dict[str, object]:
         with self._lock:
             self._ensure_available()
             gateway, _adapter, _profile = self._active()
-            status = self._poll_running() if gateway.state is SafetyState.RUNNING else None
+            status = self._last_status
             return {
                 "state": gateway.state.value,
                 "task": None if self._task is None else self._task.name,
@@ -263,31 +291,45 @@ class RuntimeController:
             if gateway.state is not SafetyState.RUNNING:
                 raise RuntimeControllerError("UNSAFE_STATE")
             before = gateway.state
-            try:
-                status = adapter.cancel()
+            generation = self._generation
+        try:
+            status = adapter.cancel()
+            if generation != self._generation or gateway.state is not SafetyState.RUNNING:
+                raise RuntimeControllerError("ESTOP_LATCHED")
+            if status.state == "faulted":
+                self._latch_adapter_fault()
+                raise RuntimeControllerError("UNSAFE_STATE")
+            if status.state == "cancelled":
                 gateway.cancel()
-            except AdapterError as exc:
-                self._latch_adapter_fault()
-                raise self._adapter_error(exc) from None
-            except SafetyError as exc:
-                self._latch_adapter_fault()
-                raise self._safety_error(exc) from None
-            except Exception:
-                self._latch_adapter_fault()
-                raise RuntimeControllerError("UNSAFE_STATE") from None
-            self._append_audit(AuditOperation.CANCEL, before, gateway.state)
+        except AdapterError as exc:
+            self._latch_adapter_fault()
+            raise self._adapter_error(exc) from None
+        except SafetyError as exc:
+            self._latch_adapter_fault()
+            raise self._safety_error(exc) from None
+        except RuntimeControllerError:
+            raise
+        except Exception:
+            self._latch_adapter_fault()
+            raise RuntimeControllerError("UNSAFE_STATE") from None
+        with self._lock:
+            self._cancel_requested = status.state == "cancelling"
             self._observed_gateway_state = gateway.state
-            self._monitor_stop.set()
-            return {"state": gateway.state.value, "adapter_state": status.state}
+            if status.state == "cancelled":
+                self._monitor_stop.set()
+        if status.state == "cancelled":
+            self._append_audit(AuditOperation.CANCEL, before, gateway.state)
+        return {"state": gateway.state.value, "adapter_state": status.state}
 
     def emergency_stop(self) -> dict[str, object]:
         with self._lock:
             self._ensure_available()
             gateway, _adapter, _profile = self._active()
             before = gateway.state
-            gateway.estop()
-            if gateway.state is not before:
-                self._append_audit(AuditOperation.ESTOP, before, gateway.state)
+        gateway.estop()
+        if gateway.state is not before:
+            self._append_audit(AuditOperation.ESTOP, before, gateway.state)
+        with self._lock:
             self._observed_gateway_state = gateway.state
             self._monitor_stop.set()
             return {"state": gateway.state.value}
@@ -315,27 +357,31 @@ class RuntimeController:
         with self._lock:
             self._monitor_stop.set()
             gateway = self._gateway
-            if gateway is None:
-                result = {"state": SafetyState.NEW.value}
-            else:
-                if gateway.state is SafetyState.RUNNING:
-                    try:
-                        assert self._adapter is not None
-                        self._adapter.cancel()
-                    except Exception:
-                        try:
-                            self._adapter.stop()
-                        except Exception:
-                            pass
+            adapter = self._adapter
+            self._generation += 1
+        if gateway is None:
+            result = {"state": SafetyState.NEW.value}
+            cleanup_failed = False
+        else:
+            cleanup_failed = False
+            if gateway.state is SafetyState.RUNNING:
+                completed, status = self._bounded_adapter_call(adapter.cancel if adapter is not None else lambda: None)
+                cleanup_failed = not completed
+                if completed and getattr(status, "state", None) == "cancelled":
                     try:
                         gateway.cancel()
                     except SafetyError:
-                        pass
-                gateway.close()
-                result = {"state": gateway.state.value}
+                        gateway.estop()
+                else:
+                    gateway.estop()
+            gateway.close()
+            result = {"state": gateway.state.value}
         thread = self._monitor_thread
         if thread is not None and thread is not threading.current_thread():
-            thread.join(timeout=1.0)
+            thread.join(timeout=self._cleanup_timeout)
+            cleanup_failed = cleanup_failed or thread.is_alive()
+        if cleanup_failed:
+            raise RuntimeControllerError("CLEANUP_FAILED")
         return result
 
     def _load_compatible_task(self, task_name: str, profile: RobotProfile) -> TaskProfile:
@@ -379,18 +425,19 @@ class RuntimeController:
         return names[0]
 
     def _physical_estop(self, asserted: bool) -> None:
-        with self._lock:
-            if asserted is not True or self._gateway is None:
+        gateway = self._gateway
+        if asserted is not True or gateway is None:
+            return
+        before = gateway.state
+        gateway.observe_physical_estop(True)
+        self._generation += 1
+        self._monitor_stop.set()
+        if gateway.state is not before:
+            try:
+                self._append_audit(AuditOperation.ESTOP, before, gateway.state)
+            except RuntimeControllerError:
                 return
-            before = self._gateway.state
-            self._gateway.observe_physical_estop(True)
-            if self._gateway.state is not before:
-                try:
-                    self._append_audit(AuditOperation.ESTOP, before, self._gateway.state)
-                except RuntimeControllerError:
-                    return
-            self._observed_gateway_state = self._gateway.state
-            self._monitor_stop.set()
+        self._observed_gateway_state = gateway.state
 
     def _latch_adapter_fault(self) -> None:
         if self._gateway is not None:
@@ -403,41 +450,58 @@ class RuntimeController:
 
     def _start_monitor(self) -> None:
         self._monitor_stop.clear()
-        self._monitor_thread = threading.Thread(target=self._monitor_loop, name="agent-ros-task-monitor", daemon=True)
+        self._monitor_thread = self._monitor_thread_factory(target=self._monitor_loop, name="agent-ros-task-monitor", daemon=True)
         self._monitor_thread.start()
 
     def _monitor_loop(self) -> None:
         while not self._monitor_stop.wait(self._monitor_interval):
+            audit_fault = False
             with self._lock:
-                if self._gateway is None:
+                gateway = self._gateway
+                if gateway is None:
                     return
-                if self._gateway.state is SafetyState.FAULTED:
-                    if self._observed_gateway_state is SafetyState.RUNNING:
-                        try:
-                            self._append_audit(
-                                AuditOperation.HEARTBEAT,
-                                SafetyState.RUNNING,
-                                SafetyState.FAULTED,
-                                outcome=AuditOutcome.FAULTED,
-                            )
-                        except RuntimeControllerError:
-                            pass
+                if gateway.state is SafetyState.FAULTED:
+                    audit_fault = self._observed_gateway_state is SafetyState.RUNNING
                     self._observed_gateway_state = SafetyState.FAULTED
+                elif gateway.state is not SafetyState.RUNNING:
                     return
-                if self._gateway.state is not SafetyState.RUNNING:
-                    return
+            if audit_fault:
                 try:
-                    self._poll_running()
+                    self._append_audit(
+                        AuditOperation.HEARTBEAT,
+                        SafetyState.RUNNING,
+                        SafetyState.FAULTED,
+                        outcome=AuditOutcome.FAULTED,
+                    )
                 except RuntimeControllerError:
-                    return
+                    pass
+                return
+            try:
+                self._poll_running()
+            except RuntimeControllerError:
+                return
 
     def _poll_running(self):
-        gateway, adapter, _profile = self._active()
-        if self._stage_deadline is not None and self._clock() > self._stage_deadline:
+        with self._lock:
+            gateway, adapter, _profile = self._active()
+            deadline = self._stage_deadline
+            generation = self._generation
+        if deadline is not None and self._clock() > deadline:
             self._latch_adapter_fault()
             raise RuntimeControllerError("TIMEOUT")
         try:
             status = adapter.status()
+            with self._lock:
+                self._last_status = status
+            if generation != self._generation or gateway.state is not SafetyState.RUNNING:
+                return status
+            if status.state == "cancelled" and self._cancel_requested:
+                before = gateway.state
+                gateway.cancel()
+                self._append_audit(AuditOperation.CANCEL, before, gateway.state)
+                self._observed_gateway_state = gateway.state
+                self._monitor_stop.set()
+                return status
             if status.state in {"failed", "faulted", "rejected", "cancelled"}:
                 self._latch_adapter_fault()
                 raise RuntimeControllerError("UNSAFE_STATE")
@@ -446,7 +510,11 @@ class RuntimeController:
                     self._stage_index += 1
                     stage = self._task.stages[self._stage_index]
                     adapter.start(stage)
-                    self._stage_deadline = self._clock() + stage.timeout
+                    if generation != self._generation or gateway.state is not SafetyState.RUNNING:
+                        adapter.stop()
+                        raise RuntimeControllerError("ESTOP_LATCHED")
+                    with self._lock:
+                        self._stage_deadline = self._clock() + stage.timeout
                 else:
                     before = gateway.state
                     adapter.stop()
@@ -471,6 +539,38 @@ class RuntimeController:
         except Exception:
             self._latch_adapter_fault()
             raise RuntimeControllerError("UNSAFE_STATE") from None
+
+    def _bounded_adapter_call(self, function: Callable[[], object]) -> tuple[bool, object | None]:
+        completed = threading.Event()
+        result: list[object] = []
+
+        def invoke() -> None:
+            try:
+                result.append(function())
+            except Exception:
+                pass
+            finally:
+                completed.set()
+
+        threading.Thread(target=invoke, name="agent-ros-cleanup-call", daemon=True).start()
+        done = completed.wait(self._cleanup_timeout)
+        return done, (result[0] if result else None)
+
+    @staticmethod
+    def _issue_adapter_stop(adapter: RobotAdapter) -> None:
+        """Dispatch the safety stop without waiting for an adapter's arbitrary locks."""
+        entered = threading.Event()
+
+        def invoke() -> None:
+            entered.set()
+            try:
+                adapter.stop()
+            except Exception:
+                return
+
+        worker = threading.Thread(target=invoke, name="agent-ros-emergency-stop", daemon=True)
+        worker.start()
+        entered.wait(0.05)
 
     def _append_audit(
         self,
@@ -524,12 +624,8 @@ class RuntimeController:
             return True
         try:
             raw = self._audit_path.read_bytes()
-            if raw and not raw.endswith(b"\n"):
-                return False
-            for line in raw.splitlines():
-                record = json.loads(line)
-                AuditWriter.validate_record(record)
-        except (OSError, UnicodeDecodeError, json.JSONDecodeError, AuditError):
+            validate_audit_history(raw)
+        except (OSError, AuditError):
             return False
         return True
 

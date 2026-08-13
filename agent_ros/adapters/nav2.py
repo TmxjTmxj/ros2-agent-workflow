@@ -96,15 +96,18 @@ class Nav2Adapter(RobotAdapter):
             self.stop()
             raise AdapterError("STALE_FEEDBACK") from None
         if isinstance(raw, AdapterStatus):
+            if raw.state == "faulted":
+                self._cancel_sent = False
             return raw
         if isinstance(raw, dict) and isinstance(raw.get("state"), str):
+            if raw["state"] == "faulted":
+                self._cancel_sent = False
             return AdapterStatus(raw["state"])
         raise AdapterError("STALE_FEEDBACK")
 
     def cancel(self) -> AdapterStatus:
         self.stop()
-        self._state = "cancelled"
-        return AdapterStatus(self._state)
+        return self.status()
 
     def stop(self) -> None:
         if not self._cancel_sent:
@@ -118,7 +121,12 @@ class Nav2Adapter(RobotAdapter):
                 self._transport.publish_zero()
             except Exception:
                 continue
-        self._state = "stopped"
+        try:
+            state = self.status().state
+        except AdapterError:
+            self._state = "faulted"
+            raise
+        self._state = "cancelled" if state == "cancelled" else ("faulted" if state == "faulted" else "cancelling")
 
     def observe(self, source: str) -> Observation:
         if source not in self._profile.observation_sources:
@@ -133,7 +141,7 @@ class Nav2Adapter(RobotAdapter):
 class RclpyNav2Transport:
     """Typed rclpy ActionClient transport with no caller-provided action type."""
 
-    def __init__(self, node, action_name: str, command_topic: str, estop_topic: str) -> None:
+    def __init__(self, node, action_name: str, command_topic: str, estop_topic: str, *, cancel_timeout: float = 1.0, clock: Callable[[], float] = time.monotonic) -> None:
         try:
             from geometry_msgs.msg import Twist
             from nav2_msgs.action import NavigateToPose
@@ -151,6 +159,10 @@ class RclpyNav2Transport:
         self._cancel_requested = False
         import threading
         self._lock = threading.RLock()
+        self._clock = clock
+        self._cancel_timeout = cancel_timeout
+        self._cancel_deadline = None
+        self._cancel_generation = 0
         self._estop_handlers: list[Callable[[bool], None]] = []
 
         def estop_callback(message) -> None:
@@ -183,8 +195,9 @@ class RclpyNav2Transport:
             self._goal_handle = handle
             if self._cancel_requested:
                 if handle is not None and handle.accepted:
-                    handle.cancel_goal_async()
-                self._state = "cancelled"
+                    self._begin_cancel(handle)
+                elif handle is None or not handle.accepted:
+                    self._state = "cancelled"
                 return
             self._state = "running" if handle is not None and handle.accepted else "rejected"
             if self._state == "running":
@@ -209,14 +222,41 @@ class RclpyNav2Transport:
 
     def goal_status(self) -> object:
         with self._lock:
+            deadline = getattr(self, "_cancel_deadline", None)
+            clock = getattr(self, "_clock", time.monotonic)
+            if self._state == "cancelling" and deadline is not None and clock() > deadline:
+                self._state = "faulted"
             return {"state": self._state}
 
     def cancel_goal(self) -> None:
         with self._lock:
             self._cancel_requested = True
-            self._state = "cancelled"
+            self._state = "cancelling"
+            self._cancel_deadline = getattr(self, "_clock", time.monotonic)() + getattr(self, "_cancel_timeout", 1.0)
             if self._goal_handle is not None:
-                self._goal_handle.cancel_goal_async()
+                self._begin_cancel(self._goal_handle)
+
+    def _begin_cancel(self, handle) -> None:
+        try:
+            self._cancel_generation = getattr(self, "_cancel_generation", 0) + 1
+            generation = self._cancel_generation
+            future = handle.cancel_goal_async()
+            future.add_done_callback(lambda completed: self._cancel_response(completed, generation))
+        except Exception:
+            self._state = "faulted"
+
+    def _cancel_response(self, future, generation: int) -> None:
+        with self._lock:
+            if generation != getattr(self, "_cancel_generation", generation):
+                return
+            try:
+                response = future.result()
+                accepted = bool(getattr(response, "goals_canceling", ()))
+            except Exception:
+                self._state = "faulted"
+                return
+            self._state = "cancelled" if accepted else "faulted"
+            self._cancel_deadline = None
 
     def publish_zero(self) -> None:
         self._publisher.publish(self._twist_type())

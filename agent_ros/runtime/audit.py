@@ -224,6 +224,28 @@ class AuditWriter:
             raise AuditIntegrityError() from None
 
 
+def validate_audit_history(raw: bytes) -> None:
+    """Validate bounded records plus plausible cross-record state continuity."""
+    if raw and not raw.endswith(b"\n"):
+        raise AuditError("invalid audit history")
+    previous_after: SafetyState | None = None
+    for index, line in enumerate(raw.splitlines()):
+        if not line or len(line) + 1 > _MAX_RECORD_BYTES:
+            raise AuditError("invalid audit history")
+        try:
+            record = json.loads(line)
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            raise AuditError("invalid audit history") from None
+        AuditWriter.validate_record(record)
+        before = SafetyState(record["state"]["from"])
+        after = SafetyState(record["state"]["to"])
+        if index == 0 and before is not SafetyState.NEW:
+            raise AuditError("invalid audit history")
+        if previous_after is not None and before is not previous_after:
+            raise AuditError("invalid audit history")
+        previous_after = after
+
+
 def _finite_clock(value: object) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value):
         raise AuditError("invalid audit clock")
