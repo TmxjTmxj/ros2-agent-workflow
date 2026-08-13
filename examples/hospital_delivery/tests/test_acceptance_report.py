@@ -5,15 +5,19 @@ import cv2
 import numpy as np
 import pytest
 
+from scripts import verify_acceptance
 from scripts.verify_acceptance import is_prohibited_robot_contact, validate_acceptance_report
 
 
 @pytest.fixture
 def valid_report(tmp_path):
     camera = tmp_path / "camera.png"
+    initial_camera = tmp_path / "initial-camera.png"
     assert cv2.imwrite(str(camera), np.zeros((4, 6, 3), dtype=np.uint8))
+    assert cv2.imwrite(str(initial_camera), np.ones((4, 6, 3), dtype=np.uint8))
     return {
         "schema_version": 2,
+        "metric_source": "odometry",
         "mission_state": "SUCCEEDED",
         "failure_code": None,
         "stages": [
@@ -30,6 +34,20 @@ def valid_report(tmp_path):
             "bytes": camera.stat().st_size,
             "width": 6,
             "height": 4,
+        },
+        "initial_camera": {
+            "path": str(initial_camera),
+            "bytes": initial_camera.stat().st_size,
+            "width": 6,
+            "height": 4,
+        },
+        "odometry_evidence": {
+            "topic": "/odom",
+            "sample_count": 260,
+            "monitor_started_monotonic": 1.0,
+            "mission_started_monotonic": 2.0,
+            "terminal_monotonic": 128.0,
+            "monitor_stopped_monotonic": 131.0,
         },
         "publisher_evidence": {
             "monitor_started_unix": 1.0,
@@ -67,6 +85,30 @@ def test_valid_report_passes_and_sets_boolean(valid_report):
     assert valid_report["validation_errors"] == []
 
 
+def test_forged_success_status_cannot_replace_independent_odometry_metrics():
+    derive = getattr(verify_acceptance, "derive_odom_metrics", None)
+    assert callable(derive)
+    route = {
+        "stages": [
+            {"id": "pharmacy", "endpoint": [1.0, 0.0]},
+            {"id": "ward2", "endpoint": [2.0, 0.0]},
+            {"id": "laboratory", "endpoint": [3.0, 0.0]},
+        ]
+    }
+    samples = [
+        {"at_monotonic": 10.0, "x": 0.0, "y": 0.0},
+        {"at_monotonic": 11.0, "x": 0.1, "y": 0.0},
+        {"at_monotonic": 14.0, "x": 0.1, "y": 0.0},
+    ]
+
+    metrics = derive(route, samples, mission_started_monotonic=10.0, terminal_monotonic=11.0)
+
+    assert metrics["metric_source"] == "odometry"
+    assert [stage["reached"] for stage in metrics["stages"]] == [False, False, False]
+    assert metrics["stages"][0]["endpoint_error"] == pytest.approx(0.9)
+    assert metrics["stopped_drift_m"] == pytest.approx(0.0)
+
+
 @pytest.mark.parametrize(
     ("first", "second", "prohibited"),
     [
@@ -100,6 +142,12 @@ def test_contact_filter_covers_all_robot_parts(first, second, prohibited):
                 {"node": "/late_cli", "gid": "late-gid"}
             ),
             "publisher sample",
+        ),
+        (
+            lambda report: report["publisher_evidence"]["samples"][4]["endpoints"][0].update(
+                gid="replacement-gid"
+            ),
+            "publisher GID",
         ),
         (
             lambda report: report["contact_evidence"]["prohibited_contacts"].append(
@@ -175,6 +223,13 @@ def test_missing_or_fake_camera_fails(valid_report):
     assert any("camera" in error for error in errors)
 
 
+def test_missing_or_fake_initial_camera_fails(valid_report):
+    camera = valid_report["initial_camera"]["path"]
+    __import__("pathlib").Path(camera).unlink()
+    errors = validate_acceptance_report(valid_report)
+    assert any("initial camera" in error for error in errors)
+
+
 def test_png_signature_without_decodable_pixels_fails(valid_report):
     camera = __import__("pathlib").Path(valid_report["camera"]["path"])
     camera.write_bytes(b"\x89PNG\r\n\x1a\nnot-an-image")
@@ -193,3 +248,34 @@ def test_validate_mode_rejects_report_whose_saved_passed_flag_lies(tmp_path, val
     errors = validate_acceptance_report(json.loads(path.read_text()))
 
     assert errors == []
+
+
+@pytest.mark.parametrize(
+    ("mutation", "expected"),
+    [
+        (lambda report: report.update(elapsed_seconds=-1.0), "elapsed"),
+        (lambda report: report.update(stopped_drift_m=-0.1), "drift"),
+        (lambda report: report["stages"][0].update(endpoint_error=-0.1), "endpoint error"),
+        (lambda report: report.update(elapsed_seconds=float("nan")), "elapsed"),
+        (
+            lambda report: report["publisher_evidence"].update(monitor_stopped_unix=-1.0),
+            "timestamps",
+        ),
+    ],
+)
+def test_acceptance_numbers_are_finite_nonnegative_and_forward_moving(
+    valid_report, mutation, expected
+):
+    mutation(valid_report)
+    errors = validate_acceptance_report(valid_report)
+    assert any(expected in error for error in errors)
+
+
+def test_validate_mode_rejects_nonstandard_json_nan(tmp_path, valid_report):
+    path = tmp_path / "report.json"
+    path.write_text(json.dumps(valid_report).replace("126.0", "NaN"), encoding="utf-8")
+    load_strict = getattr(verify_acceptance, "load_strict_json", None)
+    assert callable(load_strict)
+
+    with pytest.raises(ValueError, match="non-finite"):
+        load_strict(path)

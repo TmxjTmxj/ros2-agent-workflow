@@ -24,6 +24,7 @@ class SafetyError(RuntimeError):
 
 _REQUIRED_CAPABILITY = {
     "twist": "mobile_base.twist",
+    "hospital_delivery": "mobile_base.twist",
     "nav2": "navigation.nav2",
     "follow_joint_trajectory": "manipulation.follow_joint_trajectory",
 }
@@ -371,7 +372,7 @@ class SafetyGateway:
 
     def _interfaces_match(self, report: DiscoveryReport) -> bool:
         interfaces = self._profile.interfaces
-        if self._profile.adapter.kind == "twist":
+        if self._profile.adapter.kind in {"twist", "hospital_delivery"}:
             return (
                 interfaces.command is not None
                 and interfaces.odometry is not None

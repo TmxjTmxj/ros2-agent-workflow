@@ -208,6 +208,7 @@ def get_runtime_controller() -> RuntimeController:
                 evidence_dir=_EVIDENCE_ROOT,
                 runtime_dir=_RUNTIME_ROOT,
                 adapter_factory=adapter_factory,
+                cleanup_timeout=_DEFAULT_TIMEOUT,
             )
         return _controller
 

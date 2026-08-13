@@ -10,6 +10,7 @@ import pytest
 
 from agent_ros.adapters.base import AdapterError
 from agent_ros.adapters.factory import RclpyAdapterFactory
+from agent_ros.adapters import hospital as hospital_adapter
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.profiles.models import RobotProfile
 from mcp_server import ros2_mcp_server
@@ -236,7 +237,29 @@ def _twist_profile() -> RobotProfile:
     })
 
 
-def test_production_singleton_discovers_with_repository_owned_twist_factory(
+def _hospital_profile() -> RobotProfile:
+    return RobotProfile.from_mapping({
+        "name": "hospital-amr",
+        "mode": "simulation",
+        "namespace": "/hospital_amr",
+        "frames": {"base": "base_link", "odom": "odom"},
+        "adapter": {"kind": "hospital_delivery"},
+        "interfaces": {
+            "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
+            "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
+        },
+        "limits": {
+            "max_linear_velocity": 0.5,
+            "max_angular_velocity": 1.0,
+            "max_linear_acceleration": 0.5,
+            "max_angular_acceleration": 1.0,
+        },
+        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
+        "observation_sources": ["odometry", "camera", "scan"],
+    })
+
+
+def test_production_singleton_discovers_with_repository_owned_hospital_factory(
     monkeypatch, tmp_path
 ):
     _install_fake_ros(monkeypatch)
@@ -248,13 +271,29 @@ def test_production_singleton_discovers_with_repository_owned_twist_factory(
     result = controller.discover_robot("hospital-amr")
 
     assert result["state"] == "DISCOVERED"
-    assert isinstance(controller._adapter, TwistAdapter)
-    assert len(FakeExecutor.instances) == 1
-    assert FakeExecutor.instances[0].spin_started.wait(0.2)
-    assert controller._adapter._transport._publisher is not None
+    adapter_type = getattr(hospital_adapter, "HospitalCaseAdapter", None)
+    assert adapter_type is not None
+    assert isinstance(controller._adapter, adapter_type)
+    assert FakeExecutor.instances == []
     assert ros2_mcp_server.close_runtime_controller() is True
-    assert FakeExecutor.instances[0].nodes == []
-    assert FakeExecutor.instances[0].context.shutdown_called
+
+
+def test_production_factory_seals_hospital_client_and_never_starts_rclpy(monkeypatch):
+    _install_fake_ros(monkeypatch)
+    client_type = getattr(hospital_adapter, "HospitalLifecycleClient", None)
+    adapter_type = getattr(hospital_adapter, "HospitalCaseAdapter", None)
+    assert client_type is not None
+    assert adapter_type is not None
+
+    factory = RclpyAdapterFactory()
+    adapter = factory(_hospital_profile())
+
+    assert isinstance(adapter, adapter_type)
+    assert type(adapter._client) is client_type
+    assert FakeExecutor.instances == []
+    with pytest.raises(AdapterError, match="PROFILE_INVALID"):
+        adapter_type(lambda _action: {"state": "running"})
+    assert factory.close(0.5)
 
 
 def test_production_factory_rejects_unsupported_trajectory_without_starting_ros(
@@ -460,52 +499,43 @@ def test_singleton_keeps_partial_startup_poisoned_until_factory_cleanup_succeeds
     monkeypatch, tmp_path
 ):
     _install_fake_ros(monkeypatch)
-    GatedShutdownExecutor.instances.clear()
-    GatedShutdownExecutor.shutdown_allowed = False
-    monkeypatch.setattr(
-        sys.modules["rclpy.executors"],
-        "SingleThreadedExecutor",
-        GatedShutdownExecutor,
-    )
     from agent_ros.adapters import factory as factory_module
 
-    def fail_adapter_construction(*_args, **_kwargs):
-        raise RuntimeError("private ROS adapter construction detail")
+    real_adapter_type = factory_module.HospitalCaseAdapter
+    close_allowed = False
+    close_attempts = 0
 
-    monkeypatch.setattr(factory_module, "TwistAdapter", fail_adapter_construction)
+    class GatedCloseAdapter(real_adapter_type):
+        """Construction succeeds; close fails until allowed, then delegates."""
+
+        def close(self, timeout: float = 1.0) -> bool:
+            nonlocal close_attempts
+            close_attempts += 1
+            if not close_allowed:
+                return False
+            return super().close(timeout)
+
+    monkeypatch.setattr(factory_module, "HospitalCaseAdapter", GatedCloseAdapter)
     monkeypatch.setattr(subprocess, "run", _graph_cli)
     monkeypatch.setattr(ros2_mcp_server, "_RUNTIME_ROOT", tmp_path / "runtime")
     monkeypatch.setattr(ros2_mcp_server, "_EVIDENCE_ROOT", tmp_path / "evidence")
     controller = ros2_mcp_server.get_runtime_controller()
-    owned_thread = None
     try:
-        with pytest.raises(ros2_mcp_server.RuntimeControllerError) as startup_failure:
-            controller.discover_robot("hospital-amr")
-        assert startup_failure.value.code == "CLEANUP_FAILED"
-        assert len(GatedShutdownExecutor.instances) == 1
-        executor = GatedShutdownExecutor.instances[0]
-        owned_thread = controller._adapter_factory._thread
-        assert owned_thread is not None and owned_thread.is_alive()
-
+        controller.discover_robot("hospital-amr")
         assert ros2_mcp_server.close_runtime_controller() is False
-        assert executor.shutdown_attempts == 2
+        assert close_attempts == 1
         with pytest.raises(ros2_mcp_server.RuntimeControllerError) as poisoned:
             ros2_mcp_server.get_runtime_controller()
         assert poisoned.value.code == "CLEANUP_FAILED"
 
-        GatedShutdownExecutor.shutdown_allowed = True
+        close_allowed = True
         assert ros2_mcp_server.close_runtime_controller() is True
-        assert executor.shutdown_attempts == 3
-        assert not owned_thread.is_alive()
+        assert close_attempts == 2
         with ros2_mcp_server._controller_condition:
             assert ros2_mcp_server._controller is None
             assert ros2_mcp_server._controller_cleanup_failed is False
     finally:
-        GatedShutdownExecutor.shutdown_allowed = True
-        for executor in GatedShutdownExecutor.instances:
-            executor.stop.set()
-        if owned_thread is not None:
-            owned_thread.join(0.2)
+        close_allowed = True
         with ros2_mcp_server._controller_condition:
             ros2_mcp_server._controller = None
             ros2_mcp_server._evidence_store = None
@@ -518,35 +548,54 @@ def test_singleton_retry_clears_poison_only_after_owned_executor_is_reaped(
     monkeypatch, tmp_path
 ):
     _install_fake_ros(monkeypatch)
-    RetryableShutdownExecutor.instances.clear()
-    monkeypatch.setattr(
-        sys.modules["rclpy.executors"],
-        "SingleThreadedExecutor",
-        RetryableShutdownExecutor,
-    )
+    from agent_ros.adapters import factory as factory_module
+
+    real_adapter_type = factory_module.HospitalCaseAdapter
+    construction_attempts = 0
+    close_allowed = False
+
+    class FailFirstConstructionAdapter(real_adapter_type):
+        """Construction fails once; the retry constructs and closes cleanly."""
+
+        def __init__(self, client, *, clock=None):
+            nonlocal construction_attempts
+            construction_attempts += 1
+            if construction_attempts == 1:
+                raise AdapterError("PROFILE_INVALID")
+            if clock is None:
+                import time as _time
+
+                clock = _time.monotonic
+            super().__init__(client, clock=clock)
+
+        def close(self, timeout: float = 1.0) -> bool:
+            nonlocal close_allowed
+            if not close_allowed:
+                return False
+            return super().close(timeout)
+
+    monkeypatch.setattr(factory_module, "HospitalCaseAdapter", FailFirstConstructionAdapter)
     monkeypatch.setattr(subprocess, "run", _graph_cli)
     monkeypatch.setattr(ros2_mcp_server, "_RUNTIME_ROOT", tmp_path / "runtime")
     monkeypatch.setattr(ros2_mcp_server, "_EVIDENCE_ROOT", tmp_path / "evidence")
     controller = ros2_mcp_server.get_runtime_controller()
-    controller.discover_robot("hospital-amr")
-    executor = RetryableShutdownExecutor.instances[0]
-    owned_thread = controller._adapter._runtime_owner_close.__self__._thread
-    assert owned_thread is not None
     try:
-        assert ros2_mcp_server.close_runtime_controller() is False
-        assert owned_thread.is_alive()
-        with pytest.raises(ros2_mcp_server.RuntimeControllerError, match="CLEANUP_FAILED"):
-            ros2_mcp_server.get_runtime_controller()
+        with pytest.raises(ros2_mcp_server.RuntimeControllerError) as first_failure:
+            controller.discover_robot("hospital-amr")
+        assert first_failure.value.code == "PROFILE_INVALID"
+        assert construction_attempts == 1
+
+        close_allowed = True
+        result = controller.discover_robot("hospital-amr")
+        assert result["state"] == "DISCOVERED"
+        assert construction_attempts == 2
 
         assert ros2_mcp_server.close_runtime_controller() is True
-        assert executor.shutdown_attempts == 2
-        assert not owned_thread.is_alive()
         with ros2_mcp_server._controller_condition:
             assert ros2_mcp_server._controller is None
             assert ros2_mcp_server._controller_cleanup_failed is False
     finally:
-        executor.stop.set()
-        owned_thread.join(0.2)
+        close_allowed = True
         with ros2_mcp_server._controller_condition:
             ros2_mcp_server._controller = None
             ros2_mcp_server._evidence_store = None

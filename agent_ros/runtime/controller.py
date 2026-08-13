@@ -12,7 +12,7 @@ from typing import Protocol
 
 from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
 from agent_ros.adapters.base import AdapterError, HospitalAction, Observation, RobotAdapter
-from agent_ros.adapters.hospital import HospitalDeliveryAdapter
+from agent_ros.adapters.hospital import HospitalCaseAdapter, HospitalDeliveryAdapter
 from agent_ros.discovery.inference import infer_capabilities
 from agent_ros.discovery.ros_graph import RosGraphProbe
 from agent_ros.errors import DiscoveryError, ProfileValidationError
@@ -285,7 +285,11 @@ class RuntimeController:
                 permit = self._activation_issuer._issue()
             except _ActivationRejected as exc:
                 raise RuntimeControllerError(exc.code) from None
-            request = HospitalAction.START if isinstance(adapter, HospitalDeliveryAdapter) else task.stages[0]
+            request = (
+                HospitalAction.START
+                if isinstance(adapter, (HospitalDeliveryAdapter, HospitalCaseAdapter))
+                else task.stages[0]
+            )
         try:
             transition = gateway.start_task()
             self._append_transition(
@@ -323,7 +327,11 @@ class RuntimeController:
             self._last_status = start_status
             self._cancel_requested = False
             self._stage_index = 0
-            self._stage_deadline = self._clock() + task.stages[0].timeout
+            self._stage_deadline = self._clock() + (
+                sum(stage.timeout for stage in task.stages)
+                if isinstance(adapter, HospitalCaseAdapter)
+                else task.stages[0].timeout
+            )
             self._observed_gateway_state = gateway.state
             self._task_cleanup_started = False
         try:
@@ -675,6 +683,13 @@ class RuntimeController:
                 self._latch_adapter_fault()
                 raise RuntimeControllerError("UNSAFE_STATE")
             if status.state == "succeeded" and self._task is not None:
+                if isinstance(adapter, HospitalCaseAdapter):
+                    self._start_task_cleanup(adapter)
+                    transition = gateway.cancel()
+                    self._append_transition(AuditOperation.CANCEL, transition)
+                    self._observed_gateway_state = gateway.state
+                    self._monitor_stop.set()
+                    return status
                 if self._stage_index + 1 < len(self._task.stages):
                     self._stage_index += 1
                     stage = self._task.stages[self._stage_index]

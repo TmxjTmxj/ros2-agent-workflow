@@ -17,7 +17,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["kind"],
-      "properties": {"kind": {"enum": ["twist", "nav2", "follow_joint_trajectory"]}}
+      "properties": {"kind": {"enum": ["twist", "nav2", "follow_joint_trajectory", "hospital_delivery"]}}
     },
     "interfaces": {
       "type": "object",

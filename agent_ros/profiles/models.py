@@ -13,7 +13,7 @@ TWIST_TYPE = "geometry_msgs/msg/Twist"
 ODOMETRY_TYPE = "nav_msgs/msg/Odometry"
 NAVIGATE_TO_POSE_TYPE = "nav2_msgs/action/NavigateToPose"
 FOLLOW_JOINT_TRAJECTORY_TYPE = "control_msgs/action/FollowJointTrajectory"
-ADAPTER_KINDS = frozenset({"twist", "nav2", "follow_joint_trajectory"})
+ADAPTER_KINDS = frozenset({"twist", "nav2", "follow_joint_trajectory", "hospital_delivery"})
 
 
 def _mapping(value: object, label: str) -> Mapping[str, Any]:
@@ -155,6 +155,20 @@ class RobotProfile:
             trajectory=interface("trajectory", "action"),
         )
         _validate_adapter_interfaces(adapter.kind, interfaces)
+        if adapter.kind == "hospital_delivery" and (
+            name != "hospital-amr"
+            or mode != "simulation"
+            or namespace != "/hospital_amr"
+            or interfaces.command is None
+            or interfaces.command.topic != "/cmd_vel"
+            or interfaces.command.type != TWIST_TYPE
+            or interfaces.odometry is None
+            or interfaces.odometry.topic != "/odom"
+            or interfaces.odometry.type != ODOMETRY_TYPE
+        ):
+            raise ProfileValidationError(
+                "hospital delivery adapter is confined to the reviewed simulation case"
+            )
 
         limits_data = _mapping(data.get("limits"), "limits")
         _only_keys(limits_data, {
@@ -196,6 +210,11 @@ def _validate_adapter_interfaces(kind: str, interfaces: RobotInterfaces) -> None
     elif kind == "follow_joint_trajectory":
         if interfaces.trajectory is None or interfaces.trajectory.type != FOLLOW_JOINT_TRAJECTORY_TYPE:
             raise ProfileValidationError("trajectory adapter requires control_msgs/action/FollowJointTrajectory action type")
+    elif kind == "hospital_delivery":
+        if interfaces.command is None or interfaces.command.type != TWIST_TYPE:
+            raise ProfileValidationError("hospital delivery adapter requires the fixed Twist command interface")
+        if interfaces.odometry is None or interfaces.odometry.type != ODOMETRY_TYPE:
+            raise ProfileValidationError("hospital delivery adapter requires the fixed odometry interface")
 
 
 @dataclass(frozen=True, slots=True)

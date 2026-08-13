@@ -6,6 +6,7 @@ import threading
 import time
 
 from agent_ros.adapters.base import AdapterError, RobotAdapter
+from agent_ros.adapters.hospital import HospitalCaseAdapter, HospitalLifecycleClient
 from agent_ros.adapters.nav2 import Nav2Adapter, RclpyNav2Transport
 from agent_ros.adapters.twist import RclpyTwistTransport, TwistAdapter
 from agent_ros.profiles.models import TWIST_TYPE, RobotProfile
@@ -21,6 +22,7 @@ class RclpyAdapterFactory:
         self._executor = None
         self._thread: threading.Thread | None = None
         self._adapter: RobotAdapter | None = None
+        self._hospital_client: HospitalLifecycleClient | None = None
         self._executor_shutdown = True
         self._thread_joined = True
         self._node_removed = True
@@ -41,8 +43,13 @@ class RclpyAdapterFactory:
                 raise AdapterError("PROFILE_INVALID")
             constructor = self._adapter_constructor(profile)
             try:
-                self._start_runtime()
-                adapter = constructor(self._node)
+                if profile.adapter.kind == "hospital_delivery":
+                    client = HospitalLifecycleClient()
+                    self._hospital_client = client
+                    adapter = constructor(client)
+                else:
+                    self._start_runtime()
+                    adapter = constructor(self._node)
                 adapter._bind_runtime_owner(self.close)
                 self._adapter = adapter
                 return adapter
@@ -95,6 +102,14 @@ class RclpyAdapterFactory:
                     stale_after=profile.safety.heartbeat_timeout,
                 ),
             )
+        if profile.adapter.kind == "hospital_delivery":
+            if (
+                profile.name != "hospital-amr"
+                or profile.mode != "simulation"
+                or profile.namespace != "/hospital_amr"
+            ):
+                raise AdapterError("PROFILE_INVALID")
+            return lambda client: HospitalCaseAdapter(client)
         if profile.adapter.kind == "nav2":
             navigation = profile.interfaces.navigation
             command = profile.interfaces.command
@@ -158,6 +173,11 @@ class RclpyAdapterFactory:
 
     def _close_locked(self, timeout: float) -> bool:
         deadline = time.monotonic() + timeout
+        client = self._hospital_client
+        if client is not None:
+            if not client.close(max(0.0, deadline - time.monotonic())):
+                return False
+            self._hospital_client = None
         executor = self._executor
         thread = self._thread
         node = self._node
@@ -204,7 +224,13 @@ class RclpyAdapterFactory:
     def _owns_resources(self) -> bool:
         return any(
             resource is not None
-            for resource in (self._context, self._node, self._executor, self._thread)
+            for resource in (
+                self._context,
+                self._node,
+                self._executor,
+                self._thread,
+                self._hospital_client,
+            )
         )
 
     def _reset_resources(self) -> None:
@@ -213,6 +239,7 @@ class RclpyAdapterFactory:
         self._executor = None
         self._thread = None
         self._adapter = None
+        self._hospital_client = None
         self._executor_shutdown = True
         self._thread_joined = True
         self._node_removed = True

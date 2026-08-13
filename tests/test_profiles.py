@@ -8,6 +8,7 @@ import yaml
 
 from agent_ros.errors import ProfileValidationError
 from agent_ros.profiles.loader import load_robot_profile, load_task_profile
+from agent_ros.profiles.models import RobotProfile
 
 
 def _robot_document(**overrides):
@@ -187,9 +188,32 @@ def test_reviewed_hospital_profiles_load_from_repository_profiles_root():
     task = load_task_profile("hospital-delivery", root)
 
     assert robot.mode == "simulation"
-    assert robot.adapter.kind == "twist"
+    assert robot.adapter.kind == "hospital_delivery"
     assert tuple(stage.name for stage in task.stages) == (
         "corridor-to-pharmacy",
         "pharmacy-to-ward-2",
         "ward-2-to-laboratory",
     )
+
+
+def test_hospital_delivery_adapter_kind_is_confined_to_the_reviewed_simulation_case():
+    document = _robot_document(
+        name="hospital-amr",
+        mode="simulation",
+        namespace="/hospital_amr",
+        adapter={"kind": "hospital_delivery"},
+        observation_sources=["odometry", "camera", "scan"],
+    )
+    profile = RobotProfile.from_mapping(document)
+    assert profile.adapter.kind == "hospital_delivery"
+
+    for mutation in (
+        {"name": "another-robot"},
+        {"mode": "hardware"},
+        {"namespace": "/another"},
+        {"interfaces": {}},
+    ):
+        rejected = dict(document)
+        rejected.update(mutation)
+        with pytest.raises(ProfileValidationError, match="hospital delivery"):
+            RobotProfile.from_mapping(rejected)

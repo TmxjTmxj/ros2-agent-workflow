@@ -12,7 +12,12 @@ from agent_ros.adapters.base import (
     TwistCommand,
     create_adapter,
 )
-from agent_ros.adapters.hospital import HospitalDeliveryAdapter, HospitalSimulationRuntime
+from agent_ros.adapters.hospital import (
+    HospitalCaseAdapter,
+    HospitalDeliveryAdapter,
+    HospitalLifecycleClient,
+    HospitalSimulationRuntime,
+)
 from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.twist import TwistAdapter
 
@@ -21,7 +26,9 @@ __all__ = (
     "AdapterProbe",
     "AdapterStatus",
     "HospitalAction",
+    "HospitalCaseAdapter",
     "HospitalDeliveryAdapter",
+    "HospitalLifecycleClient",
     "HospitalSimulationRuntime",
     "Nav2Adapter",
     "NavigationGoal",

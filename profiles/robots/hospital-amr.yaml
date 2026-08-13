@@ -5,7 +5,7 @@ frames:
   base: base_link
   odom: odom
 adapter:
-  kind: twist
+  kind: hospital_delivery
 interfaces:
   command:
     topic: /cmd_vel

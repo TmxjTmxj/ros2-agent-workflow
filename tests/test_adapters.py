@@ -22,7 +22,12 @@ from agent_ros.adapters.base import (
     TwistCommand,
     create_adapter,
 )
-from agent_ros.adapters.hospital import HospitalDeliveryAdapter, HospitalSimulationRuntime
+from agent_ros.adapters.hospital import (
+    HospitalCaseAdapter,
+    HospitalDeliveryAdapter,
+    HospitalLifecycleClient,
+    HospitalSimulationRuntime,
+)
 from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.profiles.models import RobotProfile
@@ -1492,6 +1497,40 @@ def test_hospital_start_never_waits_then_dispatches_late_behind_runtime_lock(ada
     assert not blocked
     assert HospitalAction.START not in runtime.commands
     assert any(isinstance(error, AdapterError) and error.code == "INTERNAL_ERROR" for error in errors)
+
+
+def test_hospital_case_emergency_stop_uses_independent_fixed_worker_while_start_blocks(
+    monkeypatch, adapter_owner
+):
+    start_entered = threading.Event()
+    release_start = threading.Event()
+    stop_executed = threading.Event()
+
+    def fixed_call(self, suffix, *, timeout):
+        if suffix[0] == "start":
+            start_entered.set()
+            assert release_start.wait(1.0)
+            return {"ok": True, "running": True}
+        if suffix[0] == "mission-start":
+            return {"ok": True, "success": True}
+        if suffix[0] == "stop":
+            stop_executed.set()
+            return {"ok": True, "running": False}
+        raise AssertionError(suffix)
+
+    monkeypatch.setattr(HospitalLifecycleClient, "_run_fixed", fixed_call)
+    client = HospitalLifecycleClient()
+    adapter = HospitalCaseAdapter(client)
+    permit = valid_permit(adapter, adapter_owner)
+    adapter.start(HospitalAction.START, permit)
+    assert start_entered.wait(0.2)
+
+    result = adapter._emergency_stop(timeout=0.5)
+
+    assert result.successful
+    assert stop_executed.wait(0.2)
+    release_start.set()
+    assert adapter.close(1.0)
 
 
 def _capture(errors, function, *args):
