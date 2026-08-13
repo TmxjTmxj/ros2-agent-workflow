@@ -28,6 +28,7 @@ from agent_ros.runtime.audit import (
 )
 from agent_ros.runtime.evidence import EvidenceError, EvidenceReference, EvidenceStore
 from agent_ros.safety.gateway import SafetyError, SafetyGateway, SafetyTransition
+from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
 
 
@@ -98,6 +99,7 @@ class RuntimeController:
             tuple[AuditOperation, SafetyTransition, dict[str, object] | None, AuditOutcome],
         ] = {}
         self._audit_failure = False
+        self._audit_draining = False
         self._monitor_stop = threading.Event()
         self._monitor_thread: threading.Thread | None = None
         self._evidence = EvidenceStore(evidence_dir)
@@ -261,16 +263,15 @@ class RuntimeController:
             except _ActivationRejected as exc:
                 raise RuntimeControllerError(exc.code) from None
             request = HospitalAction.START if isinstance(adapter, HospitalDeliveryAdapter) else task.stages[0]
-        with self._audit_lock:
-            try:
-                transition = gateway.start_task()
-                self._append_transition(
-                    AuditOperation.START_TASK,
-                    transition,
-                    operation_data={"task": task.name},
-                )
-            except SafetyError as exc:
-                raise self._safety_error(exc) from None
+        try:
+            transition = gateway.start_task()
+            self._append_transition(
+                AuditOperation.START_TASK,
+                transition,
+                operation_data={"task": task.name},
+            )
+        except SafetyError as exc:
+            raise self._safety_error(exc) from None
         try:
             start_status = adapter.start(request, permit)
             if not adapter._permit_is_current(permit) or gateway.state is not SafetyState.RUNNING:
@@ -366,12 +367,12 @@ class RuntimeController:
         transition = gateway.estop()
         if transition is not None:
             self._append_transition(AuditOperation.ESTOP, transition)
-        accepted = (
-            transition.safety_enqueue_accepted
+        stop_result = (
+            transition.stop_result
             if transition is not None
-            else gateway.last_stop_accepted
+            else gateway.last_stop_result
         )
-        if not accepted:
+        if stop_result is None or not stop_result.successful:
             raise RuntimeControllerError("UNSAFE_STATE")
         with self._lock:
             self._observed_gateway_state = gateway.state
@@ -398,6 +399,11 @@ class RuntimeController:
             raise RuntimeControllerError("EVIDENCE_INVALID") from None
 
     def stop_runtime(self) -> dict[str, object]:
+        deadline = time.monotonic() + self._cleanup_timeout
+
+        def remaining() -> float:
+            return max(0.0, deadline - time.monotonic())
+
         with self._lock:
             self._monitor_stop.set()
             gateway = self._gateway
@@ -408,24 +414,17 @@ class RuntimeController:
         else:
             cleanup_failed = False
             if gateway.state in {SafetyState.RUNNING, SafetyState.ESTOPPED}:
-                transition = gateway.estop()
+                transition = gateway.estop(timeout=remaining())
                 if transition is not None:
                     self._register_transition(AuditOperation.ESTOP, transition)
                 if adapter is not None:
                     self._start_task_cleanup(adapter)
-                accepted = (
-                    transition.safety_enqueue_accepted
-                    if transition is not None
-                    else gateway.last_stop_accepted
-                )
-                cleanup_failed = not accepted and gateway.state is not SafetyState.ESTOPPED
-            cleanup_failed = not gateway.close(timeout=self._cleanup_timeout) or cleanup_failed
+            cleanup_failed = not gateway.close(timeout=remaining()) or cleanup_failed
             result = {"state": gateway.state.value}
         try:
             self._drain_pending_transitions()
         except RuntimeControllerError:
             cleanup_failed = True
-        deadline = time.monotonic() + self._cleanup_timeout
         owned = list(self._cleanup_threads)
         monitor = self._monitor_thread
         if monitor is not None:
@@ -433,13 +432,13 @@ class RuntimeController:
         for thread in owned:
             if thread is threading.current_thread():
                 continue
-            thread.join(timeout=max(0.0, deadline - time.monotonic()))
+            thread.join(timeout=remaining())
             cleanup_failed = cleanup_failed or thread.is_alive()
         cleanup_failed = cleanup_failed or self._cleanup_start_failed
         if adapter is not None:
             try:
                 cleanup_failed = (
-                    not adapter.close(max(0.0, deadline - time.monotonic()))
+                    not adapter.close(remaining())
                     or cleanup_failed
                 )
             except Exception:
@@ -503,12 +502,12 @@ class RuntimeController:
                 self._register_transition(AuditOperation.ESTOP, transition)
             except RuntimeControllerError:
                 return
-        accepted = (
-            transition.safety_enqueue_accepted
+        stop_result = (
+            transition.stop_result
             if transition is not None
-            else gateway.last_stop_accepted
+            else gateway.last_stop_result
         )
-        if not accepted:
+        if stop_result is None or not stop_result.successful:
             self._quarantined = True
             self._persist_quarantine()
         self._observed_gateway_state = gateway.state
@@ -573,6 +572,7 @@ class RuntimeController:
     def _monitor_loop(self) -> None:
         while not self._monitor_stop.wait(self._monitor_interval):
             audit_fault = False
+            drain_before_return = False
             with self._lock:
                 gateway = self._gateway
                 if gateway is None:
@@ -581,11 +581,13 @@ class RuntimeController:
                     audit_fault = self._observed_gateway_state is SafetyState.RUNNING
                     self._observed_gateway_state = SafetyState.FAULTED
                 elif gateway.state is not SafetyState.RUNNING:
-                    try:
-                        self._drain_pending_transitions()
-                    except RuntimeControllerError:
-                        pass
-                    return
+                    drain_before_return = True
+            if drain_before_return:
+                try:
+                    self._drain_pending_transitions()
+                except RuntimeControllerError:
+                    pass
+                return
             if audit_fault:
                 try:
                     self._append_latest_gateway_fault(gateway)
@@ -680,6 +682,13 @@ class RuntimeController:
     ) -> None:
         if not isinstance(transition, SafetyTransition):
             raise RuntimeControllerError("UNSAFE_STATE")
+        gateway = self._gateway
+        if gateway is None or not gateway.owns_transition(transition):
+            raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
+        if transition.stop_result is not None:
+            if operation_data is not None:
+                raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
+            operation_data = self._stop_result_data(transition.stop_result)
         with self._transition_lock:
             if self._audit_failure:
                 raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
@@ -693,6 +702,10 @@ class RuntimeController:
 
     def _drain_pending_transitions(self) -> None:
         with self._audit_lock:
+            if self._audit_draining:
+                return
+            self._audit_draining = True
+        try:
             while True:
                 with self._transition_lock:
                     if self._audit_failure:
@@ -701,6 +714,8 @@ class RuntimeController:
                     if item is None:
                         item = self._infer_gateway_fault(self._next_audit_sequence)
                     if item is None:
+                        with self._audit_lock:
+                            self._audit_draining = False
                         return
                 operation, transition, operation_data, outcome = item
                 try:
@@ -718,6 +733,9 @@ class RuntimeController:
                 with self._transition_lock:
                     self._pending_audit.pop(self._next_audit_sequence, None)
                     self._next_audit_sequence += 1
+        finally:
+            with self._audit_lock:
+                self._audit_draining = False
 
     def _infer_gateway_fault(
         self,
@@ -733,9 +751,28 @@ class RuntimeController:
                 transition.state_before is SafetyState.RUNNING
                 and transition.state_after is SafetyState.FAULTED
             ):
-                return (AuditOperation.HEARTBEAT, transition, None, AuditOutcome.FAULTED)
+                operation_data = (
+                    None
+                    if transition.stop_result is None
+                    else self._stop_result_data(transition.stop_result)
+                )
+                return (
+                    AuditOperation.HEARTBEAT,
+                    transition,
+                    operation_data,
+                    AuditOutcome.FAULTED,
+                )
             return None
         return None
+
+    @staticmethod
+    def _stop_result_data(result: EmergencyStopResult) -> dict[str, object]:
+        return {
+            "latched": result.latched,
+            "activation_quiesced": result.activation_quiesced,
+            "safety_command_accepted": result.safety_command_accepted,
+            "code": result.code,
+        }
 
     def _append_audit(
         self,
@@ -746,21 +783,20 @@ class RuntimeController:
         operation_data: dict[str, object] | None = None,
         outcome: AuditOutcome = AuditOutcome.OK,
     ) -> None:
-        with self._audit_lock:
-            try:
-                self._audit_writer.append(AuditEvent(
-                    operation,
-                    before,
-                    after,
-                    outcome,
-                    operation_data={} if operation_data is None else operation_data,
-                ))
-            except (AuditIntegrityError, AuditError, OSError):
-                self._quarantined = True
-                self._persist_quarantine()
-                if self._gateway is not None:
-                    self._gateway.estop()
-                raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED") from None
+        try:
+            self._audit_writer.append(AuditEvent(
+                operation,
+                before,
+                after,
+                outcome,
+                operation_data={} if operation_data is None else operation_data,
+            ))
+        except (AuditIntegrityError, AuditError, OSError):
+            self._quarantined = True
+            self._persist_quarantine()
+            if self._gateway is not None:
+                self._gateway.estop()
+            raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED") from None
 
     def _persist_quarantine(self) -> None:
         temporary = self._runtime_dir / ".audit.quarantine.tmp"

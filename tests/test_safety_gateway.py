@@ -10,7 +10,8 @@ import pytest
 from agent_ros.discovery.models import Capability, DiscoveryReport
 from agent_ros.profiles.models import RobotProfile
 from agent_ros.safety.challenge import create_operator_challenge
-from agent_ros.safety.gateway import SafetyError, SafetyGateway
+from agent_ros.safety.gateway import SafetyError, SafetyGateway, SafetyTransition
+from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
 
 
@@ -52,6 +53,49 @@ def prepared_gateway(profile: RobotProfile, **kwargs) -> SafetyGateway:
     gateway.discover(compatible_report())
     gateway.validate()
     return gateway
+
+
+def accepted_stop(action):
+    def stop(_timeout):
+        action()
+        return EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
+
+    return stop
+
+
+def test_gateway_recognizes_only_the_exact_transition_receipt():
+    gateway = SafetyGateway(robot_profile())
+
+    transition = gateway.discover(compatible_report())
+    forged = SafetyTransition(
+        transition.sequence,
+        transition.state_before,
+        transition.state_after,
+        transition.stop_result,
+    )
+
+    assert forged == transition
+    assert gateway.owns_transition(transition)
+    assert not gateway.owns_transition(forged)
+
+
+def test_degraded_estop_is_latched_but_not_reported_as_successful():
+    degraded = EmergencyStopResult(
+        True,
+        False,
+        True,
+        "TRANSPORT_UNQUIESCED",
+    )
+    gateway = prepared_gateway(robot_profile(), stop_callback=lambda _timeout: degraded)
+    gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
+
+    transition = gateway.estop()
+
+    assert transition is not None
+    assert transition.state_after is SafetyState.ESTOPPED
+    assert transition.stop_result == degraded
+    assert transition.stop_result.code == "TRANSPORT_UNQUIESCED"
+    assert not transition.stop_result.successful
 
 
 def test_simulation_auto_arms_after_validating_and_allows_a_bounded_task():
@@ -106,7 +150,11 @@ def test_invalid_transition_is_rejected_fail_closed():
 def test_expired_heartbeat_stops_repeatedly_and_latches_fault():
     now = [0.0]
     stops: list[str] = []
-    gateway = prepared_gateway(robot_profile(), clock=lambda: now[0], stop_callback=lambda: stops.append("stop"))
+    gateway = prepared_gateway(
+        robot_profile(),
+        clock=lambda: now[0],
+        stop_callback=accepted_stop(lambda: stops.append("stop")),
+    )
     gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
     gateway.heartbeat()
     now[0] = 1.1
@@ -120,7 +168,11 @@ def test_expired_heartbeat_stops_repeatedly_and_latches_fault():
 def test_independent_watchdog_faults_after_deadline_without_an_agent_heartbeat_call():
     now = [0.0]
     stops: list[str] = []
-    gateway = prepared_gateway(robot_profile(), clock=lambda: now[0], stop_callback=lambda: stops.append("stop"))
+    gateway = prepared_gateway(
+        robot_profile(),
+        clock=lambda: now[0],
+        stop_callback=accepted_stop(lambda: stops.append("stop")),
+    )
     gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
     now[0] = 1.1
 
@@ -135,7 +187,7 @@ def test_watchdog_worker_polls_and_faults_without_manual_evaluation_or_heartbeat
     stopped = threading.Event()
     gateway = prepared_gateway(
         robot_profile(heartbeat_timeout=0.01),
-        stop_callback=stopped.set,
+        stop_callback=accepted_stop(stopped.set),
         supervisor_poll_interval=0.001,
     )
     gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
@@ -147,7 +199,10 @@ def test_watchdog_worker_polls_and_faults_without_manual_evaluation_or_heartbeat
 
 def test_missing_simulation_heartbeat_configuration_faults_without_an_assertion_error():
     stops: list[str] = []
-    gateway = prepared_gateway(robot_profile(heartbeat_timeout=None), stop_callback=lambda: stops.append("stop"))
+    gateway = prepared_gateway(
+        robot_profile(heartbeat_timeout=None),
+        stop_callback=accepted_stop(lambda: stops.append("stop")),
+    )
     gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
 
     with pytest.raises(SafetyError, match="HEARTBEAT_UNCONFIGURED"):
@@ -160,7 +215,11 @@ def test_estop_is_latched_and_agent_cannot_reset_hardware_estop(tmp_path):
     profile = robot_profile("hardware")
     token = create_operator_challenge(profile.name, tmp_path)
     stops: list[str] = []
-    gateway = prepared_gateway(profile, runtime_dir=tmp_path, stop_callback=lambda: stops.append("stop"))
+    gateway = prepared_gateway(
+        profile,
+        runtime_dir=tmp_path,
+        stop_callback=accepted_stop(lambda: stops.append("stop")),
+    )
     gateway.arm(token)
     gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
 
@@ -222,7 +281,10 @@ def test_validation_rejects_capability_claims_without_profile_endpoint_and_type_
 
 def test_physical_estop_monitor_hook_latches_and_stops_immediately():
     stops: list[str] = []
-    gateway = prepared_gateway(robot_profile(), stop_callback=lambda: stops.append("stop"))
+    gateway = prepared_gateway(
+        robot_profile(),
+        stop_callback=accepted_stop(lambda: stops.append("stop")),
+    )
     gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
 
     gateway.observe_physical_estop(True)

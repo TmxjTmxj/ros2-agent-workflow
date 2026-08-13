@@ -22,9 +22,11 @@ from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.hospital import HospitalDeliveryAdapter, HospitalSimulationRuntime
 from agent_ros.adapters.base import HospitalAction
 from agent_ros.discovery.models import GraphSnapshot
-from agent_ros.runtime.audit import AuditIntegrityError, AuditWriter
+from agent_ros.runtime.audit import AuditIntegrityError, AuditOperation, AuditWriter
 from agent_ros.runtime.controller import RuntimeController, RuntimeControllerError
 from agent_ros.runtime.evidence import EvidenceError, EvidenceStore
+from agent_ros.safety.gateway import SafetyTransition
+from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
 
 
@@ -171,6 +173,25 @@ def controller(tmp_path: Path, adapter: RecordingAdapter, **kwargs) -> RuntimeCo
 def prepare(active: RuntimeController) -> None:
     active.discover_robot("robot")
     active.validate_profile("robot")
+
+
+def test_register_transition_rejects_a_forged_equal_gateway_receipt(tmp_path):
+    active = controller(tmp_path, RecordingAdapter())
+    active.discover_robot("robot")
+    transition = active._gateway.latest_transition
+    assert transition is not None
+    forged = SafetyTransition(
+        transition.sequence,
+        transition.state_before,
+        transition.state_after,
+        transition.stop_result,
+    )
+
+    assert forged == transition
+    with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
+        active._register_transition(AuditOperation.DISCOVER, forged)
+
+    assert active._pending_audit == {}
 
 
 def test_runtime_refuses_motion_before_profile_is_discovered_validated_and_armed(tmp_path):
@@ -592,6 +613,8 @@ def test_estop_between_gateway_start_transition_and_durable_append_keeps_audit_c
     starter = threading.Thread(target=lambda: _capture(start_errors, active.run_task, "delivery"))
     starter.start()
     assert entered.wait(1.0)
+    assert active._audit_lock.acquire(timeout=0.05)
+    active._audit_lock.release()
 
     estopper = threading.Thread(target=lambda: adapter.estop_handler(True))
     estopper.start()
@@ -693,6 +716,14 @@ def test_initial_heartbeat_expiry_audits_fault_before_estop_without_stalling_seq
     assert records[-2]["outcome"] == "faulted"
     assert records[-2]["state"] == {"from": "RUNNING", "to": "FAULTED"}
     assert records[-1]["state"] == {"from": "FAULTED", "to": "ESTOPPED"}
+    expected_stop_result = {
+        "activation_quiesced": True,
+        "code": "ESTOP_LATCHED",
+        "latched": True,
+        "safety_command_accepted": True,
+    }
+    assert records[-2]["operation_data"] == expected_stop_result
+    assert records[-1]["operation_data"] == expected_stop_result
 
 
 def test_physical_estop_drains_unobserved_watchdog_fault_without_waiting_for_monitor(tmp_path):
@@ -892,6 +923,56 @@ def test_stop_runtime_applies_cleanup_timeout_to_owned_safety_watchdog_join(tmp_
     assert time.monotonic() - began < 0.2
 
 
+def test_stop_runtime_shares_one_entry_deadline_across_owned_components(tmp_path, monkeypatch):
+    class FakeMonotonic:
+        def __init__(self):
+            self.now = 10.0
+
+        def __call__(self):
+            return self.now
+
+        def consume(self, duration):
+            self.now += duration
+
+    clock = FakeMonotonic()
+    offered = []
+    result = EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
+
+    class OwnedGateway:
+        state = SafetyState.ESTOPPED
+        last_stop_result = result
+        last_stop_accepted = True
+
+        def estop(self, *, timeout=1.0):
+            offered.append(("estop", timeout))
+            clock.consume(timeout)
+            return None
+
+        def close(self, *, timeout=1.0):
+            offered.append(("gateway", timeout))
+            clock.consume(timeout)
+            return True
+
+        def transitions_from(self, _sequence):
+            return ()
+
+    class OwnedAdapter:
+        def close(self, timeout=1.0):
+            offered.append(("adapter", timeout))
+            clock.consume(timeout)
+            return True
+
+    active = controller(tmp_path, RecordingAdapter(), cleanup_timeout=0.5)
+    active._gateway = OwnedGateway()
+    active._adapter = OwnedAdapter()
+    active._task_cleanup_started = True
+    monkeypatch.setattr("agent_ros.runtime.controller.time.monotonic", clock)
+
+    assert active.stop_runtime() == {"state": "ESTOPPED"}
+    assert sum(timeout for _owner, timeout in offered) <= 0.5
+    assert offered == [("estop", 0.5), ("gateway", 0.0), ("adapter", 0.0)]
+
+
 def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_path):
     entered = threading.Event()
     release = threading.Event()
@@ -923,6 +1004,7 @@ def test_monitor_thread_start_failure_latches_stop_and_never_leaks_running(tmp_p
     adapter = RecordingAdapter()
     class FailedThread:
         def start(self): raise RuntimeError("raw")
+        def join(self, timeout=None): raise AssertionError("unstarted monitor joined")
     active = controller(tmp_path, adapter, monitor_thread_factory=lambda **_kwargs: FailedThread())
     prepare(active)
 

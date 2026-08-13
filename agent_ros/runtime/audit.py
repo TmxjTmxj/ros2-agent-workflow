@@ -24,6 +24,17 @@ _ERROR_CODES = frozenset({
     "HARDWARE_CHALLENGE", "INTERNAL_ERROR", "MOTION_LIMIT", "OPERATOR_REQUIRED",
     "PROFILE_UNSUPPORTED", "UNSAFE_STATE",
 })
+_STOP_RESULT_CODES = frozenset({
+    "ESTOP_LATCHED",
+    "SAFETY_COMMAND_REJECTED",
+    "TRANSPORT_UNQUIESCED",
+})
+_STOP_RESULT_KEYS = frozenset({
+    "latched",
+    "activation_quiesced",
+    "safety_command_accepted",
+    "code",
+})
 _MAX_RECORD_BYTES = 4096
 
 
@@ -315,6 +326,31 @@ def _validate_operation_data(operation: AuditOperation, value: object) -> dict[s
     if not isinstance(value, Mapping):
         raise AuditError("invalid audit data")
     data = dict(value)
+    if operation in {
+        AuditOperation.HEARTBEAT,
+        AuditOperation.CANCEL,
+        AuditOperation.ESTOP,
+    } and data:
+        if set(data) != _STOP_RESULT_KEYS:
+            raise AuditError("unexpected audit data")
+        if not all(
+            type(data[key]) is bool
+            for key in (
+                "latched",
+                "activation_quiesced",
+                "safety_command_accepted",
+            )
+        ):
+            raise AuditError("invalid stop data")
+        code = data["code"]
+        if not isinstance(code, str) or code not in _STOP_RESULT_CODES:
+            raise AuditError("invalid stop data")
+        return {
+            "latched": data["latched"],
+            "activation_quiesced": data["activation_quiesced"],
+            "safety_command_accepted": data["safety_command_accepted"],
+            "code": code,
+        }
     if operation is not AuditOperation.START_TASK:
         if data:
             raise AuditError("unexpected audit data")
