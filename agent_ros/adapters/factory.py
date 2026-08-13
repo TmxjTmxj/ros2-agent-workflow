@@ -21,11 +21,11 @@ class RclpyAdapterFactory:
         self._executor = None
         self._thread: threading.Thread | None = None
         self._adapter: RobotAdapter | None = None
-        self._executor_shutdown = False
-        self._thread_joined = False
-        self._node_removed = False
-        self._node_destroyed = False
-        self._context_shutdown = False
+        self._executor_shutdown = True
+        self._thread_joined = True
+        self._node_removed = True
+        self._node_destroyed = True
+        self._context_shutdown = True
         self._closed = False
 
     def __call__(self, profile: RobotProfile) -> RobotAdapter:
@@ -112,9 +112,16 @@ class RclpyAdapterFactory:
             raise AdapterError("PROFILE_INVALID") from None
         context = Context()
         context.init(args=None)
+        self._context = context
+        self._context_shutdown = False
         node = rclpy.create_node("agent_ros_runtime", context=context)
+        self._node = node
+        self._node_destroyed = False
         executor = SingleThreadedExecutor(context=context)
+        self._executor = executor
+        self._executor_shutdown = False
         executor.add_node(node)
+        self._node_removed = False
         entered = threading.Event()
 
         def spin() -> None:
@@ -126,15 +133,13 @@ class RclpyAdapterFactory:
             name="agent-ros-rclpy-executor",
             daemon=False,
         )
-        self._context = context
-        self._node = node
-        self._executor = executor
-        self._thread = thread
         try:
             thread.start()
         except Exception:
             self._close_locked(1.0)
             raise AdapterError("PROFILE_INVALID") from None
+        self._thread = thread
+        self._thread_joined = False
         if not entered.wait(1.0) or not thread.is_alive():
             self._close_locked(1.0)
             raise AdapterError("PROFILE_INVALID")
@@ -176,7 +181,11 @@ class RclpyAdapterFactory:
                 return False
         if context is not None and not self._context_shutdown:
             try:
-                context.shutdown()
+                try_shutdown = getattr(context, "try_shutdown", None)
+                if callable(try_shutdown):
+                    try_shutdown()
+                else:
+                    context.shutdown()
                 self._context_shutdown = True
             except Exception:
                 return False

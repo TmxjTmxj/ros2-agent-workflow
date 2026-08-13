@@ -21,8 +21,11 @@ class FakePublisher:
 
 
 class FakeNode:
+    instances = []
+
     def __init__(self) -> None:
         self.destroyed = False
+        type(self).instances.append(self)
 
     def create_publisher(self, _message_type, _name, _depth):
         return FakePublisher()
@@ -38,14 +41,24 @@ class FakeNode:
 
 
 class FakeContext:
+    instances = []
+
     def __init__(self) -> None:
         self.initialized = False
         self.shutdown_called = False
+        self.try_shutdown_calls = 0
+        self.shutdown_calls = 0
+        type(self).instances.append(self)
 
     def init(self, *, args=None) -> None:
         self.initialized = True
 
     def shutdown(self) -> None:
+        self.shutdown_calls += 1
+        self.shutdown_called = True
+
+    def try_shutdown(self) -> None:
+        self.try_shutdown_calls += 1
         self.shutdown_called = True
 
 
@@ -94,6 +107,8 @@ class RetryableShutdownExecutor(FakeExecutor):
 
 def _install_fake_ros(monkeypatch) -> None:
     FakeExecutor.instances.clear()
+    FakeContext.instances.clear()
+    FakeNode.instances.clear()
 
     class FakeTwist:
         def __init__(self) -> None:
@@ -235,6 +250,79 @@ def test_production_factory_rejects_unsupported_trajectory_without_starting_ros(
         factory(_trajectory_profile())
 
     assert FakeExecutor.instances == []
+    assert factory.close(0.1)
+
+
+def test_create_node_failure_releases_initialized_context(monkeypatch):
+    _install_fake_ros(monkeypatch)
+
+    def fail_create_node(_name, *, context):
+        assert context.initialized
+        raise RuntimeError("create node failed")
+
+    monkeypatch.setattr(sys.modules["rclpy"], "create_node", fail_create_node)
+    factory = RclpyAdapterFactory()
+
+    with pytest.raises(AdapterError, match="PROFILE_INVALID"):
+        factory(_twist_profile())
+
+    context = FakeContext.instances[0]
+    assert context.try_shutdown_calls == 1
+    assert context.shutdown_calls == 0
+    assert factory.close(0.1)
+
+
+def test_executor_construction_failure_releases_node_and_context(monkeypatch):
+    _install_fake_ros(monkeypatch)
+
+    class FailingExecutorConstructor:
+        def __init__(self, *, context):
+            assert context.initialized
+            raise RuntimeError("executor construction failed")
+
+    monkeypatch.setattr(
+        sys.modules["rclpy.executors"],
+        "SingleThreadedExecutor",
+        FailingExecutorConstructor,
+    )
+    factory = RclpyAdapterFactory()
+
+    with pytest.raises(AdapterError, match="PROFILE_INVALID"):
+        factory(_twist_profile())
+
+    node = FakeNode.instances[0]
+    context = FakeContext.instances[0]
+    assert node.destroyed is True
+    assert context.try_shutdown_calls == 1
+    assert factory.close(0.1)
+
+
+def test_add_node_failure_releases_unstarted_executor_node_and_context(monkeypatch):
+    _install_fake_ros(monkeypatch)
+
+    class FailingAddExecutor(FakeExecutor):
+        instances = []
+
+        def add_node(self, node) -> None:
+            raise RuntimeError("add node failed")
+
+    monkeypatch.setattr(
+        sys.modules["rclpy.executors"],
+        "SingleThreadedExecutor",
+        FailingAddExecutor,
+    )
+    factory = RclpyAdapterFactory()
+
+    with pytest.raises(AdapterError, match="PROFILE_INVALID"):
+        factory(_twist_profile())
+
+    executor = FailingAddExecutor.instances[0]
+    node = FakeNode.instances[0]
+    context = FakeContext.instances[0]
+    assert len(executor.shutdown_timeouts) == 1
+    assert factory._thread is None
+    assert node.destroyed is True
+    assert context.try_shutdown_calls == 1
     assert factory.close(0.1)
 
 
