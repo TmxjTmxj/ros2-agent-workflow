@@ -9,7 +9,7 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from agent_ros.adapters.base import AdapterError, HospitalAction, Observation, RobotAdapter
+from agent_ros.adapters.base import AdapterError, HospitalAction, Observation, RobotAdapter, SafetyToken
 from agent_ros.adapters.hospital import HospitalDeliveryAdapter
 from agent_ros.discovery.inference import infer_capabilities
 from agent_ros.discovery.ros_graph import RosGraphProbe
@@ -89,6 +89,8 @@ class RuntimeController:
         self._cleanup_timeout = cleanup_timeout
         self._monitor_thread_factory = monitor_thread_factory
         self._lock = threading.RLock()
+        self._generation_lock = threading.Lock()
+        self._audit_lock = threading.RLock()
         self._monitor_stop = threading.Event()
         self._monitor_thread: threading.Thread | None = None
         self._evidence = EvidenceStore(evidence_dir)
@@ -139,14 +141,14 @@ class RuntimeController:
         gateway = SafetyGateway(
             profile,
             runtime_dir=self._runtime_dir,
-            stop_callback=lambda: self._issue_adapter_stop(adapter),
+            stop_callback=adapter.emergency_stop,
             clock=self._clock,
             boot_id=self._boot_id,
         )
         self._profile = profile
         self._adapter = adapter
         self._gateway = gateway
-        self._generation += 1
+        self._invalidate_generation()
         self._report = report
         try:
             bound = adapter.bind_physical_estop(self._physical_estop)
@@ -222,11 +224,22 @@ class RuntimeController:
             if dry_run:
                 return {"dry_run": True, "profile": profile.name, "task": task.name}
             before = gateway.state
-            generation = self._generation
-            gateway.start_task()
+            token = self._reserve_safety_token()
+            generation = token.generation
             request = HospitalAction.START if isinstance(adapter, HospitalDeliveryAdapter) else task.stages[0]
+        with self._audit_lock:
+            try:
+                gateway.start_task()
+                self._append_audit(
+                    AuditOperation.START_TASK,
+                    before,
+                    gateway.state,
+                    operation_data={"task": task.name},
+                )
+            except SafetyError as exc:
+                raise self._safety_error(exc) from None
         try:
-            start_status = adapter.start(request)
+            start_status = adapter.start(request, token)
             if gateway.state is not SafetyState.RUNNING:
                 adapter.stop()
                 raise RuntimeControllerError("ESTOP_LATCHED")
@@ -244,7 +257,7 @@ class RuntimeController:
             self._latch_adapter_fault()
             raise RuntimeControllerError("UNSAFE_STATE") from None
         with self._lock:
-            stale_start = generation != self._generation or gateway.state is not SafetyState.RUNNING
+            stale_start = generation != self._current_generation() or gateway.state is not SafetyState.RUNNING
         if stale_start:
             try:
                 adapter.stop()
@@ -258,12 +271,6 @@ class RuntimeController:
             self._stage_deadline = self._clock() + task.stages[0].timeout
             self._observed_gateway_state = gateway.state
         try:
-            self._append_audit(
-                AuditOperation.START_TASK,
-                before,
-                gateway.state,
-                operation_data={"task": task.name},
-            )
             self._start_monitor()
         except RuntimeControllerError:
             self._latch_adapter_fault()
@@ -291,10 +298,10 @@ class RuntimeController:
             if gateway.state is not SafetyState.RUNNING:
                 raise RuntimeControllerError("UNSAFE_STATE")
             before = gateway.state
-            generation = self._generation
+            generation = self._current_generation()
         try:
             status = adapter.cancel()
-            if generation != self._generation or gateway.state is not SafetyState.RUNNING:
+            if generation != self._current_generation() or gateway.state is not SafetyState.RUNNING:
                 raise RuntimeControllerError("ESTOP_LATCHED")
             if status.state == "faulted":
                 self._latch_adapter_fault()
@@ -326,6 +333,7 @@ class RuntimeController:
             self._ensure_available()
             gateway, _adapter, _profile = self._active()
             before = gateway.state
+            self._invalidate_generation()
         gateway.estop()
         if gateway.state is not before:
             self._append_audit(AuditOperation.ESTOP, before, gateway.state)
@@ -358,21 +366,19 @@ class RuntimeController:
             self._monitor_stop.set()
             gateway = self._gateway
             adapter = self._adapter
-            self._generation += 1
+            self._invalidate_generation()
         if gateway is None:
             result = {"state": SafetyState.NEW.value}
             cleanup_failed = False
         else:
             cleanup_failed = False
             if gateway.state is SafetyState.RUNNING:
-                completed, status = self._bounded_adapter_call(adapter.cancel if adapter is not None else lambda: None)
-                cleanup_failed = not completed
-                if completed and getattr(status, "state", None) == "cancelled":
-                    try:
-                        gateway.cancel()
-                    except SafetyError:
-                        gateway.estop()
-                else:
+                try:
+                    assert adapter is not None
+                    adapter.emergency_stop()
+                except Exception:
+                    cleanup_failed = True
+                finally:
                     gateway.estop()
             gateway.close()
             result = {"state": gateway.state.value}
@@ -429,12 +435,13 @@ class RuntimeController:
         if asserted is not True or gateway is None:
             return
         before = gateway.state
+        self._invalidate_generation()
         gateway.observe_physical_estop(True)
-        self._generation += 1
         self._monitor_stop.set()
         if gateway.state is not before:
             try:
-                self._append_audit(AuditOperation.ESTOP, before, gateway.state)
+                with self._audit_lock:
+                    self._append_audit(AuditOperation.ESTOP, before, gateway.state)
             except RuntimeControllerError:
                 return
         self._observed_gateway_state = gateway.state
@@ -442,11 +449,25 @@ class RuntimeController:
     def _latch_adapter_fault(self) -> None:
         if self._gateway is not None:
             before = self._gateway.state
+            self._invalidate_generation()
             self._gateway.estop()
             if self._gateway.state is not before:
-                self._append_audit(AuditOperation.ESTOP, before, self._gateway.state)
+                with self._audit_lock:
+                    self._append_audit(AuditOperation.ESTOP, before, self._gateway.state)
             self._observed_gateway_state = self._gateway.state
             self._monitor_stop.set()
+
+    def _current_generation(self) -> int:
+        with self._generation_lock:
+            return self._generation
+
+    def _reserve_safety_token(self) -> SafetyToken:
+        with self._generation_lock:
+            return SafetyToken(self._generation, self._current_generation)
+
+    def _invalidate_generation(self) -> None:
+        with self._generation_lock:
+            self._generation += 1
 
     def _start_monitor(self) -> None:
         self._monitor_stop.clear()
@@ -485,7 +506,7 @@ class RuntimeController:
         with self._lock:
             gateway, adapter, _profile = self._active()
             deadline = self._stage_deadline
-            generation = self._generation
+            generation = self._current_generation()
         if deadline is not None and self._clock() > deadline:
             self._latch_adapter_fault()
             raise RuntimeControllerError("TIMEOUT")
@@ -493,7 +514,7 @@ class RuntimeController:
             status = adapter.status()
             with self._lock:
                 self._last_status = status
-            if generation != self._generation or gateway.state is not SafetyState.RUNNING:
+            if generation != self._current_generation() or gateway.state is not SafetyState.RUNNING:
                 return status
             if status.state == "cancelled" and self._cancel_requested:
                 before = gateway.state
@@ -509,8 +530,9 @@ class RuntimeController:
                 if self._stage_index + 1 < len(self._task.stages):
                     self._stage_index += 1
                     stage = self._task.stages[self._stage_index]
-                    adapter.start(stage)
-                    if generation != self._generation or gateway.state is not SafetyState.RUNNING:
+                    stage_token = self._reserve_safety_token()
+                    adapter.start(stage, stage_token)
+                    if not stage_token.is_valid() or gateway.state is not SafetyState.RUNNING:
                         adapter.stop()
                         raise RuntimeControllerError("ESTOP_LATCHED")
                     with self._lock:
@@ -540,37 +562,7 @@ class RuntimeController:
             self._latch_adapter_fault()
             raise RuntimeControllerError("UNSAFE_STATE") from None
 
-    def _bounded_adapter_call(self, function: Callable[[], object]) -> tuple[bool, object | None]:
-        completed = threading.Event()
-        result: list[object] = []
 
-        def invoke() -> None:
-            try:
-                result.append(function())
-            except Exception:
-                pass
-            finally:
-                completed.set()
-
-        threading.Thread(target=invoke, name="agent-ros-cleanup-call", daemon=True).start()
-        done = completed.wait(self._cleanup_timeout)
-        return done, (result[0] if result else None)
-
-    @staticmethod
-    def _issue_adapter_stop(adapter: RobotAdapter) -> None:
-        """Dispatch the safety stop without waiting for an adapter's arbitrary locks."""
-        entered = threading.Event()
-
-        def invoke() -> None:
-            entered.set()
-            try:
-                adapter.stop()
-            except Exception:
-                return
-
-        worker = threading.Thread(target=invoke, name="agent-ros-emergency-stop", daemon=True)
-        worker.start()
-        entered.wait(0.05)
 
     def _append_audit(
         self,
@@ -581,20 +573,21 @@ class RuntimeController:
         operation_data: dict[str, object] | None = None,
         outcome: AuditOutcome = AuditOutcome.OK,
     ) -> None:
-        try:
-            self._audit_writer.append(AuditEvent(
-                operation,
-                before,
-                after,
-                outcome,
-                operation_data={} if operation_data is None else operation_data,
-            ))
-        except (AuditIntegrityError, AuditError, OSError):
-            self._quarantined = True
-            self._persist_quarantine()
-            if self._gateway is not None:
-                self._gateway.estop()
-            raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED") from None
+        with self._audit_lock:
+            try:
+                self._audit_writer.append(AuditEvent(
+                    operation,
+                    before,
+                    after,
+                    outcome,
+                    operation_data={} if operation_data is None else operation_data,
+                ))
+            except (AuditIntegrityError, AuditError, OSError):
+                self._quarantined = True
+                self._persist_quarantine()
+                if self._gateway is not None:
+                    self._gateway.estop()
+                raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED") from None
 
     def _persist_quarantine(self) -> None:
         temporary = self._runtime_dir / ".audit.quarantine.tmp"

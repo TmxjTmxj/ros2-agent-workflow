@@ -8,6 +8,7 @@ import math
 import os
 import re
 import time
+import secrets
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import Enum
@@ -66,6 +67,7 @@ class AuditEvent:
     endpoint_gids: tuple[str, ...] = ()
     error: BaseException | None = None
     error_code: str | None = None
+    session_id: str | None = None
 
 
 _SUCCESS_TRANSITIONS = {
@@ -103,6 +105,7 @@ class AuditWriter:
         self._truncate = truncate
         self._fsync = fsync
         self._integrity_compromised = False
+        self._session_id = secrets.token_hex(16)
 
     def append(self, event: AuditEvent) -> None:
         if self._integrity_compromised:
@@ -142,6 +145,7 @@ class AuditWriter:
         allowed = {
             "wall_time", "monotonic_time", "operation", "state", "outcome",
             "operation_data", "endpoint_gids", "error_code",
+            "session_id",
         }
         if set(value) - allowed or allowed - {"error_code"} - set(value):
             raise AuditError("invalid audit record")
@@ -159,6 +163,7 @@ class AuditWriter:
                 operation_data=value["operation_data"],
                 endpoint_gids=tuple(value["endpoint_gids"]),
                 error_code=value.get("error_code"),
+                session_id=value["session_id"],
             )
         except (ValueError, TypeError, KeyError):
             raise AuditError("invalid audit record") from None
@@ -168,6 +173,7 @@ class AuditWriter:
         _validate_operation_data(event.operation, event.operation_data)
         _validate_endpoint_gids(event.endpoint_gids)
         _validate_error(None, event.error_code)
+        _validate_session_id(event.session_id)
 
     def _encode(self, event: AuditEvent) -> bytes:
         record = self._record(event)
@@ -183,6 +189,8 @@ class AuditWriter:
             raise AuditError("invalid audit enum")
         if not isinstance(event.state_before, SafetyState) or not isinstance(event.state_after, SafetyState):
             raise AuditError("invalid audit state")
+        if event.session_id is not None:
+            raise AuditError("audit session is writer-owned")
         _validate_transition(event)
         operation_data = _validate_operation_data(event.operation, event.operation_data)
         endpoint_gids = _validate_endpoint_gids(event.endpoint_gids)
@@ -197,6 +205,7 @@ class AuditWriter:
             "outcome": event.outcome.value,
             "operation_data": operation_data,
             "endpoint_gids": list(endpoint_gids),
+            "session_id": _validate_session_id(self._session_id),
         }
         if error_code is not None:
             record["error_code"] = error_code
@@ -229,6 +238,8 @@ def validate_audit_history(raw: bytes) -> None:
     if raw and not raw.endswith(b"\n"):
         raise AuditError("invalid audit history")
     previous_after: SafetyState | None = None
+    current_session: str | None = None
+    completed_sessions: set[str] = set()
     for index, line in enumerate(raw.splitlines()):
         if not line or len(line) + 1 > _MAX_RECORD_BYTES:
             raise AuditError("invalid audit history")
@@ -237,13 +248,27 @@ def validate_audit_history(raw: bytes) -> None:
         except (json.JSONDecodeError, UnicodeDecodeError):
             raise AuditError("invalid audit history") from None
         AuditWriter.validate_record(record)
+        session_id = record["session_id"]
         before = SafetyState(record["state"]["from"])
         after = SafetyState(record["state"]["to"])
-        if index == 0 and before is not SafetyState.NEW:
+        if current_session != session_id:
+            if session_id in completed_sessions:
+                raise AuditError("invalid audit history")
+            if current_session is not None:
+                completed_sessions.add(current_session)
+            current_session = session_id
+            previous_after = None
+        if previous_after is None and before is not SafetyState.NEW:
             raise AuditError("invalid audit history")
         if previous_after is not None and before is not previous_after:
             raise AuditError("invalid audit history")
         previous_after = after
+
+
+def _validate_session_id(value: object) -> str:
+    if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{32}", value):
+        raise AuditError("invalid audit session")
+    return value
 
 
 def _finite_clock(value: object) -> float:

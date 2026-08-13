@@ -15,6 +15,7 @@ from agent_ros.adapters.base import (
     NavigationGoal,
     Observation,
     RobotAdapter,
+    SafetyToken,
 )
 from agent_ros.profiles.models import NAVIGATE_TO_POSE_TYPE, RobotProfile, TaskStage
 
@@ -33,13 +34,15 @@ class NavigateToPoseRequest:
 
 
 class Nav2Transport(Protocol):
-    def send_goal(self, request: NavigateToPoseRequest) -> None: ...
+    def send_goal(self, request: NavigateToPoseRequest, safety_token: SafetyToken | None = None) -> None: ...
 
     def goal_status(self) -> object: ...
 
     def cancel_goal(self) -> None: ...
 
     def publish_zero(self) -> None: ...
+
+    def emergency_stop(self) -> None: ...
 
     def subscribe_estop(self, handler: Callable[[bool], None]) -> None: ...
 
@@ -65,10 +68,10 @@ class Nav2Adapter(RobotAdapter):
         ):
             raise AdapterError("PROFILE_INVALID")
 
-    def start(self, task: object) -> AdapterStatus:
+    def start(self, task: object, safety_token: SafetyToken | None = None) -> AdapterStatus:
         if isinstance(task, TaskStage):
             task = NavigationGoal(task.goal.frame, task.goal.x, task.goal.y, task.goal.yaw)
-        if not isinstance(task, NavigationGoal):
+        if not isinstance(task, NavigationGoal) or not isinstance(safety_token, SafetyToken):
             raise AdapterError("PROFILE_INVALID")
         interface = self._profile.interfaces.navigation
         assert interface is not None and interface.action is not None
@@ -82,7 +85,7 @@ class Nav2Adapter(RobotAdapter):
         )
         try:
             self._cancel_sent = False
-            self._transport.send_goal(request)
+            self._transport.send_goal(request, safety_token)
         except Exception:
             self.stop()
             raise AdapterError("INTERNAL_ERROR") from None
@@ -93,7 +96,11 @@ class Nav2Adapter(RobotAdapter):
         try:
             raw = self._transport.goal_status()
         except Exception:
-            self.stop()
+            self._state = "faulted"
+            try:
+                self.emergency_stop()
+            except AdapterError:
+                pass
             raise AdapterError("STALE_FEEDBACK") from None
         if isinstance(raw, AdapterStatus):
             if raw.state == "faulted":
@@ -110,23 +117,33 @@ class Nav2Adapter(RobotAdapter):
         return self.status()
 
     def stop(self) -> None:
+        cancel_error = False
         if not self._cancel_sent:
             try:
                 self._transport.cancel_goal()
             except Exception:
-                pass
+                cancel_error = True
             self._cancel_sent = True
         for _ in range(_ZERO_BURST_COUNT):
             try:
                 self._transport.publish_zero()
             except Exception:
                 continue
+        if cancel_error:
+            self._state = "faulted"
+            raise AdapterError("UNSAFE_STATE")
         try:
             state = self.status().state
         except AdapterError:
             self._state = "faulted"
             raise
         self._state = "cancelled" if state == "cancelled" else ("faulted" if state == "faulted" else "cancelling")
+
+    def emergency_stop(self) -> None:
+        try:
+            self._transport.emergency_stop()
+        except Exception:
+            raise AdapterError("UNSAFE_STATE") from None
 
     def observe(self, source: str) -> Observation:
         if source not in self._profile.observation_sources:
@@ -171,7 +188,7 @@ class RclpyNav2Transport:
 
         self._estop_subscription = node.create_subscription(Bool, estop_topic, estop_callback, 10)
 
-    def send_goal(self, request: NavigateToPoseRequest) -> None:
+    def send_goal(self, request: NavigateToPoseRequest, safety_token: SafetyToken | None = None) -> None:
         goal = self._action_type.Goal()
         goal.pose.header.frame_id = request.frame
         goal.pose.header.stamp = self._node.get_clock().now().to_msg()
@@ -180,6 +197,8 @@ class RclpyNav2Transport:
         goal.pose.pose.orientation.z = math.sin(request.yaw / 2.0)
         goal.pose.pose.orientation.w = math.cos(request.yaw / 2.0)
         with self._lock:
+            if safety_token is not None and not safety_token.is_valid():
+                raise AdapterError("ESTOP_LATCHED")
             self._cancel_requested = False
             future = self._client.send_goal_async(goal)
             future.add_done_callback(self._goal_response)
@@ -189,36 +208,39 @@ class RclpyNav2Transport:
         with self._lock:
             try:
                 handle = future.result()
+                accepted = bool(handle is not None and handle.accepted)
             except Exception:
                 self._state = "faulted"
                 return
             self._goal_handle = handle
-            if self._cancel_requested:
-                if handle is not None and handle.accepted:
-                    self._begin_cancel(handle)
-                elif handle is None or not handle.accepted:
-                    self._state = "cancelled"
-                return
-            self._state = "running" if handle is not None and handle.accepted else "rejected"
-            if self._state == "running":
+            if accepted:
                 try:
                     result_future = handle.get_result_async()
                     result_future.add_done_callback(self._goal_result)
                 except Exception:
                     self._state = "faulted"
+                    return
+            if self._cancel_requested:
+                if accepted:
+                    self._begin_cancel(handle)
+                else:
+                    self._state = "cancelled"
+                return
+            self._state = "running" if accepted else "rejected"
 
     def _goal_result(self, future) -> None:
         with self._lock:
-            if self._cancel_requested:
-                self._state = "cancelled"
-                return
             try:
                 result = future.result()
                 status = getattr(result, "status", None)
             except Exception:
                 self._state = "faulted"
                 return
-            self._state = "succeeded" if status == 4 else "failed"
+            if self._cancel_requested:
+                self._state = "cancelled" if status == 5 else "faulted"
+            else:
+                self._state = "succeeded" if status == 4 else "failed"
+            self._cancel_deadline = None
 
     def goal_status(self) -> object:
         with self._lock:
@@ -255,11 +277,27 @@ class RclpyNav2Transport:
             except Exception:
                 self._state = "faulted"
                 return
-            self._state = "cancelled" if accepted else "faulted"
-            self._cancel_deadline = None
+            self._state = "cancelling" if accepted else "faulted"
+            if not accepted:
+                self._cancel_deadline = None
 
     def publish_zero(self) -> None:
         self._publisher.publish(self._twist_type())
+
+    def emergency_stop(self) -> None:
+        for _ in range(_ZERO_BURST_COUNT):
+            self.publish_zero()
+        self._cancel_requested = True
+        acquired = self._lock.acquire(blocking=False)
+        if not acquired:
+            return
+        try:
+            self._state = "cancelling"
+            self._cancel_deadline = self._clock() + self._cancel_timeout
+            if self._goal_handle is not None:
+                self._begin_cancel(self._goal_handle)
+        finally:
+            self._lock.release()
 
     def subscribe_estop(self, handler: Callable[[bool], None]) -> None:
         self._estop_handlers.append(handler)

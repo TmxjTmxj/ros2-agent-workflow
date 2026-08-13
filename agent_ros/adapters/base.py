@@ -22,6 +22,17 @@ class AdapterError(RuntimeError):
         super().__init__(code)
 
 
+@dataclass(frozen=True, slots=True)
+class SafetyToken:
+    """Internal generation reservation checked immediately before activation."""
+
+    generation: int
+    current_generation: Callable[[], int]
+
+    def is_valid(self) -> bool:
+        return self.current_generation() == self.generation
+
+
 class HospitalAction(str, Enum):
     """The complete repository-owned hospital controller authority."""
 
@@ -112,7 +123,7 @@ class RobotAdapter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def start(self, task: object) -> AdapterStatus:
+    def start(self, task: object, safety_token: SafetyToken | None = None) -> AdapterStatus:
         raise NotImplementedError
 
     @abstractmethod
@@ -125,6 +136,11 @@ class RobotAdapter(ABC):
 
     @abstractmethod
     def stop(self) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    def emergency_stop(self) -> None:
+        """Synchronously issue bounded independent zero/disable before returning."""
         raise NotImplementedError
 
     @abstractmethod

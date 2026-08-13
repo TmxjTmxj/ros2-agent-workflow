@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 import math
+import threading
 from collections.abc import Callable
 from typing import Protocol
 
@@ -14,6 +15,7 @@ from agent_ros.adapters.base import (
     Observation,
     OdometrySample,
     RobotAdapter,
+    SafetyToken,
     TwistCommand,
 )
 from agent_ros.profiles.models import ODOMETRY_TYPE, TWIST_TYPE, RobotProfile, TaskStage
@@ -25,13 +27,15 @@ _ZERO_BURST_COUNT = 3
 class TwistTransport(Protocol):
     def read_odometry(self) -> OdometrySample: ...
 
-    def start_waypoint(self, stage: TaskStage) -> None: ...
+    def start_waypoint(self, stage: TaskStage, safety_token: SafetyToken | None = None) -> None: ...
 
     def waypoint_status(self) -> AdapterStatus: ...
 
     def cancel_waypoint(self) -> None: ...
 
     def stop_waypoint(self) -> None: ...
+
+    def emergency_stop(self) -> None: ...
 
     def subscribe_estop(self, handler: Callable[[bool], None]) -> None: ...
 
@@ -67,12 +71,12 @@ class TwistAdapter(RobotAdapter):
         ):
             raise AdapterError("PROFILE_INVALID")
 
-    def start(self, task: object) -> AdapterStatus:
-        if not isinstance(task, TaskStage):
+    def start(self, task: object, safety_token: SafetyToken | None = None) -> AdapterStatus:
+        if not isinstance(task, TaskStage) or not isinstance(safety_token, SafetyToken):
             raise AdapterError("PROFILE_INVALID")
         self._fresh_odometry()
         try:
-            self._transport.start_waypoint(task)
+            self._transport.start_waypoint(task, safety_token)
         except Exception:
             self.stop()
             raise AdapterError("INTERNAL_ERROR") from None
@@ -101,6 +105,12 @@ class TwistAdapter(RobotAdapter):
             self._transport.stop_waypoint()
         except Exception:
             return
+
+    def emergency_stop(self) -> None:
+        try:
+            self._transport.emergency_stop()
+        except Exception:
+            raise AdapterError("UNSAFE_STATE") from None
 
     def observe(self, source: str) -> Observation:
         if source != "odometry" or source not in self._profile.observation_sources:
@@ -153,6 +163,10 @@ class RclpyTwistTransport:
         self._period = control_period
         self._stale_after = stale_after
         self._stage: TaskStage | None = None
+        self._generation = 0
+        self._stage_generation = 0
+        self._state_lock = threading.RLock()
+        self._publish_lock = threading.Lock()
         self._state = AdapterStatus("idle")
         self._last_command = TwistCommand.zero()
         self._timer = node.create_timer(control_period, self._control_step)
@@ -179,9 +193,16 @@ class RclpyTwistTransport:
         message.angular.z = command.angular_velocity
         self._publisher.publish(message)
 
-    def start_waypoint(self, stage: TaskStage) -> None:
-        self._stage = stage
-        self._state = AdapterStatus("running")
+    def start_waypoint(self, stage: TaskStage, safety_token: SafetyToken | None = None) -> None:
+        if safety_token is not None and not safety_token.is_valid():
+            raise AdapterError("ESTOP_LATCHED")
+        with self._state_lock:
+            if safety_token is not None and not safety_token.is_valid():
+                raise AdapterError("ESTOP_LATCHED")
+            self._generation += 1
+            self._stage_generation = self._generation
+            self._stage = stage
+            self._state = AdapterStatus("running")
 
     def waypoint_status(self) -> AdapterStatus:
         return self._state
@@ -191,15 +212,26 @@ class RclpyTwistTransport:
         self._state = AdapterStatus("cancelled")
 
     def stop_waypoint(self) -> None:
-        self._stage = None
-        for _ in range(_ZERO_BURST_COUNT):
-            self.publish(TwistCommand.zero())
-        self._last_command = TwistCommand.zero()
-        self._state = AdapterStatus("stopped")
+        self._zero_and_disable("stopped")
+
+    def emergency_stop(self) -> None:
+        self._zero_and_disable("estopped")
+
+    def _zero_and_disable(self, state: str) -> None:
+        with self._state_lock:
+            self._generation += 1
+            self._stage = None
+            self._state = AdapterStatus(state)
+        with self._publish_lock:
+            for _ in range(_ZERO_BURST_COUNT):
+                self.publish(TwistCommand.zero())
+            self._last_command = TwistCommand.zero()
 
     def _control_step(self) -> None:
-        stage = self._stage
-        sample = self._sample
+        with self._state_lock:
+            stage = self._stage
+            sample = self._sample
+            generation = self._stage_generation
         if stage is None:
             return
         if sample is None or self._clock() - sample.timestamp > self._stale_after or sample.timestamp - self._clock() > 0.05:
@@ -225,8 +257,14 @@ class RclpyTwistTransport:
             max(self._last_command.linear_velocity - linear_delta, min(self._last_command.linear_velocity + linear_delta, desired_linear)),
             max(self._last_command.angular_velocity - angular_delta, min(self._last_command.angular_velocity + angular_delta, desired_angular)),
         )
-        self.publish(command)
-        self._last_command = command
+        before_publish = getattr(self, "_before_publish", None)
+        if before_publish is not None:
+            before_publish()
+        with self._publish_lock:
+            if generation != self._generation or self._stage is None:
+                return
+            self.publish(command)
+            self._last_command = command
 
     def read_odometry(self) -> OdometrySample:
         if self._sample is None:

@@ -103,7 +103,9 @@ def test_append_retries_a_real_controlled_short_write_until_the_record_is_comple
     writer.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
 
     assert len(calls) > 1
-    assert json.loads(audit_path.read_text(encoding="utf-8")) == {
+    record = json.loads(audit_path.read_text(encoding="utf-8"))
+    assert len(record.pop("session_id")) == 32
+    assert record == {
         "endpoint_gids": [],
         "monotonic_time": 2.0,
         "operation": "discover",

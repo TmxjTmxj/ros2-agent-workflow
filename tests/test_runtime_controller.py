@@ -14,6 +14,7 @@ from agent_ros.adapters.base import (
     AdapterStatus,
     Observation,
     RobotAdapter,
+    TwistCommand,
 )
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.adapters.nav2 import Nav2Adapter
@@ -50,7 +51,9 @@ class RecordingAdapter(RobotAdapter):
     def validate(self) -> None:
         return None
 
-    def start(self, task: object) -> AdapterStatus:
+    def start(self, task: object, safety_token=None) -> AdapterStatus:
+        if safety_token is not None and not safety_token.is_valid():
+            raise AdapterError("ESTOP_LATCHED")
         self.started.append(task)
         return AdapterStatus("running")
 
@@ -66,11 +69,15 @@ class RecordingAdapter(RobotAdapter):
     def stop(self) -> None:
         self.stop_count += 1
 
+    def emergency_stop(self) -> None:
+        self.stop_count += 1
+
     def observe(self, source: str) -> Observation:
         return Observation(source, 1.0, {"ok": True})
 
-    def bind_physical_estop(self, handler) -> None:
+    def bind_physical_estop(self, handler) -> bool:
         self.estop_handler = handler
+        return True
 
 
 def write_profiles(
@@ -244,10 +251,11 @@ def test_real_twist_adapter_executes_reviewed_task_stage_through_runtime(tmp_pat
     transport.publish = transport.commands.append
     transport.read_odometry = lambda: transport.odometry
     transport.subscribe_estop = lambda handler: setattr(transport, "estop", handler)
-    transport.start_waypoint = lambda stage: setattr(transport, "stage", stage)
+    transport.start_waypoint = lambda stage, token=None: setattr(transport, "stage", stage)
     transport.waypoint_status = lambda: AdapterStatus("running")
     transport.cancel_waypoint = lambda: transport.commands.extend([TwistCommand.zero()] * 3)
     transport.stop_waypoint = lambda: transport.commands.extend([TwistCommand.zero()] * 3)
+    transport.emergency_stop = transport.stop_waypoint
     profiles = tmp_path / "profiles"
     write_profiles(profiles)
     runtime = tmp_path / "runtime"
@@ -287,11 +295,12 @@ def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path
     class Transport:
         def __init__(self):
             self.requests = []
-        def send_goal(self, request): self.requests.append(request)
+        def send_goal(self, request, token=None): self.requests.append(request)
         def goal_status(self): return {"state": "running"}
         def cancel_goal(self): return None
         def publish_zero(self): return None
         def subscribe_estop(self, handler): self.estop = handler
+        def emergency_stop(self): return None
 
     transport = Transport()
     runtime = tmp_path / "runtime"
@@ -358,9 +367,11 @@ def test_physical_estop_racing_start_leaves_zero_motion_after_start_returns(tmp_
     release = threading.Event()
 
     class BlockingAdapter(RecordingAdapter):
-        def start(self, task):
+        def start(self, task, safety_token=None):
             entered.set()
             release.wait(1.0)
+            if not safety_token.is_valid():
+                raise AdapterError("ESTOP_LATCHED")
             self.started.append(task)
             return AdapterStatus("running")
 
@@ -386,9 +397,11 @@ def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
     release = threading.Event()
 
     class HungStart(RecordingAdapter):
-        def start(self, task):
+        def start(self, task, safety_token=None):
             entered.set()
             release.wait()
+            if not safety_token.is_valid():
+                raise AdapterError("ESTOP_LATCHED")
             return AdapterStatus("running")
 
     adapter = HungStart()
@@ -405,6 +418,95 @@ def test_physical_estop_does_not_wait_for_indefinitely_blocked_start(tmp_path):
     assert active.state is SafetyState.ESTOPPED
     assert adapter.stop_count >= 3
     release.set()
+
+
+def test_estop_between_start_reservation_and_transport_activation_rejects_start(tmp_path):
+    entered = threading.Event()
+    release = threading.Event()
+
+    class ReservedStart(RecordingAdapter):
+        def start(self, task, safety_token=None):
+            entered.set()
+            release.wait(1.0)
+            if not safety_token.is_valid():
+                raise AdapterError("ESTOP_LATCHED")
+            self.started.append(task)
+            return AdapterStatus("running")
+
+    adapter = ReservedStart()
+    active = controller(tmp_path, adapter)
+    prepare(active)
+    errors = []
+    worker = threading.Thread(target=lambda: _capture(errors, active.run_task, "delivery"))
+    worker.start()
+    assert entered.wait(1.0)
+
+    adapter.estop_handler(True)
+    release.set()
+    worker.join(1.0)
+
+    assert adapter.started == []
+    assert active.state is SafetyState.ESTOPPED
+    assert any(isinstance(error, RuntimeControllerError) for error in errors)
+
+
+def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path):
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    task_path = profiles / "tasks" / "delivery.yaml"
+    task = yaml.safe_load(task_path.read_text(encoding="utf-8"))
+    task["stages"].append({
+        "name": "return",
+        "goal": {"frame": "odom", "x": 0.0, "y": 0.0, "yaw": 0.0},
+        "tolerance": 0.25,
+        "timeout": 30.0,
+    })
+    task_path.write_text(yaml.safe_dump(task), encoding="utf-8")
+
+    class TwoStageAdapter(RecordingAdapter):
+        def __init__(self):
+            super().__init__()
+            self.status_calls = 0
+
+        def start(self, task, safety_token=None):
+            if safety_token is None or not safety_token.is_valid():
+                raise AdapterError("ESTOP_LATCHED")
+            return super().start(task, safety_token)
+
+        def status(self):
+            self.status_calls += 1
+            return AdapterStatus("succeeded" if self.status_calls == 1 else "running")
+
+    adapter = TwoStageAdapter()
+    active = controller(tmp_path, adapter, monitor_interval=0.001)
+    prepare(active)
+    active.run_task("delivery")
+
+    deadline = time.monotonic() + 1.0
+    while len(adapter.started) < 2 and time.monotonic() < deadline:
+        time.sleep(0.005)
+
+    assert [item.name for item in adapter.started] == ["destination", "return"]
+    assert active.state is SafetyState.RUNNING
+    active.stop_runtime()
+
+
+def test_start_transition_is_audited_before_adapter_activation_and_failure_is_continuous(tmp_path):
+    class FailedStart(RecordingAdapter):
+        def start(self, task, safety_token=None):
+            raise AdapterError("STALE_FEEDBACK")
+
+    adapter = FailedStart()
+    active = controller(tmp_path, adapter)
+    prepare(active)
+
+    with pytest.raises(RuntimeControllerError, match="STALE_FEEDBACK"):
+        active.run_task("delivery")
+
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
+    assert [item["operation"] for item in records[-2:]] == ["start_task", "estop"]
+    assert records[-2]["state"] == {"from": "ARMED", "to": "RUNNING"}
+    assert records[-1]["state"] == {"from": "RUNNING", "to": "ESTOPPED"}
 
 
 def test_stop_runtime_reports_cleanup_failure_when_monitor_status_never_returns(tmp_path):
@@ -644,6 +746,46 @@ def test_restart_quarantines_bounded_but_impossible_audit_history(tmp_path, muta
         active.discover_robot("robot")
 
 
+def test_clean_stopped_session_allows_new_controller_session_from_new(tmp_path):
+    adapter = RecordingAdapter()
+    first = controller(tmp_path, adapter)
+    prepare(first)
+    first.run_task("delivery")
+    first.cancel_task()
+    first.stop_runtime()
+
+    second = RuntimeController(
+        profiles_root=tmp_path / "profiles",
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: RecordingAdapter(),
+    )
+    result = second.discover_robot("robot")
+
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
+    assert result["state"] == "DISCOVERED"
+    assert records[-1]["session_id"] != records[0]["session_id"]
+
+
+def test_restart_quarantines_interleaved_or_replayed_audit_session(tmp_path):
+    adapter = RecordingAdapter()
+    active = controller(tmp_path, adapter)
+    prepare(active)
+    path = tmp_path / "runtime" / "audit.jsonl"
+    records = path.read_text().splitlines()
+    path.write_text(records[0] + "\n" + records[1] + "\n" + records[0] + "\n", encoding="utf-8")
+
+    restarted = RuntimeController(
+        profiles_root=tmp_path / "profiles", evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime", graph_probe=Probe(),
+        adapter_factory=lambda _profile: RecordingAdapter(),
+    )
+
+    with pytest.raises(RuntimeControllerError, match="AUDIT_INTEGRITY_COMPROMISED"):
+        restarted.discover_robot("robot")
+
+
 def test_physical_binding_failure_is_estopped_and_audited_once(tmp_path):
     class BrokenBinding(RecordingAdapter):
         def bind_physical_estop(self, handler):
@@ -668,7 +810,7 @@ def test_quarantined_runtime_still_allows_owned_cleanup_and_join(tmp_path):
 
     result = active.stop_runtime()
 
-    assert result["state"] == "STOPPED"
+    assert result["state"] == "ESTOPPED"
     assert adapter.stop_count >= 3
 
 

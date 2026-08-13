@@ -13,6 +13,7 @@ from agent_ros.adapters.base import (
     HospitalAction,
     Observation,
     RobotAdapter,
+    SafetyToken,
 )
 
 
@@ -33,9 +34,11 @@ class HospitalDeliveryAdapter(RobotAdapter):
     def validate(self) -> None:
         self._invoke(HospitalAction.VALIDATE)
 
-    def start(self, task: object) -> AdapterStatus:
-        if task is not HospitalAction.START:
+    def start(self, task: object, safety_token: SafetyToken | None = None) -> AdapterStatus:
+        if task is not HospitalAction.START or not isinstance(safety_token, SafetyToken):
             raise AdapterError("PROFILE_INVALID")
+        if not safety_token.is_valid():
+            raise AdapterError("ESTOP_LATCHED")
         return self._status_from(HospitalAction.START)
 
     def status(self) -> AdapterStatus:
@@ -47,6 +50,16 @@ class HospitalDeliveryAdapter(RobotAdapter):
     def stop(self) -> None:
         self._invoke(HospitalAction.STOP)
 
+    def emergency_stop(self) -> None:
+        emergency = getattr(self._runner, "emergency_stop", None)
+        if emergency is None:
+            self._invoke(HospitalAction.STOP)
+            return
+        try:
+            emergency()
+        except Exception:
+            raise AdapterError("UNSAFE_STATE") from None
+
     def observe(self, source: str) -> Observation:
         if source != "hospital_state":
             raise AdapterError("PROFILE_INVALID")
@@ -55,7 +68,8 @@ class HospitalDeliveryAdapter(RobotAdapter):
 
     def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         binder = getattr(self._runner, "subscribe_estop", None)
-        if binder is not None:
+        emergency = getattr(self._runner, "emergency_stop", None)
+        if binder is not None and emergency is not None:
             binder(handler)
             return True
         return False
