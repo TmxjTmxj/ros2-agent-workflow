@@ -1,6 +1,6 @@
 # 🤖 Codex 控制 ROS2 自动化框架
 
-**让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"智能车国赛·医院配送"赛题为完整验证案例**
+**让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"中国机器人大赛暨RoboCup·送药巡诊机器人赛项"为完整验证案例**
 
 [![ROS2](https://img.shields.io/badge/ROS2-lyrical-orange)](https://docs.ros.org)
 [![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10-blue)](https://gazebosim.org)
@@ -21,10 +21,10 @@
 | 🧠 **Agent 驱动** | Codex / Claude / 任意 MCP 客户端即可操控 ROS2 |
 | 🔒 **Fail-Closed 安全** | 激活许可 + 心跳监控 + 急停闩锁 + 完整审计,任何异常都安全停机 |
 | 📦 **可复现** | 声明式 Profile 描述机器人能力,一键运行完整验证 |
-| 🧪 **赛题案例** | 以"智能车国赛·医院配送"为完整参考案例,带真实验收报告 |
+| 🧪 **赛题案例** | 以"送药巡诊机器人赛项"为完整参考案例,带真实验收报告与相机证据 |
 | 📊 **可验证证据** | 独立验收监控器,生成机器可验证的 JSON 证据,防伪造 |
 
-> **这个框架从一次真实的赛题出发**:原任务是让 Agent 完成"智能车国赛"中的医院配送仿真赛题。我们将赛题固化为完整参考案例(`examples/hospital_delivery`),并抽象出一套**通用、安全、可复现**的 Agent 控制 ROS2 框架。赛题是案例,框架是产品。
+> **这个框架从一次真实的赛题出发**:原任务是让 Agent 完成中国机器人大赛暨RoboCup"送药巡诊机器人赛项"中的医院配送仿真赛题。我们将赛题固化为完整参考案例(`examples/hospital_delivery`),并抽象出一套**通用、安全、可复现**的 Agent 控制 ROS2 框架。赛题是案例,框架是产品。
 
 ---
 
@@ -118,7 +118,7 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 
 ---
 
-## 🏥 参考案例:医院配送(智能车国赛赛题)
+## 🏥 参考案例:医院配送(送药巡诊机器人赛项)
 
 ![医院配送路线](assets/hospital-route.svg)
 
@@ -143,7 +143,20 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 | 相机证据 | 初始 + 最终 PNG,640×480 可解码 |
 | 验证错误 | 无(`validation_errors: []`) |
 
-> 验收报告由**独立监控器**生成,不信任控制器自报——所有指标都来自 ROS 话题的独立观测。
+### 赛题规格参考(送药巡诊机器人赛项,官方规则)
+
+| 规格 | 官方赛项 | 本案例 |
+|------|----------|--------|
+| 场地 | 7m×7m 纯色地面,四周 1.2m 挡板 | 24m×18m 医院病房世界(赛题精神泛化) |
+| 任务 | 取药 → 送药 → 巡诊 | 取药 → 送药 → 巡视(三段式) |
+| 障碍物 | 裁判随机放置 | 固定病房布局 + 动态避障 |
+| 限时 | 180 s | 180 s(实测 49.6 s) |
+
+### 验收证据(防伪造,随仓库发布)
+
+- **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,2026-08-13,SUCCEEDED)
+- **相机证据**: [任务开始](examples/hospital_delivery/evidence/acceptance-initial.png) / [任务完成](examples/hospital_delivery/evidence/acceptance-final.png)(640×480 PNG)
+- 报告由**独立监控器**生成,不信任控制器自报——所有指标都来自 ROS 话题的独立观测(发布者 GID 监控/接触监控/相机截图)。
 
 ---
 
@@ -243,6 +256,6 @@ MIT —— 自由使用、修改、分发,保留版权声明即可。
 
 ## 🙏 致谢
 
-- 案例基于"智能车国赛"医院配送赛题场景
+- 案例基于"送药巡诊机器人赛项"医院配送场景
 - TurtleBot 几何模型来自开源社区,归属保留在模型元数据中
 - ROS2 / Gazebo / FastMCP 生态

@@ -1,0 +1,1740 @@
+{
+  "schema_version": 2,
+  "generated_at_unix": 1786612910.446288,
+  "mission_state": "SUCCEEDED",
+  "failure_code": null,
+  "stages": [
+    {
+      "id": "pharmacy",
+      "name": "走廊到药房取药",
+      "endpoint_error": 0.32497861887975316,
+      "elapsed": 12.264630191988545
+    },
+    {
+      "id": "ward2",
+      "name": "药房到病房2送药",
+      "endpoint_error": 0.33671616061833715,
+      "elapsed": 32.192691485979594
+    },
+    {
+      "id": "laboratory",
+      "name": "病房2到实验室巡视",
+      "endpoint_error": 0.3409825251626705,
+      "elapsed": 49.61588857197785
+    }
+  ],
+  "elapsed_seconds": 49.61588857197785,
+  "terminal_pose": {
+    "x": 12.312767062810632,
+    "y": 14.364184511608133,
+    "yaw": 2.556559481846641
+  },
+  "stopped_pose": {
+    "x": 12.305400638503881,
+    "y": 14.369047194795145,
+    "yaw": 2.5607607719363603
+  },
+  "stopped_drift_m": 0.00882665819233636,
+  "cmd_vel_publishers": [
+    "/hospital_mission_controller"
+  ],
+  "unknown_publishers": [],
+  "publisher_evidence": {
+    "monitor_started_unix": 1786612857.0211432,
+    "monitor_stopped_unix": 1786612909.9089243,
+    "samples": [
+      {
+        "at_unix": 1786612857.2868936,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612857.293159,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612857.5470371,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612857.801622,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612858.0571306,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612858.3132863,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612858.5669773,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612858.8195708,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612859.0729032,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612859.345294,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612859.5967848,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612859.8472958,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612860.0979936,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612860.3495157,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612860.600989,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612860.8515496,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612861.1019623,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612861.3526742,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612861.6046052,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612861.8588414,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612862.1096194,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612862.3619106,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612862.6137154,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612862.8678937,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612863.1314547,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612863.424159,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612863.6755435,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612863.926869,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612864.1810646,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612864.4368804,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612864.688014,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612864.9662817,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612865.2857685,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612865.5914426,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612865.8840659,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612866.2001498,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612866.5062034,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612866.8002796,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612867.0862954,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612867.3400288,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612867.5944169,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612867.8481452,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612868.1094902,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612868.364306,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612868.624933,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612868.8875399,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612869.1423259,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612869.3998656,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612869.658822,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612869.914903,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612870.262909,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612870.5930188,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612870.9101954,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612871.1748524,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612871.4316955,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612871.734849,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612872.0467377,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612872.3569195,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612872.6676006,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612872.9469266,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612873.2035415,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612873.459303,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612873.710691,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612873.9612262,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612874.2121682,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612874.4626553,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612874.713897,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612874.9655094,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612875.2174447,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612875.4914744,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612875.874857,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612876.126309,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612876.379374,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612876.6418872,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612876.996114,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612877.3826842,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612877.734197,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612878.0511942,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612878.419535,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612878.7462904,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612878.997279,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612879.2500482,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612879.5007186,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612879.7522202,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612880.0030155,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612880.2544134,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612880.506212,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612880.7567222,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612881.008983,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612881.2616837,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612881.5150988,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612881.7676032,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612882.0202901,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612882.272216,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612882.5245113,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612882.7761476,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612883.0669396,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612883.3719363,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612883.6738417,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612884.0433495,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612884.4125412,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612884.7374322,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612885.0886955,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612885.4433243,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612885.7428124,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612886.0738442,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612886.3252525,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612886.5766711,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612886.851105,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612887.1056147,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612887.3597357,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612887.6124258,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612887.8629391,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612888.1145396,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612888.366361,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612888.6169791,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612888.867474,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612889.118873,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612889.3693423,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612889.623789,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612889.8749232,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612890.2133586,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612890.5519936,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612890.875442,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612891.1408727,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612891.393897,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612891.725472,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612892.1083827,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612892.4731114,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612892.7943342,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612893.124075,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612893.4829268,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612893.8152785,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612894.1586692,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612894.4986346,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612894.79984,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612895.0956395,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612895.4085274,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612895.707392,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612896.0030265,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612896.3166137,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612896.6279948,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612896.9224267,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612897.2483065,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612897.570498,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612897.8599572,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612898.1474733,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612898.4633546,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612898.8239696,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612899.127462,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612899.4296684,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612899.7213335,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612900.068557,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612900.3851085,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612900.691538,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612901.0138025,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612901.3751264,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612901.6849506,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612902.0023236,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612902.366394,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612902.6612613,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612902.9482052,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612903.255144,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612903.5565116,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612903.8584182,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612904.198775,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612904.496536,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612904.7898622,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612905.0835507,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612905.392016,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612905.6831784,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612905.9748647,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612906.3328156,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612906.6855874,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612907.0324652,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612907.397442,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612907.6485972,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612907.9066536,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612908.1576672,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612908.4768052,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612908.8108025,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612909.1676624,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612909.5805757,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      },
+      {
+        "at_unix": 1786612909.9089108,
+        "endpoints": [
+          {
+            "node": "/hospital_mission_controller",
+            "gid": "010f752c8bd10fc70000000000001403"
+          }
+        ]
+      }
+    ],
+    "inspection_errors": [],
+    "observed_endpoints": [
+      {
+        "node": "/hospital_mission_controller",
+        "gid": "010f752c8bd10fc70000000000001403"
+      }
+    ]
+  },
+  "contact_evidence": {
+    "topic": "/hospital_amr/contacts",
+    "monitor_started_unix": 1786612857.0211432,
+    "monitor_stopped_unix": 1786612909.9089243,
+    "topic_publishers_seen": true,
+    "messages": 12831,
+    "prohibited_contacts": []
+  },
+  "camera": {
+    "path": "logs/acceptance-final-1786612855.png",
+    "width": 640,
+    "height": 480,
+    "bytes": 16705,
+    "encoding": "rgb8"
+  },
+  "initial_camera": {
+    "path": "logs/acceptance-initial-1786612855.png",
+    "width": 640,
+    "height": 480,
+    "bytes": 19618,
+    "encoding": "rgb8"
+  },
+  "safety": {
+    "collision_free": true,
+    "safety_stop_failure": false,
+    "minimum_front_range_m": 1.0988343954086304
+  },
+  "validation_errors": [],
+  "passed": true
+}
