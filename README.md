@@ -152,6 +152,12 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 | 障碍物 | 裁判随机放置 | 固定病房布局 + 动态避障 |
 | 限时 | 180 s | 180 s(实测 49.6 s) |
 
+### 📊 Agent 工具链对比（Codex / Claude Code+DeepSeek / Hermes+DeepSeek）
+
+本项目的三条 Agent 线真实表现对比与多 Agent 分工通用解，见
+[`docs/AGENT-COMPARISON.md`](docs/AGENT-COMPARISON.md) —— 为什么工具不同会导致
+Agent 控制 ROS2 出现区别，以及后人如何少走弯路。
+
 ### 验收证据(防伪造,随仓库发布)
 
 - **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,2026-08-13,SUCCEEDED)
