@@ -1,4 +1,6 @@
-# 🤖 Codex 控制 ROS2 自动化框架
+<div align="center">
+
+<img src="assets/banner.svg" width="100%" alt="ros2-agent-workflow"/>
 
 **让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"中国机器人大赛暨RoboCup·送药巡诊机器人赛项"为完整验证案例**
 
@@ -6,7 +8,12 @@
 [![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10-blue)](https://gazebosim.org)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-FastMCP-important)](https://modelcontextprotocol.io)
+[![Tests](https://img.shields.io/badge/tests-322%20passed-brightgreen)](#-跑测试322-个)
+[![Mission](https://img.shields.io/badge/mission-49.6s-58a6ff)](docs/AGENT-COMPARISON.md)
+[![Safety](https://img.shields.io/badge/safety-0%20collisions-brightgreen)](#-参考案例医院配送送药巡诊机器人赛项)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
+</div>
 
 ---
 
