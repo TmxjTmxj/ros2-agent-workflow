@@ -12,6 +12,7 @@ import subprocess
 from collections import deque
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from types import MappingProxyType
 
 from agent_ros.adapters._safety import _BoundedCommandWorker, _CommandResult, _EmergencyStopChannel
 from agent_ros.adapters.base import (
@@ -807,6 +808,59 @@ class HospitalCaseAdapter(RobotAdapter):
                 projected[key] = float(value)
             result = projected
         return Observation(source, self._clock(), result)
+
+    def freeze_terminal_evidence(
+        self,
+        sources: tuple[str, ...],
+        terminal_status: AdapterStatus | None = None,
+    ) -> Mapping[str, Observation]:
+        """Build the hospital terminal snapshot from the status that reported success.
+
+        The status payload already contains the final DiffDrive pose and ROS sim
+        time used to declare ``succeeded``. Reusing it avoids a second live
+        ROS observation between success and cleanup.
+        """
+        if not isinstance(sources, tuple) or not all(
+            isinstance(source, str) and source for source in sources
+        ):
+            raise AdapterError("PROFILE_INVALID")
+        captured: dict[str, Observation] = dict(
+            super().freeze_terminal_evidence(
+                tuple(source for source in sources if source != "odometry"),
+                terminal_status,
+            )
+        )
+        if "odometry" not in sources:
+            return MappingProxyType(captured)
+        if terminal_status is None or terminal_status.state != "succeeded":
+            raise AdapterError("EVIDENCE_INVALID")
+        pose = terminal_status.values.get("pose")
+        if not isinstance(pose, Mapping):
+            raise AdapterError("EVIDENCE_INVALID")
+        projected: dict[str, float] = {}
+        for key in ("x", "y", "yaw"):
+            value = pose.get(key)
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(float(value))
+            ):
+                raise AdapterError("EVIDENCE_INVALID")
+            projected[key] = float(value)
+        sim_time = terminal_status.values.get("sim_time")
+        if (
+            isinstance(sim_time, bool)
+            or not isinstance(sim_time, (int, float))
+            or not math.isfinite(float(sim_time))
+            or float(sim_time) < 0.0
+        ):
+            raise AdapterError("EVIDENCE_INVALID")
+        captured["odometry"] = Observation(
+            "odometry",
+            float(sim_time),
+            projected,
+        )
+        return MappingProxyType(captured)
 
     def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         return False

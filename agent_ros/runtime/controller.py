@@ -141,6 +141,8 @@ class RuntimeController:
         self._task_cleanup_started = False
         self._cancel_requested = False
         self._last_status = None
+        self._terminal_evidence: dict[str, Observation] = {}
+        self._terminal_evidence_frozen = False
         self._report = None
         self._quarantined = self._quarantine_path.exists() or not self._existing_audit_is_valid()
         if not self._audit_worker.start():
@@ -395,6 +397,8 @@ class RuntimeController:
             )
             self._observed_gateway_state = gateway.state
             self._task_cleanup_started = False
+            self._terminal_evidence = {}
+            self._terminal_evidence_frozen = False
         try:
             self._start_monitor()
         except RuntimeControllerError:
@@ -470,6 +474,11 @@ class RuntimeController:
 
     def observe(self, source: str) -> Observation:
         self._ensure_available()
+        with self._lock:
+            if self._terminal_evidence_frozen:
+                frozen = self._terminal_evidence.get(source)
+                if frozen is not None:
+                    return frozen
         _gateway, adapter, profile = self._active()
         if source not in profile.observation_sources:
             raise RuntimeControllerError("PROFILE_INVALID")
@@ -659,6 +668,39 @@ class RuntimeController:
                 outcome=AuditOutcome.FAULTED,
             )
 
+    def _freeze_terminal_evidence(
+        self,
+        adapter: RobotAdapter,
+        status,
+    ) -> None:
+        """Persist immutable terminal observations before any motion cleanup."""
+        with self._lock:
+            task = self._task
+        if task is None or not task.evidence_sources:
+            return
+        sources = task.evidence_sources
+        try:
+            frozen = adapter.freeze_terminal_evidence(sources, status)
+        except AdapterError as exc:
+            raise self._adapter_error(exc) from None
+        except Exception:
+            raise RuntimeControllerError("EVIDENCE_INVALID") from None
+        if not isinstance(frozen, Mapping):
+            raise RuntimeControllerError("EVIDENCE_INVALID")
+        snapshot: dict[str, Observation] = {}
+        for source in sources:
+            observation = frozen.get(source)
+            if (
+                not isinstance(observation, Observation)
+                or observation.source != source
+                or not isinstance(observation.values, Mapping)
+            ):
+                raise RuntimeControllerError("EVIDENCE_INVALID")
+            snapshot[source] = observation
+        with self._lock:
+            self._terminal_evidence = snapshot
+            self._terminal_evidence_frozen = True
+
     def _start_task_cleanup(self, adapter: RobotAdapter) -> None:
         with self._lock:
             if self._task_cleanup_started:
@@ -721,6 +763,22 @@ class RuntimeController:
             except RuntimeControllerError:
                 return
 
+    def _finish_succeeded_task(self, gateway, adapter, status):
+        """Freeze terminal evidence, then stop motion and start bounded cleanup."""
+        try:
+            self._freeze_terminal_evidence(adapter, status)
+        except RuntimeControllerError:
+            self._latch_adapter_fault()
+            self._start_task_cleanup(adapter)
+            raise
+        self._start_task_cleanup(adapter)
+        transition = gateway.cancel()
+        self._append_transition(AuditOperation.CANCEL, transition)
+        with self._lock:
+            self._observed_gateway_state = gateway.state
+            self._monitor_stop.set()
+        return status
+
     def _poll_running(self):
         with self._lock:
             gateway, adapter, _profile = self._active()
@@ -750,12 +808,7 @@ class RuntimeController:
                 raise RuntimeControllerError("UNSAFE_STATE")
             if status.state == "succeeded" and self._task is not None:
                 if isinstance(adapter, HospitalCaseAdapter):
-                    self._start_task_cleanup(adapter)
-                    transition = gateway.cancel()
-                    self._append_transition(AuditOperation.CANCEL, transition)
-                    self._observed_gateway_state = gateway.state
-                    self._monitor_stop.set()
-                    return status
+                    return self._finish_succeeded_task(gateway, adapter, status)
                 if self._stage_index + 1 < len(self._task.stages):
                     self._stage_index += 1
                     stage = self._task.stages[self._stage_index]
@@ -770,12 +823,7 @@ class RuntimeController:
                     with self._lock:
                         self._stage_deadline = self._clock() + stage.timeout
                 else:
-                    self._start_task_cleanup(adapter)
-                    transition = gateway.cancel()
-                    self._append_transition(AuditOperation.CANCEL, transition)
-                    self._observed_gateway_state = gateway.state
-                    self._monitor_stop.set()
-                    return status
+                    return self._finish_succeeded_task(gateway, adapter, status)
             if gateway.state is SafetyState.RUNNING:
                 transition = gateway.heartbeat()
                 self._append_transition(AuditOperation.HEARTBEAT, transition)

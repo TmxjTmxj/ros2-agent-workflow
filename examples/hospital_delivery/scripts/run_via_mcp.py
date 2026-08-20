@@ -16,7 +16,7 @@ import time
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = EXAMPLE_ROOT.parents[1]
-TRACE_PATH = EXAMPLE_ROOT / "logs" / "mcp_agent_trace.json"
+TRACE_PATH = EXAMPLE_ROOT / "evidence" / "mcp_agent_trace.json"
 SERVER_PYTHON = REPOSITORY_ROOT / ".venv" / "bin" / "python"
 WALL_TIMEOUT = 300.0
 POLL_INTERVAL = 0.5

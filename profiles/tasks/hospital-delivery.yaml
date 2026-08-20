@@ -30,6 +30,5 @@ required_sensors:
   - camera
 evidence:
   sources:
-    - camera
     - odometry
 recovery_policy: cancel_and_stop

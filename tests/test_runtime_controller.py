@@ -211,6 +211,7 @@ def write_hospital_profiles(root: Path) -> None:
         }
         for index, name in enumerate(("pharmacy", "ward-2", "laboratory"), start=1)
     ]
+    task["evidence"] = {"sources": ["odometry"]}
     hospital_task_path = root / "tasks" / "hospital-delivery.yaml"
     hospital_task_path.write_text(yaml.safe_dump(task), encoding="utf-8")
     task_path.unlink()
@@ -781,6 +782,126 @@ def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path
     assert [item.name for item in adapter.started] == ["destination", "return"]
     assert active.state is SafetyState.RUNNING
     active.stop_runtime()
+
+
+def test_terminal_evidence_is_frozen_before_success_cleanup_and_served_after_stop(tmp_path, runtime_owner):
+    events = []
+
+    class TerminalEvidenceAdapter(RecordingAdapter):
+        def __init__(self):
+            super().__init__()
+            self.status_calls = 0
+            self.observe_after_stop_fails = False
+
+        def status(self):
+            self.status_calls += 1
+            return AdapterStatus(
+                "succeeded" if self.status_calls == 1 else "running"
+            )
+
+        def observe(self, source):
+            if self.observe_after_stop_fails and self.stop_count > 0:
+                raise AdapterError("STALE_FEEDBACK")
+            events.append(("observe", source, self.stop_count))
+            return Observation(source, 99.0, {"frozen": True})
+
+        def stop(self):
+            events.append(("stop", self.stop_count))
+            super().stop()
+
+    adapter = TerminalEvidenceAdapter()
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.001)
+    prepare(active)
+    active.run_task("delivery")
+
+    assert wait_until(lambda: active.state is SafetyState.STOPPED)
+    assert wait_until(lambda: adapter.stop_count >= 1)
+    assert ("observe", "camera", 0) in events
+    assert events.index(("observe", "camera", 0)) < events.index(("stop", 0))
+
+    adapter.observe_after_stop_fails = True
+    frozen = active.observe("camera")
+
+    assert frozen.source == "camera"
+    assert frozen.timestamp == 99.0
+    assert dict(frozen.values) == {"frozen": True}
+    assert events.count(("observe", "camera", 0)) == 1
+    active.stop_runtime()
+
+
+def test_terminal_evidence_freeze_failure_latches_estop_and_still_cleans(tmp_path, runtime_owner):
+    class BrokenFreezeAdapter(RecordingAdapter):
+        def status(self):
+            return AdapterStatus("succeeded")
+
+        def observe(self, source):
+            raise AdapterError("STALE_FEEDBACK")
+
+    adapter = BrokenFreezeAdapter()
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.001)
+    prepare(active)
+    active.run_task("delivery")
+
+    assert wait_until(lambda: active.state is SafetyState.ESTOPPED)
+    assert wait_until(lambda: adapter.stop_count >= 1)
+    assert not active._terminal_evidence_frozen
+    with pytest.raises(RuntimeControllerError, match="STALE_FEEDBACK"):
+        active.observe("camera")
+    active.stop_runtime()
+
+
+def test_hospital_terminal_odometry_is_built_from_success_status_without_live_observe(tmp_path, runtime_owner):
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+
+    class TerminalHospitalAdapter(SimTimeHospitalAdapter):
+        def __init__(self):
+            super().__init__()
+            self.live_observe_calls = 0
+
+        def status(self):
+            return AdapterStatus(
+                "succeeded",
+                values={
+                    "elapsed": 30.0,
+                    "stage_results": [
+                        {"elapsed": 10.0},
+                        {"elapsed": 20.0},
+                        {"elapsed": 30.0},
+                    ],
+                    "pose": {"x": 1.25, "y": -2.5, "yaw": 0.75},
+                    "sim_time": 30.0,
+                },
+            )
+
+        def observe(self, source):
+            self.live_observe_calls += 1
+            raise AssertionError("hospital terminal evidence must use the success status")
+
+    adapter = TerminalHospitalAdapter()
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=EmptyProbe(),
+        adapter_factory=lambda _profile: adapter,
+        monitor_interval=0.001,
+    )
+    runtime_owner(active)
+    active.discover_robot("hospital-amr")
+    active.validate_profile("hospital-amr")
+    active.run_task("hospital-delivery")
+
+    assert wait_until(lambda: active.state is SafetyState.STOPPED)
+    assert wait_until(lambda: adapter.stop_count >= 1)
+    observation = active.observe("odometry")
+
+    assert adapter.live_observe_calls == 0
+    assert observation.source == "odometry"
+    assert observation.timestamp == 30.0
+    assert dict(observation.values) == {"x": 1.25, "y": -2.5, "yaw": 0.75}
+    active.stop_runtime()
+
 
 
 def test_start_transition_is_audited_before_adapter_activation_and_failure_is_continuous(tmp_path, runtime_owner):
