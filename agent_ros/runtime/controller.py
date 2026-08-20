@@ -414,12 +414,30 @@ class RuntimeController:
             self._ensure_available()
             gateway, _adapter, _profile = self._active()
             status = self._last_status
-            return {
+            result = {
                 "state": gateway.state.value,
                 "task": None if self._task is None else self._task.name,
                 "hardware_safety_channel": self._hardware_safety_status(_profile),
-                **({} if status is None else {"adapter_state": status.state, "code": status.code}),
             }
+            if status is not None:
+                result["adapter_state"] = status.state
+                result["code"] = status.code
+                elapsed = status.values.get("elapsed")
+                if (
+                    not isinstance(elapsed, bool)
+                    and isinstance(elapsed, (int, float))
+                    and math.isfinite(float(elapsed))
+                    and float(elapsed) >= 0.0
+                ):
+                    result["elapsed"] = float(elapsed)
+                stage_index = status.values.get("stage_index")
+                if (
+                    not isinstance(stage_index, bool)
+                    and isinstance(stage_index, int)
+                    and stage_index >= 0
+                ):
+                    result["stage_index"] = stage_index
+            return result
 
     def cancel_task(self) -> dict[str, object]:
         with self._lock:

@@ -170,6 +170,8 @@ _RESPONSE_SCHEMAS = {
         "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
         "adapter_state": _TEXT,
         "code": {"oneOf": [_TEXT, {"type": "null"}]},
+        "elapsed": {"type": "number", "minimum": 0},
+        "stage_index": {"type": "integer", "minimum": 0},
     }, ("state", "task", "hardware_safety_channel"))),
     "cancel_task": _response(_object({"state": _STATE, "adapter_state": _TEXT}, ("state", "adapter_state"))),
     "emergency_stop": _response(_object({"state": _STATE}, ("state",))),

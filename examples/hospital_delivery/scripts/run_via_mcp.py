@@ -18,7 +18,7 @@ EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = EXAMPLE_ROOT.parents[1]
 TRACE_PATH = EXAMPLE_ROOT / "evidence" / "mcp_agent_trace.json"
 SERVER_PYTHON = REPOSITORY_ROOT / ".venv" / "bin" / "python"
-WALL_TIMEOUT = 300.0
+WALL_TIMEOUT = 600.0
 POLL_INTERVAL = 0.5
 _ROS_ENVIRONMENT_KEYS = (
     "AMENT_PREFIX_PATH",
@@ -69,6 +69,14 @@ def _tool_record(name: str, ok: bool, data: Mapping[str, object] | None = None):
             value = data.get(key)
             if isinstance(value, str) and value:
                 record[key] = value
+        for key in ("elapsed", "stage_index"):
+            value = data.get(key)
+            if (
+                not isinstance(value, bool)
+                and isinstance(value, (int, float))
+                and math.isfinite(float(value))
+            ):
+                record[key] = value if isinstance(value, int) else float(value)
     return record
 
 
