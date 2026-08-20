@@ -59,11 +59,14 @@ class MissionRoute:
 @dataclass(frozen=True)
 class ControllerConfig:
     waypoint_tolerance: float = 0.35
-    max_linear: float = 1.2
-    max_angular: float = 1.6
+    max_linear: float = 0.22
+    max_angular: float = 1.0
+    max_linear_acceleration: float = 0.5
+    max_angular_acceleration: float = 1.0
     angular_kp: float = 1.6
-    align_threshold: float = 0.35
-    slow_distance: float = 0.8
+    lookahead_distance: float = 0.6
+    rotate_to_heading_min_angle: float = 0.785
+    final_slow_distance: float = 0.6
     mission_timeout: float = 180.0
     odom_timeout: float = 0.5
     obstacle_stop_distance: float = 0.35
@@ -85,6 +88,56 @@ def normalize_angle(angle: float) -> float:
     if math.isclose(result, -math.pi) and angle > 0.0:
         return math.pi
     return result
+
+
+def world_pose_to_odom(start: Pose2D, world_pose: Pose2D) -> Pose2D:
+    """Express a world pose in DiffDrive's spawn-relative odometry frame."""
+    dx = world_pose.x - start.x
+    dy = world_pose.y - start.y
+    cosine = math.cos(start.yaw)
+    sine = math.sin(start.yaw)
+    return Pose2D(
+        x=cosine * dx + sine * dy,
+        y=-sine * dx + cosine * dy,
+        yaw=normalize_angle(world_pose.yaw - start.yaw),
+    )
+
+
+def interpolate_lookahead_carrot(
+    pose: Pose2D,
+    remaining_path: tuple[Waypoint | tuple[float, float], ...],
+    *,
+    lookahead: float,
+) -> Waypoint:
+    """Interpolate a carrot along the pruned path beginning at ``pose``."""
+    if not remaining_path or not math.isfinite(lookahead) or lookahead <= 0.0:
+        raise RouteValidationError("lookahead path must be non-empty and positive")
+    x = pose.x
+    y = pose.y
+    remaining = lookahead
+    for raw_point in remaining_path:
+        if isinstance(raw_point, Waypoint):
+            target_x, target_y = raw_point.x, raw_point.y
+        else:
+            target_x, target_y = raw_point
+        segment = math.hypot(target_x - x, target_y - y)
+        if segment >= remaining and segment > 0.0:
+            ratio = remaining / segment
+            return Waypoint(
+                x + ratio * (target_x - x),
+                y + ratio * (target_y - y),
+            )
+        remaining -= segment
+        x, y = target_x, target_y
+    return Waypoint(x, y)
+
+
+def pure_pursuit_curvature(carrot_x: float, carrot_y: float) -> float:
+    """Return pure-pursuit curvature for a carrot expressed in base frame."""
+    distance_squared = carrot_x * carrot_x + carrot_y * carrot_y
+    if distance_squared <= 1e-12:
+        return 0.0
+    return 2.0 * carrot_y / distance_squared
 
 
 def _finite_number(value: Any, label: str) -> float:
@@ -161,6 +214,7 @@ class MissionControllerCore:
         self.state = MissionState.IDLE
         self.failure_code: str | None = None
         self.started_at: float | None = None
+        self.started_watchdog_at: float | None = None
         self.stage_index = 0
         self.waypoint_index = 0
         self.stage_results: list[dict[str, Any]] = []
@@ -174,7 +228,7 @@ class MissionControllerCore:
         self.failed_stage_id: str | None = None
         self.failed_waypoint_index: int | None = None
 
-    def start(self, now: float) -> OperationResult:
+    def start(self, now: float, *, watchdog_now: float | None = None) -> OperationResult:
         if self.state is MissionState.RUNNING:
             return OperationResult(False, "mission already running")
         if self.state is MissionState.ESTOPPED:
@@ -182,6 +236,7 @@ class MissionControllerCore:
         self.state = MissionState.RUNNING
         self.failure_code = None
         self.started_at = now
+        self.started_watchdog_at = now if watchdog_now is None else watchdog_now
         self.stage_index = 0
         self.waypoint_index = 0
         self.stage_results = []
@@ -201,7 +256,7 @@ class MissionControllerCore:
 
     def estop(self) -> OperationResult:
         if self.state is MissionState.ESTOPPED:
-            return OperationResult(False, "emergency stop already latched")
+            return OperationResult(True, "emergency stop already latched")
         self.state = MissionState.ESTOPPED
         return OperationResult(True, "emergency stop latched")
 
@@ -211,6 +266,7 @@ class MissionControllerCore:
         self.state = MissionState.IDLE
         self.failure_code = None
         self.started_at = None
+        self.started_watchdog_at = None
         self.stage_index = 0
         self.waypoint_index = 0
         self.stage_results = []
@@ -236,13 +292,22 @@ class MissionControllerCore:
             self.failed_waypoint_index = self.waypoint_index
         return VelocityCommand()
 
+    def waypoint_in_odom(self, waypoint: Waypoint) -> Waypoint:
+        transformed = world_pose_to_odom(
+            self.route.start,
+            Pose2D(waypoint.x, waypoint.y, self.route.start.yaw),
+        )
+        return Waypoint(transformed.x, transformed.y)
+
     def update(
         self,
         pose: Pose2D | None,
         now: float,
         front_range: float = math.inf,
         odom_received_at: float | None = None,
+        watchdog_now: float | None = None,
     ) -> VelocityCommand:
+        watchdog = now if watchdog_now is None else watchdog_now
         self.last_update_at = now
         if self.state is not MissionState.RUNNING:
             return VelocityCommand()
@@ -251,14 +316,17 @@ class MissionControllerCore:
             return self._fail("MISSION_TIMEOUT")
 
         if pose is not None:
-            self.last_odom_at = now if odom_received_at is None else odom_received_at
-            if now - self.last_odom_at > self.config.odom_timeout:
+            self.last_odom_at = watchdog if odom_received_at is None else odom_received_at
+            if watchdog - self.last_odom_at > self.config.odom_timeout:
                 return self._fail("ODOM_STALE")
         else:
             odom_reference = self.last_odom_at
             if odom_reference is None:
-                odom_reference = self.started_at
-            if odom_reference is not None and now - odom_reference > self.config.odom_timeout:
+                odom_reference = self.started_watchdog_at
+            if (
+                odom_reference is not None
+                and watchdog - odom_reference > self.config.odom_timeout
+            ):
                 return self._fail("ODOM_STALE")
             return VelocityCommand()
 
@@ -273,7 +341,7 @@ class MissionControllerCore:
 
         while self.state is MissionState.RUNNING:
             stage = self.route.stages[self.stage_index]
-            target = stage.waypoints[self.waypoint_index]
+            target = self.waypoint_in_odom(stage.waypoints[self.waypoint_index])
             distance = math.hypot(target.x - pose.x, target.y - pose.y)
             if distance > self.config.waypoint_tolerance:
                 break
@@ -281,7 +349,8 @@ class MissionControllerCore:
             self._reset_progress()
             if self.waypoint_index < len(stage.waypoints):
                 continue
-            endpoint_error = math.hypot(stage.endpoint.x - pose.x, stage.endpoint.y - pose.y)
+            endpoint = self.waypoint_in_odom(stage.endpoint)
+            endpoint_error = math.hypot(endpoint.x - pose.x, endpoint.y - pose.y)
             elapsed = now - self.started_at if self.started_at is not None else 0.0
             self.stage_results.append(
                 {
@@ -297,7 +366,8 @@ class MissionControllerCore:
                 self.state = MissionState.SUCCEEDED
                 return VelocityCommand()
 
-        target = self.route.stages[self.stage_index].waypoints[self.waypoint_index]
+        active_stage = self.route.stages[self.stage_index]
+        target = self.waypoint_in_odom(active_stage.waypoints[self.waypoint_index])
         dx = target.x - pose.x
         dy = target.y - pose.y
         distance = math.hypot(dx, dy)
@@ -322,13 +392,44 @@ class MissionControllerCore:
             self._progress_at = now
         elif self._progress_at is not None and now - self._progress_at > self.config.progress_timeout:
             return self._fail("WAYPOINT_NO_PROGRESS")
+        remaining_path = tuple(
+            self.waypoint_in_odom(waypoint)
+            for waypoint in active_stage.waypoints[self.waypoint_index :]
+        )
+        carrot = interpolate_lookahead_carrot(
+            pose,
+            remaining_path,
+            lookahead=self.config.lookahead_distance,
+        )
+        carrot_dx = carrot.x - pose.x
+        carrot_dy = carrot.y - pose.y
+        cosine = math.cos(pose.yaw)
+        sine = math.sin(pose.yaw)
+        carrot_base_x = cosine * carrot_dx + sine * carrot_dy
+        carrot_base_y = -sine * carrot_dx + cosine * carrot_dy
+        carrot_angle = math.atan2(carrot_base_y, carrot_base_x)
         angular = max(
             -self.config.max_angular,
-            min(self.config.max_angular, self.config.angular_kp * heading_error),
+            min(self.config.max_angular, self.config.angular_kp * carrot_angle),
         )
-        if abs(heading_error) > self.config.align_threshold:
+        if abs(carrot_angle) > self.config.rotate_to_heading_min_angle:
             return VelocityCommand(0.0, angular)
-        linear = self.config.max_linear * min(1.0, distance / self.config.slow_distance)
+        # Minimal ROS-independent regulated pure-pursuit kernel, modeled on the
+        # Apache-2.0 Nav2 controller algorithm: interpolate a fixed lookahead
+        # carrot, use kappa=2*y/L^2, then regulate speed for angular feasibility.
+        curvature = pure_pursuit_curvature(carrot_base_x, carrot_base_y)
+        linear = self.config.max_linear
+        if abs(curvature) > 1e-12:
+            linear = min(linear, self.config.max_angular / abs(curvature))
+        if (
+            self.stage_index == len(self.route.stages) - 1
+            and self.waypoint_index == len(active_stage.waypoints) - 1
+        ):
+            linear *= min(1.0, distance / self.config.final_slow_distance)
+        angular = max(
+            -self.config.max_angular,
+            min(self.config.max_angular, linear * curvature),
+        )
         return VelocityCommand(linear, angular)
 
     def status(self) -> dict[str, Any]:

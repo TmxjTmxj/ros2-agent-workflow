@@ -3,7 +3,7 @@ robot_profile: hospital-amr
 stages:
   - name: corridor-to-pharmacy
     goal:
-      frame: odom
+      frame: world
       x: 18.5
       y: 3.5
       yaw: 0.0
@@ -11,7 +11,7 @@ stages:
     timeout: 60.0
   - name: pharmacy-to-ward-2
     goal:
-      frame: odom
+      frame: world
       x: 20.0
       y: 8.5
       yaw: 1.57
@@ -19,7 +19,7 @@ stages:
     timeout: 60.0
   - name: ward-2-to-laboratory
     goal:
-      frame: odom
+      frame: world
       x: 12.0
       y: 14.5
       yaw: -1.57

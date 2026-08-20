@@ -73,13 +73,13 @@
   <!-- 数据徽章 -->
   <g font-family="monospace" font-size="15">
     <rect x="60" y="310" width="230" height="44" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
-    <text x="175" y="338" text-anchor="middle" fill="#3fb950">✓ 322 tests passed</text>
+    <text x="175" y="338" text-anchor="middle" fill="#3fb950">✓ 509 tests passed</text>
 
     <rect x="320" y="310" width="230" height="44" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
-    <text x="435" y="338" text-anchor="middle" fill="#58a6ff">⏱ 49.6s mission</text>
+    <text x="435" y="338" text-anchor="middle" fill="#58a6ff">⏱ 137.8s sim mission</text>
 
     <rect x="580" y="310" width="230" height="44" rx="10" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
-    <text x="695" y="338" text-anchor="middle" fill="#3fb950">✖ 0 collisions</text>
+    <text x="695" y="338" text-anchor="middle" fill="#3fb950">✖ 0 prohibited contacts</text>
 
     <rect x="840" y="310" width="300" height="44" rx="10" fill="#161b22" stroke="#bc8cff" stroke-width="1.5"/>
     <text x="990" y="338" text-anchor="middle" fill="#bc8cff">🔒 evidence anti-forgery</text>

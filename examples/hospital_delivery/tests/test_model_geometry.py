@@ -4,11 +4,14 @@ import xml.etree.ElementTree as ET
 import pytest
 import yaml
 
+from smartcar_bringup.controller_core import ControllerConfig
+
 
 MODEL = Path(__file__).resolve().parents[1] / "models" / "hospital_amr" / "model.sdf"
 WORLD = Path(__file__).resolve().parents[1] / "worlds" / "hospital_world_gz10.world"
 PACKAGE_XML = Path(__file__).resolve().parents[1] / "src" / "smartcar_bringup" / "package.xml"
 BRIDGE_CONFIG = Path(__file__).resolve().parents[1] / "config" / "ros_gz_bridge.yaml"
+ROBOT_PROFILE = Path(__file__).resolve().parents[3] / "profiles" / "robots" / "hospital-amr.yaml"
 
 
 def _pose(element):
@@ -29,17 +32,50 @@ def test_wheel_collision_and_joint_use_the_official_turtlebot_layout():
         assert float(link.findtext("collision/geometry/cylinder/length")) == pytest.approx(0.018)
 
 
-def test_deterministic_velocity_control_and_ground_truth_odometry_are_enabled():
+def test_diff_drive_uses_official_burger_kinematics_and_emits_odometry():
+    """Use Gazebo Sim 9's real wheel-joint driver and its documented odom tag."""
     model = ET.parse(MODEL).getroot().find("model")
-    velocity = model.find("plugin[@name='gz::sim::systems::VelocityControl']")
+    diff = model.find("plugin[@name='gz::sim::systems::DiffDrive']")
     odometry = model.find("plugin[@name='gz::sim::systems::OdometryPublisher']")
 
-    assert model.find("plugin[@name='gz::sim::systems::DiffDrive']") is None
-    assert velocity is not None
-    assert velocity.findtext("topic") == "cmd_vel"
-    assert odometry is not None
-    assert odometry.findtext("odom_topic") == "odom"
-    assert odometry.findtext("odom_publish_frequency") == "30"
+    assert model.find("plugin[@name='gz::sim::systems::VelocityControl']") is None
+    assert diff is not None
+    assert diff.findtext("left_joint") == "wheel_left_joint"
+    assert diff.findtext("right_joint") == "wheel_right_joint"
+    assert float(diff.findtext("wheel_separation")) == pytest.approx(0.160)
+    assert float(diff.findtext("wheel_radius")) == pytest.approx(0.033)
+    assert diff.findtext("topic") == "cmd_vel"
+    assert diff.findtext("odom_topic") == "odom"
+    assert diff.findtext("frame_id") == "odom"
+    assert diff.findtext("child_frame_id") == "base_footprint"
+    assert diff.findtext("odom_publish_frequency") == "30"
+    assert diff.find("odom_publisher_frequency") is None
+    assert odometry is None
+
+
+def test_profile_controller_and_diff_drive_share_conservative_burger_limits():
+    model = ET.parse(MODEL).getroot().find("model")
+    diff = model.find("plugin[@name='gz::sim::systems::DiffDrive']")
+    declared = yaml.safe_load(ROBOT_PROFILE.read_text(encoding="utf-8"))["limits"]
+    expected = {
+        "max_linear_velocity": 0.22,
+        "max_angular_velocity": 1.0,
+        "max_linear_acceleration": 0.5,
+        "max_angular_acceleration": 1.0,
+    }
+    controller = ControllerConfig()
+
+    assert declared == expected
+    assert {
+        "max_linear_velocity": controller.max_linear,
+        "max_angular_velocity": controller.max_angular,
+        "max_linear_acceleration": controller.max_linear_acceleration,
+        "max_angular_acceleration": controller.max_angular_acceleration,
+    } == expected
+    assert {
+        key: float(diff.findtext(key))
+        for key in expected
+    } == expected
 
 
 def test_base_collision_matches_official_burger_mesh_scale():
@@ -84,9 +120,21 @@ def test_camera_is_above_the_chassis_and_uses_a_regular_forward_view():
     assert camera is not None
     assert camera.get("type") == "camera"
     assert _pose(camera)[2] >= 0.16
-    assert float(camera.findtext("camera/horizontal_fov")) < 1.6
+    assert float(camera.findtext("camera/horizontal_fov")) == pytest.approx(1.396)
     assert camera.findtext("visualize") == "false"
     assert float(camera.findtext("update_rate")) <= 10.0
+
+
+def test_lds_matches_official_burger_envelope_and_scan_density():
+    model = ET.parse(MODEL).getroot().find("model")
+    scan_link = model.find("link[@name='base_scan']")
+    collision = scan_link.find("collision[@name='lidar_sensor_collision']")
+    sensor = scan_link.find("sensor[@name='hls_lfcd_lds']")
+
+    assert _pose(sensor)[:3] == pytest.approx([-0.032, 0.0, 0.171])
+    assert float(collision.findtext("geometry/cylinder/radius")) == pytest.approx(0.0508)
+    assert float(collision.findtext("geometry/cylinder/length")) == pytest.approx(0.055)
+    assert sensor.findtext("lidar/scan/horizontal/samples") == "360"
 
 
 def test_world_visual_materials_use_valid_sdf_nesting():

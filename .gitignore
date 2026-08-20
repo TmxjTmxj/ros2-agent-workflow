@@ -9,3 +9,4 @@ __pycache__/
 /examples/hospital_delivery/install/
 /examples/hospital_delivery/log/
 /examples/hospital_delivery/logs/
+/.runtime/

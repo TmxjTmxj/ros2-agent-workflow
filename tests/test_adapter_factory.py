@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import threading
@@ -26,13 +27,37 @@ class FakeNode:
 
     def __init__(self) -> None:
         self.destroyed = False
+        self.destroyed_clients = []
+        self.destroyed_subscriptions = []
         type(self).instances.append(self)
 
     def create_publisher(self, _message_type, _name, _depth):
         return FakePublisher()
 
-    def create_subscription(self, _message_type, _name, callback, _depth):
+    def create_subscription(self, message_type, name, callback, _depth):
+        if name == "/hospital_mission/status":
+            callback(message_type(data=json.dumps({
+                "state": "SUCCEEDED",
+                "elapsed": 30.0,
+                "stage_results": [
+                    {"elapsed": 10.0},
+                    {"elapsed": 20.0},
+                    {"elapsed": 30.0},
+                ],
+                "pose": {"x": 0.0, "y": 0.0, "yaw": 0.0},
+            })))
         return callback
+
+    def create_client(self, _service_type, name):
+        return FakeClient(name)
+
+    def destroy_client(self, client):
+        self.destroyed_clients.append(client)
+        return True
+
+    def destroy_subscription(self, subscription):
+        self.destroyed_subscriptions.append(subscription)
+        return True
 
     def create_timer(self, period, callback):
         return SimpleNamespace(period=period, callback=callback)
@@ -88,6 +113,28 @@ class FakeExecutor:
         self.shutdown_timeouts.append(timeout_sec)
         self.stop.set()
         return True
+
+
+class FakeFuture:
+    def __init__(self, value) -> None:
+        self._value = value
+
+    def add_done_callback(self, callback) -> None:
+        callback(self)
+
+    def result(self):
+        return self._value
+
+
+class FakeClient:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+    def wait_for_service(self, *, timeout_sec) -> bool:
+        return timeout_sec > 0.0
+
+    def call_async(self, _request):
+        return FakeFuture(SimpleNamespace(success=True, message="OK"))
 
 
 class RetryableShutdownExecutor(FakeExecutor):
@@ -150,7 +197,16 @@ def _install_fake_ros(monkeypatch) -> None:
     std = ModuleType("std_msgs")
     std_msg = ModuleType("std_msgs.msg")
     std_msg.Bool = type("Bool", (), {})
+    std_msg.String = type(
+        "String",
+        (),
+        {"__init__": lambda self, data="": setattr(self, "data", data)},
+    )
     std.msg = std_msg
+    std_srvs = ModuleType("std_srvs")
+    std_srvs_srv = ModuleType("std_srvs.srv")
+    std_srvs_srv.Trigger = type("Trigger", (), {"Request": type("Request", (), {})})
+    std_srvs.srv = std_srvs_srv
     for name, module in {
         "rclpy": rclpy,
         "rclpy.context": rclpy_context,
@@ -161,31 +217,46 @@ def _install_fake_ros(monkeypatch) -> None:
         "nav_msgs.msg": nav_msg,
         "std_msgs": std,
         "std_msgs.msg": std_msg,
+        "std_srvs": std_srvs,
+        "std_srvs.srv": std_srvs_srv,
     }.items():
         monkeypatch.setitem(sys.modules, name, module)
 
 
 def _graph_cli(argv, **kwargs):
     command = tuple(argv)
+    if command == (sys.executable, "-m", "agent_ros.discovery.native_probe"):
+        payload = {
+            "nodes": ["/base_controller"],
+            "topics": {
+                "/cmd_vel": ["geometry_msgs/msg/Twist"],
+                "/odom": ["nav_msgs/msg/Odometry"],
+            },
+            "services": {},
+            "actions": {},
+            "topic_endpoints": {
+                "/cmd_vel": [{
+                    "node_name": "base_controller",
+                    "node_namespace": "/",
+                    "gid": "01",
+                    "endpoint_type": "publisher",
+                }]
+            },
+        }
+        return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
     values = {
-        ("ros2", "node", "list"): "/base_controller\n",
-        ("ros2", "topic", "list", "-t"): (
+        ("ros2", "node", "list", "--no-daemon", "--spin-time", "0.5"): "/base_controller\n",
+        ("ros2", "topic", "list", "-t", "--no-daemon", "--spin-time", "0.5"): (
             "/cmd_vel [geometry_msgs/msg/Twist]\n"
             "/odom [nav_msgs/msg/Odometry]\n"
         ),
         ("ros2", "action", "list", "-t"): "",
-        ("ros2", "service", "list", "-t"): "",
-        ("ros2", "topic", "info", "/cmd_vel", "--verbose"): (
+        ("ros2", "service", "list", "-t", "--no-daemon", "--spin-time", "0.5"): "",
+        ("ros2", "topic", "info", "/cmd_vel", "--verbose", "--no-daemon", "--spin-time", "0.5"): (
             "Node name: base_controller\n"
             "Node namespace: /\n"
             "Endpoint type: PUBLISHER\n"
             "GID: 01\n"
-        ),
-        ("ros2", "topic", "info", "/odom", "--verbose"): (
-            "Node name: odometry\n"
-            "Node namespace: /\n"
-            "Endpoint type: PUBLISHER\n"
-            "GID: 02\n"
         ),
     }
     return subprocess.CompletedProcess(argv, 0, values[command], "")
@@ -274,11 +345,57 @@ def test_production_singleton_discovers_with_repository_owned_hospital_factory(
     adapter_type = getattr(hospital_adapter, "HospitalCaseAdapter", None)
     assert adapter_type is not None
     assert isinstance(controller._adapter, adapter_type)
-    assert FakeExecutor.instances == []
+    assert len(FakeExecutor.instances) == 1
     assert ros2_mcp_server.close_runtime_controller() is True
 
 
-def test_production_factory_seals_hospital_client_and_never_starts_rclpy(monkeypatch):
+def test_production_singleton_runs_only_the_fixed_hospital_lifecycle(
+    monkeypatch, tmp_path
+):
+    _install_fake_ros(monkeypatch)
+    monkeypatch.setattr(subprocess, "run", _graph_cli)
+    monkeypatch.setattr(ros2_mcp_server, "_RUNTIME_ROOT", tmp_path / "runtime")
+    monkeypatch.setattr(ros2_mcp_server, "_EVIDENCE_ROOT", tmp_path / "evidence")
+    fixed_calls = []
+
+    def fixed_call(self, suffix, *, timeout, generation=None):
+        fixed_calls.append((suffix, timeout))
+        if suffix == ("mission-status",):
+            return {
+                "ok": True,
+                "status": {
+                    "state": "SUCCEEDED",
+                    "elapsed": 30.0,
+                    "stage_results": [
+                        {"elapsed": 10.0},
+                        {"elapsed": 20.0},
+                        {"elapsed": 30.0},
+                    ],
+                },
+            }
+        return {"ok": True}
+
+    monkeypatch.setattr(hospital_adapter.HospitalLifecycleClient, "_run_fixed", fixed_call)
+    controller = ros2_mcp_server.get_runtime_controller()
+    try:
+        assert controller.discover_robot("hospital-amr")["state"] == "DISCOVERED"
+        assert controller.validate_profile("hospital-amr")["state"] == "ARMED"
+        assert controller.run_task("hospital-delivery")["state"] == "RUNNING"
+        deadline = __import__("time").monotonic() + 2.0
+        while __import__("time").monotonic() < deadline:
+            if controller.task_status().get("adapter_state") == "succeeded":
+                break
+            __import__("time").sleep(0.01)
+
+        assert (("start", "--timeout", "60"), 120.0) in fixed_calls
+        assert all(suffix != ("mission-start",) for suffix, _timeout in fixed_calls)
+        assert all(suffix != ("mission-status",) for suffix, _timeout in fixed_calls)
+        assert len(FakeExecutor.instances) == 1
+    finally:
+        assert ros2_mcp_server.close_runtime_controller() is True
+
+
+def test_production_factory_seals_hospital_client_and_owns_persistent_rclpy(monkeypatch):
     _install_fake_ros(monkeypatch)
     client_type = getattr(hospital_adapter, "HospitalLifecycleClient", None)
     adapter_type = getattr(hospital_adapter, "HospitalCaseAdapter", None)
@@ -290,10 +407,12 @@ def test_production_factory_seals_hospital_client_and_never_starts_rclpy(monkeyp
 
     assert isinstance(adapter, adapter_type)
     assert type(adapter._client) is client_type
-    assert FakeExecutor.instances == []
+    assert len(FakeExecutor.instances) == 1
+    assert factory._thread is not None and factory._thread.is_alive()
     with pytest.raises(AdapterError, match="PROFILE_INVALID"):
         adapter_type(lambda _action: {"state": "running"})
     assert factory.close(0.5)
+    assert not factory._thread.is_alive()
 
 
 def test_production_factory_rejects_unsupported_trajectory_without_starting_ros(
