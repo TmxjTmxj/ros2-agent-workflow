@@ -37,7 +37,9 @@ from agent_ros.safety.state import SafetyState
 
 
 _QUARANTINE_TEXT = b"AUDIT_INTEGRITY_COMPROMISED\n"
-_HOSPITAL_WALL_LIVENESS_TIMEOUT = 300.0
+# ROS sim time is the competition budget; this wall bound only detects a stuck
+# sim host. Slow RTF must not fail an otherwise valid 180 s ROS-clock task.
+_HOSPITAL_WALL_LIVENESS_TIMEOUT = 600.0
 _PUBLIC_CODES = frozenset({
     "UNSAFE_STATE",
     "PROFILE_INVALID",
