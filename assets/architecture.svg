@@ -1,54 +1,141 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 780" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
-<defs><marker id="aBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/></marker><marker id="aGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/></marker><marker id="aRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ff7b72"/></marker><marker id="aPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#bc8cff"/></marker></defs>
-<rect width="1000" height="780" fill="#0d1117"/>
-<text x="500" y="38" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="22" font-weight="bold" fill="#f0f6fc">Agent 自动化控制 ROS2 架构</text>
-<text x="500" y="64" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="13" fill="#8b949e">任务级意图 → 受限工具 → 安全授权 → 单写入者运动控制 → 独立验收</text>
-<rect x="220" y="92" width="560" height="78" rx="14" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
-<text x="500.0" y="122" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#58a6ff">AI Agent</text>
-<text x="500.0" y="145" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">Codex / Claude / 任意 MCP 客户端</text>
-<text x="500.0" y="166" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">只提交任务意图，不直接发布 /cmd_vel</text>
-<rect x="180" y="214" width="640" height="96" rx="14" fill="#161b22" stroke="#bc8cff" stroke-width="2"/>
-<text x="500.0" y="244" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#bc8cff">MCP Server · FastMCP</text>
-<text x="500.0" y="267" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">discover_robot · validate_profile · arm_robot · run_task · task_status</text>
-<text x="500.0" y="288" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">cancel_task · emergency_stop · observe · get_evidence · stop_runtime</text>
-<text x="500.0" y="309" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">有界、类型安全；不暴露 shell / 任意 topic / 任意 payload</text>
-<rect x="250" y="360" width="500" height="76" rx="14" fill="#161b22" stroke="#ff7b72" stroke-width="2"/>
-<text x="500.0" y="390" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#ff7b72">Safety Gateway · Fail-Closed</text>
-<text x="500.0" y="413" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">激活许可 · 心跳监控 · 急停闩锁 · 完整审计</text>
-<line x1="500" y1="170" x2="500" y2="214" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#aBlue)"/>
-<text x="522" y="196" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">MCP 协议（stdio）</text>
-<line x1="500" y1="310" x2="500" y2="360" stroke="#bc8cff" stroke-width="2.5" marker-end="url(#aPurple)"/>
-<text x="522" y="339" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">仅允许仓库审核过的任务工具</text>
-<rect x="60" y="492" width="280" height="104" rx="14" fill="#161b22" stroke="#d29922" stroke-width="2"/>
-<text x="200.0" y="522" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#d29922">ROS2 Adapters</text>
-<text x="200.0" y="545" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">Twist · Nav2 · Hospital</text>
-<text x="200.0" y="566" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">按 Profile 执行 · 有界反馈</text>
-<rect x="390" y="492" width="230" height="104" rx="14" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
-<text x="505.0" y="522" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#58a6ff">ROS2 Lyrical</text>
-<text x="505.0" y="545" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">rclpy 节点 · topics</text>
-<text x="505.0" y="566" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">/cmd_vel · /odom</text>
-<rect x="700" y="492" width="240" height="104" rx="14" fill="#161b22" stroke="#3fb950" stroke-width="2"/>
-<text x="820.0" y="522" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#3fb950">Gazebo Sim 10</text>
-<text x="820.0" y="545" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">医院病房世界</text>
-<text x="820.0" y="566" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">官方 Burger DiffDrive</text>
-<path d="M 322 436 C 280 456, 230 468, 200 492" fill="none" stroke="#d29922" stroke-width="2" marker-end="url(#aBlue)"/>
-<text x="210" y="472" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11" fill="#8b949e">adapter 装配</text>
-<line x1="500" y1="436" x2="500" y2="492" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#aBlue)"/>
-<text x="522" y="466" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11" fill="#8b949e">授权后的有界操作</text>
-<path d="M 678 436 C 730 456, 780 468, 815 492" fill="none" stroke="#3fb950" stroke-width="2" marker-end="url(#aGreen)"/>
-<text x="810" y="472" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11" fill="#8b949e">物理仿真</text>
-<line x1="340" y1="545" x2="390" y2="545" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#aBlue)"/>
-<text x="365" y="532" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="10.5" fill="#8b949e">typed ROS API</text>
-<line x1="620" y1="545" x2="700" y2="545" stroke="#3fb950" stroke-width="2.5" marker-end="url(#aGreen)"/>
-<line x1="700" y1="545" x2="620" y2="545" stroke="#3fb950" stroke-width="2.5" marker-end="url(#aBlue)"/>
-<text x="660" y="564" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11" fill="#8b949e">ros_gz_bridge</text>
-<line x1="200" y1="596" x2="200" y2="634" stroke="#d29922" stroke-width="1.5"/>
-<line x1="505" y1="596" x2="505" y2="634" stroke="#58a6ff" stroke-width="1.5"/>
-<line x1="820" y1="596" x2="820" y2="634" stroke="#3fb950" stroke-width="1.5"/>
-<line x1="200" y1="634" x2="820" y2="634" stroke="#8b949e" stroke-width="1.5"/>
-<line x1="505" y1="634" x2="505" y2="666" stroke="#bc8cff" stroke-width="2.5" marker-end="url(#aPurple)"/>
-<text x="505" y="626" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">独立监控器同时采集 odom / GID / contacts / camera</text>
-<rect x="250" y="668" width="500" height="76" rx="14" fill="#161b22" stroke="#bc8cff" stroke-width="2"/>
-<text x="500.0" y="698" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#bc8cff">可验证证据 Evidence</text>
-<text x="500.0" y="721" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">JSON 审计 · 独立验收报告 · 前后相机 PNG · 俯视视频</text>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 14.1.2 (0)
+ -->
+<!-- Title: G Pages: 1 -->
+<svg width="706pt" height="603pt"
+ viewBox="0.00 0.00 706.00 603.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(25.2 577.6)">
+<title>G</title>
+<polygon fill="#0d1117" stroke="none" points="-25.2,25.2 -25.2,-577.6 681.03,-577.6 681.03,25.2 -25.2,25.2"/>
+<text xml:space="preserve" text-anchor="start" x="195.16" y="-530.4" font-family="Noto Sans CJK SC" font-weight="bold" font-size="20.00" fill="#f0f6fc">Agent 自动化控制 ROS2 架构</text>
+<text xml:space="preserve" text-anchor="start" x="155.79" y="-498.95" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">任务级意图 → 受限工具 → 安全授权 → 单写入者运动控制 → 独立验收</text>
+<!-- agent -->
+<g id="node1" class="node">
+<title>agent</title>
+<path fill="#161b22" stroke="#58a6ff" stroke-width="1.6" d="M321.83,-493.4C321.83,-493.4 106.13,-493.4 106.13,-493.4 100.13,-493.4 94.13,-487.4 94.13,-481.4 94.13,-481.4 94.13,-440.72 94.13,-440.72 94.13,-434.72 100.13,-428.72 106.13,-428.72 106.13,-428.72 321.83,-428.72 321.83,-428.72 327.83,-428.72 333.83,-434.72 333.83,-440.72 333.83,-440.72 333.83,-481.4 333.83,-481.4 333.83,-487.4 327.83,-493.4 321.83,-493.4"/>
+<text xml:space="preserve" text-anchor="start" x="185.48" y="-468.11" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="198.98" y="-468.11" font-family="Noto Sans CJK SC" font-weight="bold" font-size="11.00" fill="#f0f6fc">AI Agent</text>
+<text xml:space="preserve" text-anchor="start" x="129.98" y="-457.11" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">Codex / Claude / 任意 MCP 客户端</text>
+<text xml:space="preserve" text-anchor="start" x="115.73" y="-446.11" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">只提交任务意图，不直接发布 /cmd_vel</text>
+</g>
+<!-- mcp -->
+<g id="node2" class="node">
+<title>mcp</title>
+<path fill="#161b22" stroke="#bc8cff" stroke-width="1.6" d="M346.58,-383.47C346.58,-383.47 81.38,-383.47 81.38,-383.47 75.38,-383.47 69.38,-377.47 69.38,-371.47 69.38,-371.47 69.38,-319.79 69.38,-319.79 69.38,-313.79 75.38,-307.79 81.38,-307.79 81.38,-307.79 346.58,-307.79 346.58,-307.79 352.58,-307.79 358.58,-313.79 358.58,-319.79 358.58,-319.79 358.58,-371.47 358.58,-371.47 358.58,-377.47 352.58,-383.47 346.58,-383.47"/>
+<text xml:space="preserve" text-anchor="start" x="144.23" y="-358.18" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="157.73" y="-358.18" font-family="Noto Sans CJK SC" font-weight="bold" font-size="11.00" fill="#f0f6fc">MCP Server · FastMCP</text>
+<text xml:space="preserve" text-anchor="start" x="90.98" y="-347.18" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">discover_robot · validate_profile · arm_robot</text>
+<text xml:space="preserve" text-anchor="start" x="103.35" y="-336.18" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">run_task · task_status · emergency_stop</text>
+<text xml:space="preserve" text-anchor="start" x="108.23" y="-325.18" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">observe · get_evidence · stop_runtime</text>
+</g>
+<!-- agent&#45;&gt;mcp -->
+<g id="edge1" class="edge">
+<title>agent&#45;&gt;mcp</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" d="M213.98,-428.16C213.98,-417.73 213.98,-405.91 213.98,-394.57"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="216.95,-394.82 213.98,-386.32 211,-394.82 216.95,-394.82"/>
+<text xml:space="preserve" text-anchor="middle" x="239.1" y="-404.27" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">MCP stdio</text>
+</g>
+<!-- safety -->
+<g id="node3" class="node">
+<title>safety</title>
+<path fill="#161b22" stroke="#ff7b72" stroke-width="1.6" d="M337.2,-262.54C337.2,-262.54 90.75,-262.54 90.75,-262.54 84.75,-262.54 78.75,-256.54 78.75,-250.54 78.75,-250.54 78.75,-220.86 78.75,-220.86 78.75,-214.86 84.75,-208.86 90.75,-208.86 90.75,-208.86 337.2,-208.86 337.2,-208.86 343.2,-208.86 349.2,-214.86 349.2,-220.86 349.2,-220.86 349.2,-250.54 349.2,-250.54 349.2,-256.54 343.2,-262.54 337.2,-262.54"/>
+<text xml:space="preserve" text-anchor="start" x="128.1" y="-237.25" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="141.6" y="-237.25" font-family="Noto Sans CJK SC" font-weight="bold" font-size="11.00" fill="#f0f6fc">Safety Gateway · Fail&#45;Closed</text>
+<text xml:space="preserve" text-anchor="start" x="100.35" y="-226.25" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">激活许可 · 心跳监控 · 急停闩锁 · 完整审计</text>
+</g>
+<!-- mcp&#45;&gt;safety -->
+<g id="edge2" class="edge">
+<title>mcp&#45;&gt;safety</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" d="M213.98,-307.18C213.98,-296.43 213.98,-284.71 213.98,-273.96"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="216.95,-274.12 213.98,-265.62 211,-274.12 216.95,-274.12"/>
+<text xml:space="preserve" text-anchor="middle" x="275.85" y="-283.34" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">仅允许审核过的任务工具</text>
+</g>
+<!-- adapters -->
+<g id="node4" class="node">
+<title>adapters</title>
+<path fill="#161b22" stroke="#d29922" stroke-width="1.6" d="M163.95,-163.61C163.95,-163.61 12,-163.61 12,-163.61 6,-163.61 0,-157.61 0,-151.61 0,-151.61 0,-110.93 0,-110.93 0,-104.93 6,-98.93 12,-98.93 12,-98.93 163.95,-98.93 163.95,-98.93 169.95,-98.93 175.95,-104.93 175.95,-110.93 175.95,-110.93 175.95,-151.61 175.95,-151.61 175.95,-157.61 169.95,-163.61 163.95,-163.61"/>
+<text xml:space="preserve" text-anchor="start" x="41.48" y="-138.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="54.98" y="-138.32" font-family="Noto Sans CJK SC" font-weight="bold" font-size="11.00" fill="#f0f6fc">ROS2 Adapters</text>
+<text xml:space="preserve" text-anchor="start" x="23.85" y="-127.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">Twist · Nav2 · Hospital</text>
+<text xml:space="preserve" text-anchor="start" x="21.6" y="-116.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">按 Profile 执行 · 有界反馈</text>
+</g>
+<!-- safety&#45;&gt;adapters -->
+<g id="edge3" class="edge">
+<title>safety&#45;&gt;adapters</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" d="M181.53,-208.32C167.62,-197.02 151.1,-183.59 135.84,-171.18"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="137.86,-168.99 129.39,-165.94 134.11,-173.61 137.86,-168.99"/>
+<text xml:space="preserve" text-anchor="middle" x="194.51" y="-184.41" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">adapter 装配</text>
+</g>
+<!-- ros2 -->
+<g id="node5" class="node">
+<title>ros2</title>
+<path fill="#161b22" stroke="#58a6ff" stroke-width="1.6" d="M399.33,-163.61C399.33,-163.61 282.62,-163.61 282.62,-163.61 276.62,-163.61 270.62,-157.61 270.62,-151.61 270.62,-151.61 270.62,-110.93 270.62,-110.93 270.62,-104.93 276.62,-98.93 282.62,-98.93 282.62,-98.93 399.33,-98.93 399.33,-98.93 405.33,-98.93 411.33,-104.93 411.33,-110.93 411.33,-110.93 411.33,-151.61 411.33,-151.61 411.33,-157.61 405.33,-163.61 399.33,-163.61"/>
+<text xml:space="preserve" text-anchor="start" x="300.48" y="-138.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="313.98" y="-138.32" font-family="Noto Sans CJK SC" font-weight="bold" font-size="11.00" fill="#f0f6fc">ROS2 Lyrical</text>
+<text xml:space="preserve" text-anchor="start" x="292.6" y="-127.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">rclpy 节点 · topics</text>
+<text xml:space="preserve" text-anchor="start" x="292.23" y="-116.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">/cmd_vel · /odom</text>
+</g>
+<!-- safety&#45;&gt;ros2 -->
+<g id="edge4" class="edge">
+<title>safety&#45;&gt;ros2</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" d="M246.68,-208.32C260.7,-197.02 277.35,-183.59 292.73,-171.18"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="294.49,-173.58 299.24,-165.93 290.76,-168.95 294.49,-173.58"/>
+<text xml:space="preserve" text-anchor="middle" x="326.28" y="-184.41" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">授权后的有界操作</text>
+</g>
+<!-- adapters&#45;&gt;ros2 -->
+<g id="edge5" class="edge">
+<title>adapters&#45;&gt;ros2</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" d="M176.46,-131.27C203.39,-131.27 232.85,-131.27 259.3,-131.27"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="259.13,-134.25 267.63,-131.27 259.13,-128.3 259.13,-134.25"/>
+<text xml:space="preserve" text-anchor="middle" x="223.29" y="-141.07" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">typed ROS API</text>
+</g>
+<!-- evidence -->
+<g id="node7" class="node">
+<title>evidence</title>
+<path fill="#161b22" stroke="#bc8cff" stroke-width="1.6" stroke-dasharray="5,2" d="M492.33,-53.68C492.33,-53.68 189.62,-53.68 189.62,-53.68 183.62,-53.68 177.63,-47.68 177.63,-41.68 177.63,-41.68 177.63,-12 177.63,-12 177.63,-6 183.63,0 189.63,0 189.63,0 492.33,0 492.33,0 498.33,0 504.33,-6 504.33,-12 504.33,-12 504.33,-41.68 504.33,-41.68 504.33,-47.68 498.33,-53.68 492.33,-53.68"/>
+<text xml:space="preserve" text-anchor="start" x="280.98" y="-28.39" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="294.48" y="-28.39" font-family="Noto Sans CJK SC" font-weight="bold" font-size="11.00" fill="#f0f6fc">可验证证据 Evidence</text>
+<text xml:space="preserve" text-anchor="start" x="199.23" y="-17.39" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">JSON 审计 · 独立验收报告 · 前后相机 PNG · 俯视视频</text>
+</g>
+<!-- adapters&#45;&gt;evidence -->
+<g id="edge7" class="edge">
+<title>adapters&#45;&gt;evidence</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" stroke-dasharray="1,5" d="M167.33,-98.14C198.71,-85.44 234.62,-70.9 265.6,-58.36"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="266.46,-61.22 273.23,-55.27 264.23,-55.7 266.46,-61.22"/>
+<text xml:space="preserve" text-anchor="middle" x="275.39" y="-74.48" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">运行状态 / 审计</text>
+</g>
+<!-- gazebo -->
+<g id="node6" class="node">
+<title>gazebo</title>
+<path fill="#161b22" stroke="#3fb950" stroke-width="1.6" d="M643.83,-163.61C643.83,-163.61 518.12,-163.61 518.12,-163.61 512.12,-163.61 506.12,-157.61 506.12,-151.61 506.12,-151.61 506.12,-110.93 506.12,-110.93 506.12,-104.93 512.12,-98.93 518.12,-98.93 518.12,-98.93 643.83,-98.93 643.83,-98.93 649.83,-98.93 655.83,-104.93 655.83,-110.93 655.83,-110.93 655.83,-151.61 655.83,-151.61 655.83,-157.61 649.83,-163.61 643.83,-163.61"/>
+<text xml:space="preserve" text-anchor="start" x="534.85" y="-138.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="548.35" y="-138.32" font-family="Noto Sans CJK SC" font-weight="bold" font-size="11.00" fill="#f0f6fc">Gazebo Sim 10</text>
+<text xml:space="preserve" text-anchor="start" x="547.23" y="-127.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">医院病房世界</text>
+<text xml:space="preserve" text-anchor="start" x="527.73" y="-116.32" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">官方 Burger DiffDrive</text>
+</g>
+<!-- ros2&#45;&gt;gazebo -->
+<g id="edge6" class="edge">
+<title>ros2&#45;&gt;gazebo</title>
+<path fill="none" stroke="#3fb950" stroke-width="1.6" d="M422.9,-131.27C446.11,-131.27 471.45,-131.27 494.9,-131.27"/>
+<polygon fill="#3fb950" stroke="#3fb950" stroke-width="1.6" points="422.93,-128.3 414.43,-131.27 422.93,-134.25 422.93,-128.3"/>
+<polygon fill="#3fb950" stroke="#3fb950" stroke-width="1.6" points="494.61,-134.25 503.11,-131.27 494.61,-128.3 494.61,-134.25"/>
+<text xml:space="preserve" text-anchor="middle" x="458.73" y="-141.07" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">ros_gz_bridge</text>
+</g>
+<!-- ros2&#45;&gt;evidence -->
+<g id="edge8" class="edge">
+<title>ros2&#45;&gt;evidence</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" stroke-dasharray="1,5" d="M340.98,-98.14C340.98,-87.69 340.98,-76 340.98,-65.2"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="343.95,-65.28 340.98,-56.78 338,-65.28 343.95,-65.28"/>
+<text xml:space="preserve" text-anchor="middle" x="369.85" y="-74.48" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">odom / GID</text>
+</g>
+<!-- gazebo&#45;&gt;evidence -->
+<g id="edge9" class="edge">
+<title>gazebo&#45;&gt;evidence</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" stroke-dasharray="1,5" d="M505.7,-98.14C476.05,-85.49 442.16,-71.03 412.86,-58.52"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="414.33,-55.91 405.34,-55.31 411.99,-61.38 414.33,-55.91"/>
+<text xml:space="preserve" text-anchor="middle" x="512.8" y="-74.48" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">contacts / camera</text>
+</g>
+</g>
 </svg>

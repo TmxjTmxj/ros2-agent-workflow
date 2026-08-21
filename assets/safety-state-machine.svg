@@ -1,59 +1,142 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
-<defs><marker id="sGray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/></marker><marker id="sBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/></marker><marker id="sGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/></marker><marker id="sRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ff7b72"/></marker><marker id="sOrange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d29922"/></marker><marker id="sPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#bc8cff"/></marker></defs>
-<rect width="1200" height="680" fill="#0d1117"/>
-<text x="600" y="38" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="22" font-weight="bold" fill="#f0f6fc">安全状态机 · Safety Gateway</text>
-<text x="600" y="64" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="13" fill="#8b949e">Fail-Closed：任何异常都进入安全停止，硬件急停不能由 Agent 复位</text>
-<rect x="70" y="104" width="180" height="82" rx="14" fill="#161b22" stroke="#8b949e" stroke-width="2"/>
-<text x="160.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#8b949e">NEW</text>
-<text x="160.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">初始状态</text>
-<rect x="330" y="104" width="190" height="82" rx="14" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
-<text x="425.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#58a6ff">DISCOVERED</text>
-<text x="425.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">机器人已发现</text>
-<rect x="730" y="104" width="190" height="82" rx="14" fill="#161b22" stroke="#d29922" stroke-width="2"/>
-<text x="825.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#d29922">ARMED</text>
-<text x="825.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">已授权，可启动</text>
-<rect x="980" y="104" width="200" height="82" rx="14" fill="#161b22" stroke="#3fb950" stroke-width="2"/>
-<text x="1080.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#3fb950">RUNNING</text>
-<text x="1080.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">任务执行中</text>
-<rect x="490" y="280" width="190" height="82" rx="14" fill="#161b22" stroke="#bc8cff" stroke-width="2"/>
-<text x="585.0" y="312" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#bc8cff">VALIDATED</text>
-<text x="585.0" y="334" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">硬件 Profile 已校验</text>
-<rect x="270" y="470" width="190" height="82" rx="14" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
-<text x="365.0" y="502" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#58a6ff">STOPPED</text>
-<text x="365.0" y="524" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">任务正常停止</text>
-<rect x="690" y="470" width="190" height="82" rx="14" fill="#161b22" stroke="#ff7b72" stroke-width="2"/>
-<text x="785.0" y="502" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#ff7b72">ESTOPPED</text>
-<text x="785.0" y="524" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">急停闩锁</text>
-<rect x="1000" y="470" width="190" height="82" rx="14" fill="#161b22" stroke="#d29922" stroke-width="2"/>
-<text x="1095.0" y="502" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#d29922">FAULTED</text>
-<text x="1095.0" y="524" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">心跳丢失 / 故障</text>
-<line x1="250" y1="145" x2="330" y2="145" stroke="#8b949e" stroke-width="2.5" marker-end="url(#sGray)"/>
-<text x="290" y="128" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">discover</text>
-<path d="M 425 186 C 425 226, 585 226, 585 280" fill="none" stroke="#bc8cff" stroke-width="2.5" marker-end="url(#sPurple)"/>
-<text x="500" y="216" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#bc8cff" fill="12">validate</text>
-<text x="500" y="236" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#8b949e" fill="11">hardware 模式</text>
-<path d="M 585 280 C 585 330, 825 330, 825 186" fill="none" stroke="#d29922" stroke-width="2.5" marker-end="url(#sOrange)"/>
-<text x="740" y="322" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#d29922" fill="12">arm</text>
-<text x="740" y="342" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#8b949e" fill="11">operator challenge</text>
-<line x1="520" y1="145" x2="730" y2="145" stroke="#3fb950" stroke-width="2.5" marker-end="url(#sGreen)"/>
-<text x="625" y="128" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">validate（simulation 自动 arm）</text>
-<line x1="920" y1="145" x2="980" y2="145" stroke="#3fb950" stroke-width="2.5" marker-end="url(#sGreen)"/>
-<text x="950" y="128" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">start_task</text>
-<path d="M 1080 186 C 1080 300, 365 310, 365 470" fill="none" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#sBlue)"/>
-<text x="655" y="282" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#58a6ff">cancel / succeed</text>
-<path d="M 1120 186 C 1140 300, 785 300, 785 470" fill="none" stroke="#ff7b72" stroke-width="2.5" marker-end="url(#sRed)"/>
-<text x="1015" y="282" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="13" fill="#ff7b72">estop</text>
-<path d="M 1130 186 C 1190 300, 1095 320, 1095 470" fill="none" stroke="#d29922" stroke-width="2.5" marker-end="url(#sOrange)"/>
-<text x="1092" y="290" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#d29922">fault / heartbeat lost</text>
-<path d="M 785 552 C 785 620, 160 620, 160 186" fill="none" stroke="#8b949e" stroke-width="2.2" stroke-dasharray="7,5" marker-end="url(#sGray)"/>
-<text x="480" y="622" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" fill="#8b949e">operator_reset · 仅 simulation；hardware 必须人工复位</text>
-<rect x="70" y="610" width="1060" height="46" rx="10" fill="#161b22" stroke="#30363d"/>
-<text x="140" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#3fb950">●</text>
-<text x="165" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">正常流程</text>
-<text x="300" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#ff7b72">●</text>
-<text x="325" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">安全急停 / 故障</text>
-<text x="500" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#bc8cff">●</text>
-<text x="525" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">硬件校验</text>
-<text x="700" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#8b949e">- -</text>
-<text x="745" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">恢复路径（simulation only）</text>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN"
+ "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!-- Generated by graphviz version 14.1.2 (0)
+ -->
+<!-- Title: G Pages: 1 -->
+<svg width="740pt" height="404pt"
+ viewBox="0.00 0.00 740.00 404.00" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+<g id="graph0" class="graph" transform="scale(1 1) rotate(0) translate(25.2 379.1)">
+<title>G</title>
+<polygon fill="#0d1117" stroke="none" points="-25.2,25.2 -25.2,-379.1 715.03,-379.1 715.03,25.2 -25.2,25.2"/>
+<text xml:space="preserve" text-anchor="start" x="203.17" y="-331.9" font-family="Noto Sans CJK SC" font-weight="bold" font-size="20.00" fill="#f0f6fc">安全状态机 · Safety Gateway</text>
+<text xml:space="preserve" text-anchor="start" x="175.79" y="-300.45" font-family="Noto Sans CJK SC" font-size="11.00" fill="#f0f6fc">Fail&#45;Closed：任何异常都进入安全停止；硬件急停不能由 Agent 复位</text>
+<!-- NEW -->
+<g id="node1" class="node">
+<title>NEW</title>
+<path fill="#161b22" stroke="#8b949e" stroke-width="1.6" d="M79.32,-294.9C79.32,-294.9 12,-294.9 12,-294.9 6,-294.9 0,-288.9 0,-282.9 0,-282.9 0,-252.1 0,-252.1 0,-246.1 6,-240.1 12,-240.1 12,-240.1 79.32,-240.1 79.32,-240.1 85.32,-240.1 91.32,-246.1 91.32,-252.1 91.32,-252.1 91.32,-282.9 91.32,-282.9 91.32,-288.9 85.32,-294.9 79.32,-294.9"/>
+<text xml:space="preserve" text-anchor="start" x="22.79" y="-269.15" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="38.54" y="-269.15" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">NEW</text>
+<text xml:space="preserve" text-anchor="start" x="20.16" y="-256.15" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">初始状态</text>
+</g>
+<!-- DISCOVERED -->
+<g id="node2" class="node">
+<title>DISCOVERED</title>
+<path fill="#161b22" stroke="#58a6ff" stroke-width="1.6" d="M300.95,-294.9C300.95,-294.9 186.38,-294.9 186.38,-294.9 180.38,-294.9 174.38,-288.9 174.38,-282.9 174.38,-282.9 174.38,-252.1 174.38,-252.1 174.38,-246.1 180.38,-240.1 186.38,-240.1 186.38,-240.1 300.95,-240.1 300.95,-240.1 306.95,-240.1 312.95,-246.1 312.95,-252.1 312.95,-252.1 312.95,-282.9 312.95,-282.9 312.95,-288.9 306.95,-294.9 300.95,-294.9"/>
+<text xml:space="preserve" text-anchor="start" x="194.54" y="-269.15" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="210.29" y="-269.15" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">DISCOVERED</text>
+<text xml:space="preserve" text-anchor="start" x="205.41" y="-256.15" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">机器人已发现</text>
+</g>
+<!-- NEW&#45;&gt;DISCOVERED -->
+<g id="edge1" class="edge">
+<title>NEW&#45;&gt;DISCOVERED</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" d="M92.08,-267.5C113.29,-267.5 139.03,-267.5 163.24,-267.5"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="162.94,-270.48 171.44,-267.5 162.94,-264.53 162.94,-270.48"/>
+<text xml:space="preserve" text-anchor="middle" x="132.85" y="-277.3" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">discover</text>
+</g>
+<!-- VALIDATED -->
+<g id="node3" class="node">
+<title>VALIDATED</title>
+<path fill="#161b22" stroke="#bc8cff" stroke-width="1.6" d="M602.94,-294.9C602.94,-294.9 476.38,-294.9 476.38,-294.9 470.38,-294.9 464.38,-288.9 464.38,-282.9 464.38,-282.9 464.38,-252.1 464.38,-252.1 464.38,-246.1 470.38,-240.1 476.38,-240.1 476.38,-240.1 602.94,-240.1 602.94,-240.1 608.94,-240.1 614.94,-246.1 614.94,-252.1 614.94,-252.1 614.94,-282.9 614.94,-282.9 614.94,-288.9 608.94,-294.9 602.94,-294.9"/>
+<text xml:space="preserve" text-anchor="start" x="496.91" y="-269.15" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="512.66" y="-269.15" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">VALIDATED</text>
+<text xml:space="preserve" text-anchor="start" x="484.53" y="-256.15" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">硬件 Profile 已校验</text>
+</g>
+<!-- DISCOVERED&#45;&gt;VALIDATED -->
+<g id="edge3" class="edge">
+<title>DISCOVERED&#45;&gt;VALIDATED</title>
+<path fill="none" stroke="#bc8cff" stroke-width="1.6" d="M313.43,-267.5C355.12,-267.5 408.42,-267.5 452.82,-267.5"/>
+<polygon fill="#bc8cff" stroke="#bc8cff" stroke-width="1.6" points="452.69,-270.48 461.19,-267.5 452.69,-264.53 452.69,-270.48"/>
+<text xml:space="preserve" text-anchor="middle" x="388.66" y="-277.3" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">validate（hardware）</text>
+</g>
+<!-- ARMED -->
+<g id="node4" class="node">
+<title>ARMED</title>
+<path fill="#161b22" stroke="#d29922" stroke-width="1.6" d="M375.45,-174.85C375.45,-174.85 269.88,-174.85 269.88,-174.85 263.88,-174.85 257.88,-168.85 257.88,-162.85 257.88,-162.85 257.88,-132.05 257.88,-132.05 257.88,-126.05 263.88,-120.05 269.88,-120.05 269.88,-120.05 375.45,-120.05 375.45,-120.05 381.45,-120.05 387.45,-126.05 387.45,-132.05 387.45,-132.05 387.45,-162.85 387.45,-162.85 387.45,-168.85 381.45,-174.85 375.45,-174.85"/>
+<text xml:space="preserve" text-anchor="start" x="291.91" y="-149.1" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="307.66" y="-149.1" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">ARMED</text>
+<text xml:space="preserve" text-anchor="start" x="278.04" y="-136.1" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">已授权，可启动</text>
+</g>
+<!-- DISCOVERED&#45;&gt;ARMED -->
+<g id="edge2" class="edge">
+<title>DISCOVERED&#45;&gt;ARMED</title>
+<path fill="none" stroke="#3fb950" stroke-width="1.6" d="M261.78,-239.42C272.72,-223.07 286.79,-202.05 298.65,-184.33"/>
+<polygon fill="#3fb950" stroke="#3fb950" stroke-width="1.6" points="301.02,-186.14 303.27,-177.42 296.07,-182.83 301.02,-186.14"/>
+<text xml:space="preserve" text-anchor="middle" x="370.76" y="-205.65" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">validate（simulation 自动 arm）</text>
+</g>
+<!-- VALIDATED&#45;&gt;ARMED -->
+<g id="edge4" class="edge">
+<title>VALIDATED&#45;&gt;ARMED</title>
+<path fill="none" stroke="#d29922" stroke-width="1.6" d="M514.23,-239.33C500.33,-225.72 482.2,-209.84 463.66,-198.85 443.59,-186.94 420.25,-177.19 398.41,-169.54"/>
+<polygon fill="#d29922" stroke="#d29922" stroke-width="1.6" points="399.46,-166.76 390.46,-166.85 397.55,-172.39 399.46,-166.76"/>
+<text xml:space="preserve" text-anchor="middle" x="549.87" y="-205.65" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">arm + operator challenge</text>
+</g>
+<!-- RUNNING -->
+<g id="node5" class="node">
+<title>RUNNING</title>
+<path fill="#161b22" stroke="#3fb950" stroke-width="1.6" d="M583.44,-174.85C583.44,-174.85 489.87,-174.85 489.87,-174.85 483.87,-174.85 477.87,-168.85 477.87,-162.85 477.87,-162.85 477.87,-132.05 477.87,-132.05 477.87,-126.05 483.87,-120.05 489.87,-120.05 489.87,-120.05 583.44,-120.05 583.44,-120.05 589.44,-120.05 595.44,-126.05 595.44,-132.05 595.44,-132.05 595.44,-162.85 595.44,-162.85 595.44,-168.85 589.44,-174.85 583.44,-174.85"/>
+<text xml:space="preserve" text-anchor="start" x="498.03" y="-149.1" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="513.78" y="-149.1" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">RUNNING</text>
+<text xml:space="preserve" text-anchor="start" x="504.78" y="-136.1" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">任务执行中</text>
+</g>
+<!-- ARMED&#45;&gt;RUNNING -->
+<g id="edge5" class="edge">
+<title>ARMED&#45;&gt;RUNNING</title>
+<path fill="none" stroke="#6e7681" stroke-width="1.6" d="M388.03,-147.45C412.87,-147.45 441.27,-147.45 466.53,-147.45"/>
+<polygon fill="#6e7681" stroke="#6e7681" stroke-width="1.6" points="466.23,-150.43 474.73,-147.45 466.23,-144.48 466.23,-150.43"/>
+<text xml:space="preserve" text-anchor="middle" x="432.66" y="-157.25" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">start_task</text>
+</g>
+<!-- STOPPED -->
+<g id="node6" class="node">
+<title>STOPPED</title>
+<path fill="#161b22" stroke="#58a6ff" stroke-width="1.6" d="M502.07,-54.8C502.07,-54.8 409.25,-54.8 409.25,-54.8 403.25,-54.8 397.25,-48.8 397.25,-42.8 397.25,-42.8 397.25,-12 397.25,-12 397.25,-6 403.25,0 409.25,0 409.25,0 502.07,0 502.07,0 508.07,0 514.07,-6 514.07,-12 514.07,-12 514.07,-42.8 514.07,-42.8 514.07,-48.8 508.07,-54.8 502.07,-54.8"/>
+<text xml:space="preserve" text-anchor="start" x="417.79" y="-29.05" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="433.54" y="-29.05" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">STOPPED</text>
+<text xml:space="preserve" text-anchor="start" x="417.41" y="-16.05" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">任务正常停止</text>
+</g>
+<!-- RUNNING&#45;&gt;STOPPED -->
+<g id="edge6" class="edge">
+<title>RUNNING&#45;&gt;STOPPED</title>
+<path fill="none" stroke="#58a6ff" stroke-width="1.6" d="M505.16,-119.42C498,-112.3 490.84,-104.29 485.16,-96.05 478.72,-86.71 473.21,-75.75 468.75,-65.4"/>
+<polygon fill="#58a6ff" stroke="#58a6ff" stroke-width="1.6" points="471.53,-64.32 465.57,-57.57 466.02,-66.57 471.53,-64.32"/>
+<text xml:space="preserve" text-anchor="middle" x="526.41" y="-85.6" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">cancel / succeed</text>
+</g>
+<!-- ESTOPPED -->
+<g id="node7" class="node">
+<title>ESTOPPED</title>
+<path fill="#161b22" stroke="#ff7b72" stroke-width="1.6" d="M260.82,-54.8C260.82,-54.8 160.5,-54.8 160.5,-54.8 154.5,-54.8 148.5,-48.8 148.5,-42.8 148.5,-42.8 148.5,-12 148.5,-12 148.5,-6 154.5,0 160.5,0 160.5,0 260.82,0 260.82,0 266.82,0 272.82,-6 272.82,-12 272.82,-12 272.82,-42.8 272.82,-42.8 272.82,-48.8 266.82,-54.8 260.82,-54.8"/>
+<text xml:space="preserve" text-anchor="start" x="168.66" y="-29.05" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="184.41" y="-29.05" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">ESTOPPED</text>
+<text xml:space="preserve" text-anchor="start" x="185.16" y="-16.05" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">急停闩锁</text>
+</g>
+<!-- RUNNING&#45;&gt;ESTOPPED -->
+<g id="edge7" class="edge">
+<title>RUNNING&#45;&gt;ESTOPPED</title>
+<path fill="none" stroke="#ff7b72" stroke-width="1.6" d="M477.25,-124.94C422.85,-105.24 342.16,-76.02 283.81,-54.89"/>
+<polygon fill="#ff7b72" stroke="#ff7b72" stroke-width="1.6" points="284.84,-52.1 275.83,-52 282.81,-57.69 284.84,-52.1"/>
+<text xml:space="preserve" text-anchor="middle" x="407.43" y="-85.6" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">estop</text>
+</g>
+<!-- FAULTED -->
+<g id="node8" class="node">
+<title>FAULTED</title>
+<path fill="#161b22" stroke="#d29922" stroke-width="1.6" d="M669.69,-54.8C669.69,-54.8 565.62,-54.8 565.62,-54.8 559.62,-54.8 553.62,-48.8 553.62,-42.8 553.62,-42.8 553.62,-12 553.62,-12 553.62,-6 559.62,0 565.62,0 565.62,0 669.69,0 669.69,0 675.69,0 681.69,-6 681.69,-12 681.69,-12 681.69,-42.8 681.69,-42.8 681.69,-48.8 675.69,-54.8 669.69,-54.8"/>
+<text xml:space="preserve" text-anchor="start" x="581.66" y="-29.05" font-family="Noto Sans CJK SC" font-size="13.00" fill="#f0f6fc">• </text>
+<text xml:space="preserve" text-anchor="start" x="597.41" y="-29.05" font-family="Noto Sans CJK SC" font-weight="bold" font-size="13.00" fill="#f0f6fc">FAULTED</text>
+<text xml:space="preserve" text-anchor="start" x="573.78" y="-16.05" font-family="Noto Sans CJK SC" font-size="13.00" fill="#8b949e">心跳丢失 / 故障</text>
+</g>
+<!-- RUNNING&#45;&gt;FAULTED -->
+<g id="edge8" class="edge">
+<title>RUNNING&#45;&gt;FAULTED</title>
+<path fill="none" stroke="#d29922" stroke-width="1.6" d="M556.92,-119.45C562.43,-111.94 568.35,-103.73 573.66,-96.05 580.68,-85.9 588.07,-74.73 594.75,-64.45"/>
+<polygon fill="#d29922" stroke="#d29922" stroke-width="1.6" points="597.23,-66.09 599.35,-57.33 592.24,-62.86 597.23,-66.09"/>
+<text xml:space="preserve" text-anchor="middle" x="637.33" y="-85.6" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">heartbeat lost / fault</text>
+</g>
+<!-- ESTOPPED&#45;&gt;NEW -->
+<g id="edge9" class="edge">
+<title>ESTOPPED&#45;&gt;NEW</title>
+<path fill="none" stroke="#8b949e" stroke-width="1.6" stroke-dasharray="5,2" d="M147.85,-52.8C117.96,-67.69 84.59,-89.77 65.16,-120.05 44.34,-152.49 41.25,-197.31 42.24,-228.8"/>
+<polygon fill="#8b949e" stroke="#8b949e" stroke-width="1.6" points="39.25,-228.57 42.62,-236.92 45.19,-228.29 39.25,-228.57"/>
+<text xml:space="preserve" text-anchor="middle" x="151.41" y="-145.62" font-family="Noto Sans CJK SC" font-size="11.00" fill="#8b949e">operator_reset · simulation only</text>
+</g>
+</g>
 </svg>
