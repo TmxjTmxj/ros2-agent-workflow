@@ -39,8 +39,6 @@
 
 ![系统架构](assets/architecture.svg)
 
-![开发时间线](assets/development-timeline.svg)
-
 > 📖 完整开发历程、13 个关键困难与最终解法见
 > [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)。
 
@@ -165,7 +163,7 @@ watchdog。因此低于实时速率的 Gazebo 不会重复消耗任务预算。�
 
 [▶ 观看完整俯视演示视频](examples/hospital_delivery/evidence/官方Burger医院送药_俯视演示.mp4)
 
-### 实测验收指标(schema-2,2026-08-20)
+### 实测验收指标(schema-2)
 
 | 指标 | 实测值 |
 |------|--------|
@@ -216,7 +214,7 @@ Agent 控制 ROS2 出现区别，以及后人如何少走弯路。
 
 ### 验收证据(防伪造,随仓库发布)
 
-- **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,2026-08-20,SUCCEEDED)
+- **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,SUCCEEDED)
 - **相机证据**: [任务开始](examples/hospital_delivery/evidence/acceptance-initial.png) / [任务完成](examples/hospital_delivery/evidence/acceptance-final.png)(640×480 PNG)
 - **完整俯视演示视频**: [官方 Burger 医院送药俯视演示](examples/hospital_delivery/evidence/官方Burger医院送药_俯视演示.mp4)(320×240、29.4 s、真实 Gazebo 顶置相机延时画面)
 - **生产 MCP 工具轨迹**: [`evidence/mcp_agent_trace.json`](examples/hospital_delivery/evidence/mcp_agent_trace.json)(`discover→validate→arm→run→status→observe→stop_runtime`,最终 `SUCCEEDED`)

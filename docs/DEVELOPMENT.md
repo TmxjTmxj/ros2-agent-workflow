@@ -11,8 +11,6 @@
 `DiffDrive` 真实轮关节完成医院三段送药任务；最终以独立里程计、相机、
 接触传感器、进程清理和 MCP trace 共同证明完成。
 
-![开发时间线](../assets/development-timeline.svg)
-
 ## 项目现状
 
 | 项目 | 状态 |
@@ -40,21 +38,21 @@
 
 ## 开发阶段
 
-### 阶段 1：Hermes + DeepSeek 尝试未闭环（2026-08-12 下午）
+### 阶段 1：Hermes + DeepSeek 尝试未闭环
 
 最初目标是让 Hermes 作为多智能体调度器，调用 MCP/Skill 完成 ROS2 智能车
 国赛仿真。工作记录显示当时反复出现 60–400 秒级命令超时，长时间停留在
 调研、接口尝试和局部测试，没有形成可复现的“启动 → 控制 → 验证 → 清理”
 闭环，也没有独立验收证据。
 
-当天暴露出的真实技术问题被后续 Codex 阶段逐个复现并修复：
+这次尝试暴露出的真实技术问题被后续 Codex 阶段逐个复现并修复：
 
 - 一个旧的 `ros2 topic pub -r 10 /cmd_vel` 进程持续覆盖停止指令
 - `publisher's context is invalid` 被误判为 Python 3.14/rclpy 不可用，
   实际是进程被强杀后的关闭竞态
 - Agent 直接控制运动，缺少单写入者和 fail-closed 安全边界
 
-### 阶段 2：Codex 接管，建立第一版闭环（2026-08-12 夜间 ~ 08-13）
+### 阶段 2：Codex 接管，建立第一版闭环
 
 Codex 接管后没有继续“调研式开发”，而是先确定验收边界，再用测试驱动实现：
 
@@ -66,7 +64,7 @@ Codex 接管后没有继续“调研式开发”，而是先确定验收边界�
 `VelocityControl + OdometryPublisher`。它绕过轮子物理，速度上限 0.50 m/s，
 所以当时耗时约 39–49 秒。这个数字后来不能作为官方 Burger 的验收口径。
 
-### 阶段 3：Claude Code 发现模型几何问题（2026-08-19）
+### 阶段 3：Claude Code 发现模型几何问题
 
 对 `hospital_amr` 的独立审查发现：
 
@@ -80,7 +78,7 @@ Codex 接管后没有继续“调研式开发”，而是先确定验收边界�
 视觉 mesh 没跟着物理参数放大，导致“小车身 + 大轮距”的画面违和。这是
 “AI 生成/半自动改模型”的典型问题：改了物理尺寸，没换视觉资源。
 
-### 阶段 4：官方 Burger + DiffDrive 物理仿真（2026-08-20）
+### 阶段 4：官方 Burger + DiffDrive 物理仿真
 
 按用户要求换回官方 TurtleBot3 Burger，并把驱动改为真实轮关节：
 
@@ -97,7 +95,7 @@ Codex 接管后没有继续“调研式开发”，而是先确定验收边界�
 
 完整视频：[官方 Burger 医院送药俯视演示](../examples/hospital_delivery/evidence/官方Burger医院送药_俯视演示.mp4)
 
-### 阶段 5：终态证据屏障与 MCP 全链路成功（2026-08-21）
+### 阶段 5：终态证据屏障与 MCP 全链路成功
 
 最后一个问题是：任务 `succeeded` 后，运行时立即清理 ROS/Gazebo，而 MCP
 随后才调用 `observe` 读取终点里程计，造成“成功取证 vs 进程清理”竞态。
@@ -157,7 +155,6 @@ discover_robot → validate_profile → arm_robot → run_task
 | 系统架构图 | `assets/architecture.svg` |
 | 安全状态机 | `assets/safety-state-machine.svg` |
 | 路线图 | `assets/hospital-route.svg` |
-| 开发时间线 | `assets/development-timeline.svg` |
 | 工具链对比 | `docs/AGENT-COMPARISON.md` |
 
 ## 数据口径

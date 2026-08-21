@@ -2,7 +2,7 @@
 name: ros2-agent-workflow
 description: 用Agent/CLI操控ROS2与Gazebo仿真。用户提ROS2、Gazebo、机器人仿真、turtlesim、ros_gz_bridge时使用。环境为ros-lyrical(官方源安装)，含MCP Server与完整工作流脚本。
 version: 1.0.0
-author: hermes-secretary
+author: ros2-agent-workflow maintainers
 license: MIT
 platforms: [linux]
 metadata:
