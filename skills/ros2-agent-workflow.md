@@ -16,58 +16,56 @@ metadata:
 - 用户提及 ROS2 / Gazebo / 机器人仿真 / turtlesim / ros_gz_bridge
 - 用户要"操控ROS2""让agent连接仿真"
 
-## 环境信息（Claude Code 安装，已实测验证）
-- **发行版**: ros-lyrical（ROS2 2026 新版本，`/opt/ros/lyrical`）
-- **安装方式**: 官方源 `ros-lyrical-desktop-full` + `ros-lyrical-ros-gz`（Claude Code 完成）
-- **Gazebo**: gz sim 10.4.0（`/opt/ros/lyrical/opt/gz_tools_vendor/bin/gz`）
-- **桥接**: ros_gz_bridge（parameter_bridge）
-- **python3.14** 与 rclpy 可能不兼容 → 优先用 CLI（ros2/gz），不用 python API
-- **无显示器**: 设 `QT_QPA_PLATFORM=offscreen`（headless 模式）
+## 环境信息
+- **发行版**: ros-lyrical（`/opt/ros/lyrical`）
+- **仿真器**: gz sim 10.4.0
+- **桥接**: ros_gz_bridge（parameter_bridge，医院案例配置在
+  `examples/hospital_delivery/config/ros_gz_bridge.yaml`）
+- **Python**: 项目 `.venv` 使用 Python 3.14；原生图探测使用 ROS apt 提供的
+  `rclpy`/EmPy，MCP 子进程只继承固定 ROS overlay 环境变量
+- **无显示器**: `hospital_delivery.launch.py` 默认 `headless:=true`
 
 ## 加载环境
 ```bash
-source /opt/ros/lyrical/setup.bash   # 或 source scripts/ros2_env.sh
-export PATH="$PATH:/opt/ros/lyrical/opt/gz_tools_vendor/bin"
+source /opt/ros/lyrical/setup.bash
+cd <ros2-agent-workflow>
+python3 -m venv .venv
+.venv/bin/pip install -e .
 ```
 
-## 常用命令速查
+## 通用 MCP 控制面（当前版本）
+`mcp_server/ros2_mcp_server.py` 只暴露有界任务级工具，不暴露 shell 或任意
+ROS 名称/载荷：
+
+- `discover_robot` / `validate_profile` / `connection_status` / `list_capabilities`
+- `arm_robot` / `run_task` / `task_status` / `cancel_task`
+- `emergency_stop` / `observe` / `get_evidence` / `stop_runtime`
+
+安全链路：MCP → RuntimeController/SafetyGateway → 持久 `rclpy` adapter →
+ROS2 topics/services → `ros_gz_bridge` → Gazebo。运动控制由单写入者
+`mission_controller` 完成，Agent 不直接发 `/cmd_vel`。
+
+## 医院送药案例
 ```bash
-# 节点/话题
-ros2 node list
-ros2 topic list -t
-ros2 topic echo /turtle1/pose --once
-ros2 topic pub --once /turtle1/cmd_vel geometry_msgs/msg/Twist "{linear: {x: 2.0}, angular: {z: 1.8}}"
+# 直接 ROS2 控制 + 独立验收
+bash scripts/demo_hospital.sh --headless --verify
 
-# Gazebo（headless）
-gz sim -s -r empty.sdf &
-gz topic -l
-gz model --list
-
-# 桥接 ROS2 ↔ Gazebo
-ros2 run ros_gz_bridge parameter_bridge \
-  /world/empty/pose/info@geometry_msgs/msg/PoseArray[gz.msgs.Pose_V
+# 生产 FastMCP stdio 固定工具序列
+source /opt/ros/lyrical/setup.bash
+.venv/bin/python examples/hospital_delivery/scripts/run_via_mcp.py
 ```
 
-## 工作流（MCP Server 提供工具）
-`mcp_server/ros2_mcp_server.py` — FastMCP 实现的 ROS2 桥接层：
-- list_nodes / list_topics / topic_echo / pub_topic / run_ros2_cmd
-- gz_sim_launch / gz_topic_list / gz_topic_echo / gz_model_list
-- turtle_launch / turtle_spawn / turtle_teleport
+成功轨迹写入 `examples/hospital_delivery/evidence/mcp_agent_trace.json`；
+独立验收报告在 `examples/hospital_delivery/evidence/acceptance_report.json`。
 
-启动：
-```bash
-cd ~/ros2-agent-workflow
-source scripts/ros2_env.sh
-pip install fastmcp
-python3 mcp_server/ros2_mcp_server.py
-```
-
-## 演示脚本（已实测通过）
-- `scripts/demo_turtlesim.sh` — turtlesim 完整闭环（启动→查询→控制→反馈→清理）
-- `scripts/demo_gazebo_bridge.sh` — Gazebo↔ROS2 桥接闭环
+## 终态证据屏障
+任务 `succeeded` 时先冻结终点里程计快照，再停止运动并清理 ROS/Gazebo；
+`observe` 只读不可变快照，避免“成功取证 vs 进程清理”竞态。
 
 ## 坑
-- turtlesim 是 Qt GUI，无 DISPLAY 时必须 `QT_QPA_PLATFORM=offscreen`
-- rclpy 在 python3.14 有兼容问题 → 别用 `import rclpy`，用 CLI
-- gazebo 启动需 5-6 秒才出话题，查询前先 sleep
-- 清理演示进程用精确 PID（勿 pkill -f，会误杀）
+- 每次启动前确认没有旧 `gz-sim-main` / `parameter_bridge` /
+  `mission_controller`；双 Gazebo 实例会导致 odom 不可信
+- 赛题计时用 ROS `/clock` 仿真时间；墙钟只做失联/慢宿主机 watchdog
+- 清理进程用项目生命周期脚本的精确 PID/PGID 校验，不要宽泛 `pkill -f`
+- 顶层 `.runtime/` 保存安全审计，异常断电后可能进入 fail-closed
+  quarantine；确认无进程后可整体归档该本地运行时目录再重跑

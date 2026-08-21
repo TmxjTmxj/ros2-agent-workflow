@@ -188,10 +188,14 @@ Agent 控制 ROS2 出现区别，以及后人如何少走弯路。
 - **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,2026-08-20,SUCCEEDED)
 - **相机证据**: [任务开始](examples/hospital_delivery/evidence/acceptance-initial.png) / [任务完成](examples/hospital_delivery/evidence/acceptance-final.png)(640×480 PNG)
 - **完整俯视演示视频**: [官方 Burger 医院送药俯视演示](examples/hospital_delivery/evidence/官方Burger医院送药_俯视演示.mp4)(320×240、29.4 s、真实 Gazebo 顶置相机延时画面)
+- **生产 MCP 工具轨迹**: [`evidence/mcp_agent_trace.json`](examples/hospital_delivery/evidence/mcp_agent_trace.json)(`discover→validate→arm→run→status→observe→stop_runtime`,最终 `SUCCEEDED`)
 - 报告由**独立监控器**生成,不信任控制器自报——阶段到达、误差、耗时和
   停止漂移来自 `/odom` 独立样本；任务耗时来自其 ROS header stamp，墙钟仅作
   watchdog 与 RTF 诊断。控制器状态只决定生命周期终态。
   报告还包含发布者 GID 监控、接触监控和相机截图。
+- **终态证据屏障**:任务成功时先从成功状态冻结终点里程计等不可变快照,
+  再执行安全停止与进程清理；MCP 的 `observe` 只读该快照,不依赖已经关闭
+  的 ROS 控制面,因此成功取证与资源回收不会互相竞争。
 
 ---
 
@@ -231,7 +235,9 @@ source /opt/ros/lyrical/setup.bash
 .venv/bin/python examples/hospital_delivery/scripts/run_via_mcp.py
 ```
 
-MCP trace 只证明 Agent 控制面调用顺序与清理；它不会替代上面的独立 ROS 验收报告。
+MCP trace 只证明 Agent 控制面调用顺序、终态取证与清理；它不会替代上面的
+独立 ROS 验收报告。成功轨迹原子写入
+`examples/hospital_delivery/evidence/mcp_agent_trace.json`。
 
 ### 3. 以 Agent 方式连接(推荐)
 
