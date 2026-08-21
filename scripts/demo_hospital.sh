@@ -33,7 +33,17 @@ on_signal() {
   exit 130
 }
 
-trap cleanup EXIT
+on_exit() {
+  local original_status=$?
+  local final_status=$original_status
+  trap - EXIT
+  if ! cleanup; then
+    final_status=1
+  fi
+  exit "$final_status"
+}
+
+trap on_exit EXIT
 trap on_signal HUP INT TERM
 
 while (($#)); do
@@ -66,8 +76,9 @@ python3 "$LIFECYCLE" "${start_args[@]}"
 started=true
 
 if [[ "$verify" == true ]]; then
-  python3 "$VERIFY_SCRIPT" \
-    --timeout 180 \
+  timeout --foreground --signal=TERM --kill-after=15s 360s \
+    python3 "$VERIFY_SCRIPT" \
+    --timeout 300 \
     --output "$EXAMPLE_DIR/logs/acceptance_report.json"
   exit 0
 fi

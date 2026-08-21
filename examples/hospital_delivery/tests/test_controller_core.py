@@ -11,7 +11,10 @@ from smartcar_bringup.controller_core import (
     Pose2D,
     RouteValidationError,
     load_route,
+    interpolate_lookahead_carrot,
     normalize_angle,
+    pure_pursuit_curvature,
+    world_pose_to_odom,
 )
 
 
@@ -75,6 +78,35 @@ def test_project_route_has_three_required_stages_and_exact_endpoints():
     ]
 
 
+def test_world_pose_to_odom_applies_start_yaw_rotation_and_translation():
+    """DiffDrive odom starts at zero even when the model has a rotated world spawn."""
+    start = Pose2D(12.0, 8.0, math.pi / 2.0)
+
+    first = world_pose_to_odom(start, Pose2D(12.0, 8.0, math.pi / 2.0))
+    second = world_pose_to_odom(start, Pose2D(12.0, 9.0, math.pi))
+    third = world_pose_to_odom(start, Pose2D(11.0, 8.0, 0.0))
+
+    assert (first.x, first.y, first.yaw) == pytest.approx((0.0, 0.0, 0.0))
+    assert (second.x, second.y, second.yaw) == pytest.approx((1.0, 0.0, math.pi / 2.0))
+    assert (third.x, third.y, third.yaw) == pytest.approx((0.0, 1.0, -math.pi / 2.0))
+
+
+def test_controller_transforms_world_waypoints_into_diff_drive_odom_frame(tmp_path):
+    route_path = write_route(tmp_path)
+    raw = json.loads(route_path.read_text())
+    raw["start"] = [12.0, 8.0, math.pi / 2.0]
+    raw["stages"][0]["waypoints"] = [[12.0, 9.0], [12.0, 10.0]]
+    raw["stages"][0]["endpoint"] = [12.0, 10.0]
+    route_path.write_text(json.dumps(raw))
+    core = MissionControllerCore(load_route(route_path))
+    assert core.start(now=0.0).accepted
+
+    command = core.update(Pose2D(0.0, 0.0, 0.0), now=0.1)
+
+    assert command.linear > 0.0
+    assert command.angular == pytest.approx(0.0)
+
+
 def test_load_route_rejects_non_finite_waypoint(tmp_path):
     """Catches NaN coordinates reaching the live controller."""
     stages = [
@@ -111,11 +143,66 @@ def test_large_heading_error_rotates_in_place_with_correct_sign(tmp_path):
     command = core.update(Pose2D(0.0, 0.0, -math.pi / 2.0), now=0.1)
 
     assert command.linear == 0.0
-    assert command.angular == pytest.approx(1.6)
+    assert command.angular == pytest.approx(1.0)
 
 
-def test_small_heading_error_drives_and_slows_near_waypoint(tmp_path):
-    """Catches full-speed overshoot close to a waypoint."""
+def test_lookahead_carrot_interpolates_across_remaining_polyline_segments():
+    carrot = interpolate_lookahead_carrot(
+        Pose2D(0.6, 0.0, 0.0),
+        ((1.0, 0.0), (1.0, 1.0)),
+        lookahead=0.6,
+    )
+
+    assert (carrot.x, carrot.y) == pytest.approx((1.0, 0.2))
+
+
+def test_pure_pursuit_curvature_uses_base_frame_lateral_offset():
+    assert pure_pursuit_curvature(0.4, 0.2) == pytest.approx(2.0)
+    assert pure_pursuit_curvature(0.4, -0.2) == pytest.approx(-2.0)
+
+
+def test_corner_tracks_continuously_with_regulated_pure_pursuit(tmp_path):
+    route_path = write_route(tmp_path)
+    raw = json.loads(route_path.read_text())
+    raw["stages"][0]["waypoints"] = [[1.0, 0.0], [1.0, 1.0]]
+    raw["stages"][0]["endpoint"] = [1.0, 1.0]
+    route_path.write_text(json.dumps(raw))
+    core = MissionControllerCore(load_route(route_path))
+    assert core.start(now=0.0).accepted
+
+    command = core.update(Pose2D(0.6, 0.0, 0.0), now=0.1)
+
+    assert 0.0 < command.linear <= 0.22
+    assert 0.0 < command.angular <= 1.0
+
+
+def test_pure_pursuit_rotates_in_place_for_a_reverse_carrot(tmp_path):
+    core = MissionControllerCore(load_route(write_route(tmp_path)))
+    assert core.start(now=0.0).accepted
+
+    command = core.update(Pose2D(0.0, 0.0, math.pi), now=0.1)
+
+    assert command.linear == 0.0
+    assert abs(command.angular) == pytest.approx(1.0)
+
+
+def test_curvature_regulation_never_exceeds_burger_velocity_limits(tmp_path):
+    route_path = write_route(tmp_path)
+    raw = json.loads(route_path.read_text())
+    raw["stages"][0]["waypoints"] = [[0.4, 0.4], [1.0, 0.4]]
+    raw["stages"][0]["endpoint"] = [1.0, 0.4]
+    route_path.write_text(json.dumps(raw))
+    core = MissionControllerCore(load_route(route_path))
+    assert core.start(now=0.0).accepted
+
+    command = core.update(Pose2D(0.0, 0.0, 0.0), now=0.1)
+
+    assert 0.0 <= command.linear <= 0.22
+    assert abs(command.angular) <= 1.0
+
+
+def test_intermediate_waypoints_do_not_apply_final_approach_slowdown(tmp_path):
+    """Intermediate carrots keep the official Burger cruise speed."""
     config = ControllerConfig(waypoint_tolerance=0.1)
     core = MissionControllerCore(load_route(write_route(tmp_path)), config=config)
     assert core.start(now=0.0).accepted
@@ -123,9 +210,30 @@ def test_small_heading_error_drives_and_slows_near_waypoint(tmp_path):
     far = core.update(Pose2D(0.0, 0.0, 0.0), now=0.1)
     near = core.update(Pose2D(0.75, 0.0, 0.0), now=0.2)
 
-    assert far.linear == pytest.approx(1.2)
-    assert near.linear == pytest.approx(0.375)
+    assert far.linear == pytest.approx(0.22)
+    assert near.linear == pytest.approx(0.22)
     assert far.angular == near.angular == 0.0
+
+
+def test_only_final_route_approach_scales_linear_velocity(tmp_path):
+    core = MissionControllerCore(load_route(write_route(tmp_path)))
+    assert core.start(now=0.0).accepted
+    core.stage_index = 2
+    core.waypoint_index = 1
+
+    command = core.update(Pose2D(0.4, 2.0, math.pi), now=0.1)
+
+    assert command.linear == pytest.approx(0.22 * 0.4 / 0.6)
+    assert command.angular == pytest.approx(0.0)
+
+
+def test_default_controller_keeps_burger_speed_until_waypoint_acceptance(tmp_path):
+    core = MissionControllerCore(load_route(write_route(tmp_path)))
+    assert core.start(now=0.0).accepted
+
+    command = core.update(Pose2D(0.64, 0.0, 0.0), now=0.1)
+
+    assert command.linear == pytest.approx(0.22)
 
 
 def test_update_skips_waypoint_already_inside_tolerance(tmp_path):
@@ -181,6 +289,17 @@ def test_estop_latches_until_explicit_reset(tmp_path):
     assert core.start(now=2.0).accepted
 
 
+def test_repeated_estop_is_idempotently_accepted_while_latched(tmp_path):
+    core = MissionControllerCore(load_route(write_route(tmp_path)))
+    assert core.start(now=0.0).accepted
+
+    assert core.estop().accepted
+    repeated = core.estop()
+
+    assert repeated.accepted
+    assert core.state is MissionState.ESTOPPED
+
+
 def test_stale_odometry_fails_running_mission(tmp_path):
     """Catches continued motion after position feedback disappears."""
     config = ControllerConfig(odom_timeout=0.5, progress_timeout=20.0)
@@ -226,6 +345,52 @@ def test_mission_timeout_fails_at_180_seconds(tmp_path):
 
     assert core.state is MissionState.FAILED
     assert core.failure_code == "MISSION_TIMEOUT"
+    assert command.linear == command.angular == 0.0
+
+
+def test_mission_timeout_uses_sim_time_not_slower_wall_time(tmp_path):
+    config = ControllerConfig(progress_timeout=200.0)
+    core = MissionControllerCore(load_route(write_route(tmp_path)), config=config)
+    assert core.start(now=0.0).accepted
+
+    still_running = core.update(
+        Pose2D(0.0, 0.0, 0.0),
+        now=90.0,
+        watchdog_now=180.0,
+        odom_received_at=180.0,
+    )
+    timed_out = core.update(
+        Pose2D(0.0, 0.0, 0.0),
+        now=181.0,
+        watchdog_now=181.0,
+        odom_received_at=181.0,
+    )
+
+    assert still_running.linear > 0.0
+    assert core.state is MissionState.FAILED
+    assert core.failure_code == "MISSION_TIMEOUT"
+    assert timed_out.linear == timed_out.angular == 0.0
+
+
+def test_clock_stall_cannot_hide_wall_clock_odometry_staleness(tmp_path):
+    core = MissionControllerCore(load_route(write_route(tmp_path)))
+    assert core.start(now=0.0).accepted
+    core.update(
+        Pose2D(0.0, 0.0, 0.0),
+        now=0.0,
+        watchdog_now=0.0,
+        odom_received_at=0.0,
+    )
+
+    command = core.update(
+        Pose2D(0.0, 0.0, 0.0),
+        now=0.0,
+        watchdog_now=0.51,
+        odom_received_at=0.0,
+    )
+
+    assert core.state is MissionState.FAILED
+    assert core.failure_code == "ODOM_STALE"
     assert command.linear == command.angular == 0.0
 
 

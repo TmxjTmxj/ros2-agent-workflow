@@ -14,7 +14,7 @@ interfaces:
     topic: /odom
     type: nav_msgs/msg/Odometry
 limits:
-  max_linear_velocity: 0.50
+  max_linear_velocity: 0.22
   max_angular_velocity: 1.00
   max_linear_acceleration: 0.50
   max_angular_acceleration: 1.00

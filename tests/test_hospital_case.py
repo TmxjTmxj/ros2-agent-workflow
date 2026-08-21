@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 from pathlib import Path
 import subprocess
 
@@ -52,6 +53,7 @@ def test_task_profile_stage_endpoints_match_the_verified_route():
     assert [(stage.goal.x, stage.goal.y) for stage in task.stages] == [
         tuple(stage["endpoint"]) for stage in route["stages"]
     ]
+    assert {stage.goal.frame for stage in task.stages} == {"world"}
 
 
 def test_bridge_has_exactly_five_scoped_hospital_contact_sources():
@@ -145,7 +147,66 @@ def test_hospital_demo_has_bounded_options_without_starting_ros():
     assert "--runtime-dir" not in result.stdout
 
 
+def _run_demo_with_fake_python(tmp_path, *, verify_status: int, stop_status: int):
+    env = os.environ.copy()
+    env["DEMO_VERIFY_STATUS"] = str(verify_status)
+    env["DEMO_STOP_STATUS"] = str(stop_status)
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python3"
+    fake_python.write_text("""#!/usr/bin/env bash
+      case "$1" in
+        *verify_acceptance.py) exit "$DEMO_VERIFY_STATUS" ;;
+      esac
+      if [[ "$2" == stop ]]; then exit "$DEMO_STOP_STATUS"; fi
+      exit 0
+    """, encoding="utf-8")
+    fake_python.chmod(0o755)
+    env["PATH"] = f"{fake_bin}:{env['PATH']}"
+    return subprocess.run(
+        ["bash", str(ROOT / "scripts" / "demo_hospital.sh"), "--headless", "--verify"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=5,
+        env=env,
+    )
+
+
+def test_hospital_demo_preserves_verification_failure_through_cleanup(tmp_path):
+    result = _run_demo_with_fake_python(tmp_path, verify_status=7, stop_status=0)
+
+    assert result.returncode == 7
+
+
+def test_hospital_demo_separates_sim_deadline_from_bounded_wall_wait():
+    source = (ROOT / "scripts" / "demo_hospital.sh").read_text(encoding="utf-8")
+
+    assert "--timeout 300" in source
+    assert "timeout --foreground --signal=TERM --kill-after=15s 360s" in source
+
+
+def test_hospital_demo_surfaces_cleanup_failure_after_success(tmp_path):
+    result = _run_demo_with_fake_python(tmp_path, verify_status=0, stop_status=9)
+
+    assert result.returncode != 0
+    assert "cleanup did not complete" in result.stderr
+
+
 def test_acceptance_report_default_is_example_relative():
     from examples.hospital_delivery.scripts.verify_acceptance import DEFAULT_REPORT
 
     assert DEFAULT_REPORT == EXAMPLE / "logs" / "acceptance_report.json"
+
+
+def test_acceptance_validator_is_standalone_from_the_example_root():
+    result = subprocess.run(
+        ["/usr/bin/python3", "scripts/verify_acceptance.py", "--help"],
+        cwd=EXAMPLE,
+        capture_output=True,
+        text=True,
+        timeout=5,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "--validate" in result.stdout

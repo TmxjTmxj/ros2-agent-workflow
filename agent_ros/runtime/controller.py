@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Protocol
 
@@ -14,6 +15,7 @@ from agent_ros.adapters._safety import _ActivationIssuer, _ActivationRejected
 from agent_ros.adapters.base import AdapterError, HospitalAction, Observation, RobotAdapter
 from agent_ros.adapters.hospital import HospitalCaseAdapter, HospitalDeliveryAdapter
 from agent_ros.discovery.inference import infer_capabilities
+from agent_ros.discovery.models import Capability, DiscoveryReport
 from agent_ros.discovery.ros_graph import RosGraphProbe
 from agent_ros.errors import DiscoveryError, ProfileValidationError
 from agent_ros.profiles.loader import load_robot_profile, load_task_profile
@@ -35,6 +37,9 @@ from agent_ros.safety.state import SafetyState
 
 
 _QUARANTINE_TEXT = b"AUDIT_INTEGRITY_COMPROMISED\n"
+# ROS sim time is the competition budget; this wall bound only detects a stuck
+# sim host. Slow RTF must not fail an otherwise valid 180 s ROS-clock task.
+_HOSPITAL_WALL_LIVENESS_TIMEOUT = 600.0
 _PUBLIC_CODES = frozenset({
     "UNSAFE_STATE",
     "PROFILE_INVALID",
@@ -138,6 +143,8 @@ class RuntimeController:
         self._task_cleanup_started = False
         self._cancel_requested = False
         self._last_status = None
+        self._terminal_evidence: dict[str, Observation] = {}
+        self._terminal_evidence_frozen = False
         self._report = None
         self._quarantined = self._quarantine_path.exists() or not self._existing_audit_is_valid()
         if not self._audit_worker.start():
@@ -160,25 +167,34 @@ class RuntimeController:
         if self._gateway is not None:
             raise RuntimeControllerError("UNSAFE_STATE")
         profile_name = profile_hint if profile_hint is not None else self._only_robot_profile_name()
+        adapter: RobotAdapter | None = None
         try:
             profile = load_robot_profile(profile_name, self._profiles_root)
             snapshot = self._graph_probe.probe()
             report = infer_capabilities(snapshot)
             adapter = self._make_adapter(profile)
+            if isinstance(adapter, HospitalCaseAdapter):
+                report = self._sealed_hospital_discovery(profile, adapter, report)
         except ProfileValidationError:
+            self._close_tentative_adapter(adapter)
             raise RuntimeControllerError("PROFILE_INVALID") from None
         except DiscoveryError:
+            self._close_tentative_adapter(adapter)
             raise RuntimeControllerError("UNSAFE_STATE") from None
         except RuntimeControllerError:
+            self._close_tentative_adapter(adapter)
             raise
         except Exception:
+            self._close_tentative_adapter(adapter)
             raise RuntimeControllerError("UNSAFE_STATE") from None
         if report.blocking_warnings:
+            self._close_tentative_adapter(adapter)
             raise RuntimeControllerError("CONTROLLER_CONFLICT")
+        assert adapter is not None
         try:
-            adapter._bind_runtime_safety(self._activation_issuer)
             safety_channel = adapter._emergency_stop_channel()
         except Exception:
+            self._close_tentative_adapter(adapter)
             raise RuntimeControllerError("PROFILE_INVALID") from None
         gateway = SafetyGateway(
             profile,
@@ -192,6 +208,7 @@ class RuntimeController:
         self._gateway = gateway
         self._report = report
         try:
+            adapter._bind_runtime_safety(self._activation_issuer)
             bound = adapter.bind_physical_estop(self._physical_estop)
         except Exception:
             self._latch_adapter_fault()
@@ -209,6 +226,54 @@ class RuntimeController:
             "capabilities": list(report.capability_names),
             "hardware_safety_channel": self._hardware_safety_status(profile),
         }
+
+    def _close_tentative_adapter(self, adapter: RobotAdapter | None) -> None:
+        """Close a factory return until discovery transfers it into runtime state."""
+        if adapter is None:
+            return
+        try:
+            successful = adapter.close(self._cleanup_timeout)
+        except Exception:
+            successful = False
+        if successful is not True:
+            self._cleanup_start_failed = True
+            raise RuntimeControllerError("CLEANUP_FAILED")
+
+    @staticmethod
+    def _sealed_hospital_discovery(
+        profile: RobotProfile,
+        adapter: HospitalCaseAdapter,
+        graph_report: DiscoveryReport,
+    ) -> DiscoveryReport:
+        """Compose only the reviewed simulation case before its fixed lifecycle starts."""
+        probe = adapter.probe()
+        if not probe.available or "hospital.delivery" not in probe.capabilities:
+            raise RuntimeControllerError("UNSAFE_STATE")
+        command = profile.interfaces.command
+        odometry = profile.interfaces.odometry
+        if command is None or odometry is None:
+            raise RuntimeControllerError("PROFILE_INVALID")
+        topic_types = dict(graph_report.topic_types)
+        for interface in (command, odometry):
+            assert interface.topic is not None
+            live_types = topic_types.get(interface.topic)
+            if live_types is not None and interface.type not in live_types:
+                raise RuntimeControllerError("PROFILE_INVALID")
+            topic_types.setdefault(interface.topic, (interface.type,))
+        capabilities = list(graph_report.capabilities)
+        if "mobile_base.twist" not in graph_report.capability_names:
+            capabilities.append(Capability(
+                "mobile_base.twist",
+                1.0,
+                ("sealed:hospital_delivery", command.topic, odometry.topic),
+            ))
+        return DiscoveryReport(
+            tuple(capabilities),
+            graph_report.blocking_warnings,
+            (*graph_report.warnings, "sealed hospital lifecycle/profile composition"),
+            topic_types=topic_types,
+            action_types=graph_report.action_types,
+        )
 
     def validate_profile(self, profile_name: str) -> dict[str, object]:
         self._ensure_available()
@@ -328,12 +393,14 @@ class RuntimeController:
             self._cancel_requested = False
             self._stage_index = 0
             self._stage_deadline = self._clock() + (
-                sum(stage.timeout for stage in task.stages)
+                _HOSPITAL_WALL_LIVENESS_TIMEOUT
                 if isinstance(adapter, HospitalCaseAdapter)
                 else task.stages[0].timeout
             )
             self._observed_gateway_state = gateway.state
             self._task_cleanup_started = False
+            self._terminal_evidence = {}
+            self._terminal_evidence_frozen = False
         try:
             self._start_monitor()
         except RuntimeControllerError:
@@ -349,12 +416,30 @@ class RuntimeController:
             self._ensure_available()
             gateway, _adapter, _profile = self._active()
             status = self._last_status
-            return {
+            result = {
                 "state": gateway.state.value,
                 "task": None if self._task is None else self._task.name,
                 "hardware_safety_channel": self._hardware_safety_status(_profile),
-                **({} if status is None else {"adapter_state": status.state, "code": status.code}),
             }
+            if status is not None:
+                result["adapter_state"] = status.state
+                result["code"] = status.code
+                elapsed = status.values.get("elapsed")
+                if (
+                    not isinstance(elapsed, bool)
+                    and isinstance(elapsed, (int, float))
+                    and math.isfinite(float(elapsed))
+                    and float(elapsed) >= 0.0
+                ):
+                    result["elapsed"] = float(elapsed)
+                stage_index = status.values.get("stage_index")
+                if (
+                    not isinstance(stage_index, bool)
+                    and isinstance(stage_index, int)
+                    and stage_index >= 0
+                ):
+                    result["stage_index"] = stage_index
+            return result
 
     def cancel_task(self) -> dict[str, object]:
         with self._lock:
@@ -409,6 +494,11 @@ class RuntimeController:
 
     def observe(self, source: str) -> Observation:
         self._ensure_available()
+        with self._lock:
+            if self._terminal_evidence_frozen:
+                frozen = self._terminal_evidence.get(source)
+                if frozen is not None:
+                    return frozen
         _gateway, adapter, profile = self._active()
         if source not in profile.observation_sources:
             raise RuntimeControllerError("PROFILE_INVALID")
@@ -598,6 +688,39 @@ class RuntimeController:
                 outcome=AuditOutcome.FAULTED,
             )
 
+    def _freeze_terminal_evidence(
+        self,
+        adapter: RobotAdapter,
+        status,
+    ) -> None:
+        """Persist immutable terminal observations before any motion cleanup."""
+        with self._lock:
+            task = self._task
+        if task is None or not task.evidence_sources:
+            return
+        sources = task.evidence_sources
+        try:
+            frozen = adapter.freeze_terminal_evidence(sources, status)
+        except AdapterError as exc:
+            raise self._adapter_error(exc) from None
+        except Exception:
+            raise RuntimeControllerError("EVIDENCE_INVALID") from None
+        if not isinstance(frozen, Mapping):
+            raise RuntimeControllerError("EVIDENCE_INVALID")
+        snapshot: dict[str, Observation] = {}
+        for source in sources:
+            observation = frozen.get(source)
+            if (
+                not isinstance(observation, Observation)
+                or observation.source != source
+                or not isinstance(observation.values, Mapping)
+            ):
+                raise RuntimeControllerError("EVIDENCE_INVALID")
+            snapshot[source] = observation
+        with self._lock:
+            self._terminal_evidence = snapshot
+            self._terminal_evidence_frozen = True
+
     def _start_task_cleanup(self, adapter: RobotAdapter) -> None:
         with self._lock:
             if self._task_cleanup_started:
@@ -660,6 +783,22 @@ class RuntimeController:
             except RuntimeControllerError:
                 return
 
+    def _finish_succeeded_task(self, gateway, adapter, status):
+        """Freeze terminal evidence, then stop motion and start bounded cleanup."""
+        try:
+            self._freeze_terminal_evidence(adapter, status)
+        except RuntimeControllerError:
+            self._latch_adapter_fault()
+            self._start_task_cleanup(adapter)
+            raise
+        self._start_task_cleanup(adapter)
+        transition = gateway.cancel()
+        self._append_transition(AuditOperation.CANCEL, transition)
+        with self._lock:
+            self._observed_gateway_state = gateway.state
+            self._monitor_stop.set()
+        return status
+
     def _poll_running(self):
         with self._lock:
             gateway, adapter, _profile = self._active()
@@ -671,6 +810,11 @@ class RuntimeController:
             status = adapter.status()
             with self._lock:
                 self._last_status = status
+            if isinstance(adapter, HospitalCaseAdapter):
+                budget_error = self._hospital_budget_error(status)
+                if budget_error is not None:
+                    self._latch_adapter_fault()
+                    raise RuntimeControllerError(budget_error)
             if gateway.state is not SafetyState.RUNNING:
                 return status
             if status.state == "cancelled" and self._cancel_requested:
@@ -684,12 +828,7 @@ class RuntimeController:
                 raise RuntimeControllerError("UNSAFE_STATE")
             if status.state == "succeeded" and self._task is not None:
                 if isinstance(adapter, HospitalCaseAdapter):
-                    self._start_task_cleanup(adapter)
-                    transition = gateway.cancel()
-                    self._append_transition(AuditOperation.CANCEL, transition)
-                    self._observed_gateway_state = gateway.state
-                    self._monitor_stop.set()
-                    return status
+                    return self._finish_succeeded_task(gateway, adapter, status)
                 if self._stage_index + 1 < len(self._task.stages):
                     self._stage_index += 1
                     stage = self._task.stages[self._stage_index]
@@ -704,12 +843,7 @@ class RuntimeController:
                     with self._lock:
                         self._stage_deadline = self._clock() + stage.timeout
                 else:
-                    self._start_task_cleanup(adapter)
-                    transition = gateway.cancel()
-                    self._append_transition(AuditOperation.CANCEL, transition)
-                    self._observed_gateway_state = gateway.state
-                    self._monitor_stop.set()
-                    return status
+                    return self._finish_succeeded_task(gateway, adapter, status)
             if gateway.state is SafetyState.RUNNING:
                 transition = gateway.heartbeat()
                 self._append_transition(AuditOperation.HEARTBEAT, transition)
@@ -726,6 +860,50 @@ class RuntimeController:
         except Exception:
             self._latch_adapter_fault()
             raise RuntimeControllerError("UNSAFE_STATE") from None
+
+    def _hospital_budget_error(self, status) -> str | None:
+        """Evaluate the hospital mission budget in the controller's ROS-time domain."""
+        if status.state in {"starting", "idle"}:
+            return None
+        with self._lock:
+            task = self._task
+        if task is None:
+            return "UNSAFE_STATE"
+        elapsed = status.values.get("elapsed")
+        results = status.values.get("stage_results")
+        if (
+            isinstance(elapsed, bool)
+            or not isinstance(elapsed, (int, float))
+            or not math.isfinite(float(elapsed))
+            or float(elapsed) < 0.0
+            or not isinstance(results, (list, tuple))
+            or len(results) > len(task.stages)
+        ):
+            return "UNSAFE_STATE"
+        elapsed = float(elapsed)
+        previous = 0.0
+        for index, result in enumerate(results):
+            if not isinstance(result, Mapping):
+                return "UNSAFE_STATE"
+            completed_at = result.get("elapsed")
+            if (
+                isinstance(completed_at, bool)
+                or not isinstance(completed_at, (int, float))
+                or not math.isfinite(float(completed_at))
+                or float(completed_at) <= previous
+                or float(completed_at) > elapsed
+            ):
+                return "UNSAFE_STATE"
+            completed_at = float(completed_at)
+            if completed_at - previous > task.stages[index].timeout:
+                return "TIMEOUT"
+            previous = completed_at
+        if elapsed > sum(stage.timeout for stage in task.stages):
+            return "TIMEOUT"
+        if len(results) < len(task.stages):
+            if elapsed - previous > task.stages[len(results)].timeout:
+                return "TIMEOUT"
+        return None
 
     def _append_transition(
         self,
@@ -955,6 +1133,8 @@ class RuntimeController:
         return True
 
     def _ensure_available(self) -> None:
+        if self._cleanup_start_failed:
+            raise RuntimeControllerError("CLEANUP_FAILED")
         if self._quarantined or self._quarantine_path.exists():
             raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED")
 

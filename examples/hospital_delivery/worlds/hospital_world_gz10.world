@@ -1389,13 +1389,14 @@
         <sensor name="top_camera_sensor" type="camera">
           <always_on>true</always_on>
           <visualize>true</visualize>
-          <update_rate>10</update_rate>
+          <!-- Lightweight overview stream for a complete recorded mission. -->
+          <update_rate>1</update_rate>
           <topic>top_camera/image_raw</topic>
           <camera name="top_cam">
             <horizontal_fov>1.5</horizontal_fov>
             <image>
-              <width>640</width>
-              <height>480</height>
+              <width>320</width>
+              <height>240</height>
               <format>R8G8B8</format>
             </image>
             <clip>
@@ -1403,7 +1404,8 @@
               <far>100</far>
             </clip>
           </camera>
-          <pose>0 0 0 0 0 0</pose>
+          <!-- Gazebo camera optical axis is local +X; pitch it toward world -Z. -->
+          <pose>0 0 0 0 1.5707963267948966 0</pose>
         </sensor>
       </link>
     </model>

@@ -6,7 +6,11 @@ import threading
 import time
 
 from agent_ros.adapters.base import AdapterError, RobotAdapter
-from agent_ros.adapters.hospital import HospitalCaseAdapter, HospitalLifecycleClient
+from agent_ros.adapters.hospital import (
+    HospitalCaseAdapter,
+    HospitalLifecycleClient,
+    RclpyHospitalTransport,
+)
 from agent_ros.adapters.nav2 import Nav2Adapter, RclpyNav2Transport
 from agent_ros.adapters.twist import RclpyTwistTransport, TwistAdapter
 from agent_ros.profiles.models import TWIST_TYPE, RobotProfile
@@ -44,7 +48,9 @@ class RclpyAdapterFactory:
             constructor = self._adapter_constructor(profile)
             try:
                 if profile.adapter.kind == "hospital_delivery":
-                    client = HospitalLifecycleClient()
+                    self._start_runtime()
+                    transport = RclpyHospitalTransport(self._node)
+                    client = HospitalLifecycleClient(transport)
                     self._hospital_client = client
                     adapter = constructor(client)
                 else:

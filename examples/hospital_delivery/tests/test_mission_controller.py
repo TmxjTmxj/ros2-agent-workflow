@@ -29,11 +29,13 @@ def write_route(tmp_path):
 
 
 class RosHarness:
-    def __init__(self, route_path):
+    def __init__(self, route_path, *, sim_time_fn=None, wall_time_fn=time.monotonic):
         self.context = Context()
         rclpy.init(context=self.context)
         self.controller = MissionControllerNode(
             route_path=str(route_path),
+            sim_time_fn=sim_time_fn,
+            wall_time_fn=wall_time_fn,
             context=self.context,
         )
         self.probe = Node("mission_controller_test_probe", context=self.context)
@@ -130,19 +132,29 @@ def test_start_uses_real_odometry_and_publishes_schema_and_motion(harness):
     assert status["stage_id"] == "pharmacy"
     assert status["pose"] == pytest.approx({"x": 0.0, "y": 0.0, "yaw": 0.0})
     assert status["odom_age"] < 0.5
+    assert status["sim_time"] > 0.0
 
 
-def test_model_odometry_is_consumed_as_identity_preserving_world_pose(tmp_path):
+def test_diff_drive_odometry_stays_relative_while_world_target_is_transformed(tmp_path):
     route_path = write_route(tmp_path)
     route = json.loads(route_path.read_text())
     route["start"] = [12.0, 8.0, math.pi / 2.0]
+    route["stages"][0] = {
+        "id": "pharmacy",
+        "name": "p",
+        "endpoint": [12.0, 9.0],
+        "waypoints": [[12.0, 9.0]],
+    }
     route_path.write_text(json.dumps(route))
     value = RosHarness(route_path)
     try:
-        value.publish_pose(1.0, 2.0, 0.25)
+        value.publish_pose(0.0, 0.0, 0.0)
         value.spin_for(0.15)
-        pose = value.statuses[-1]["pose"]
-        assert pose == pytest.approx({"x": 1.0, "y": 2.0, "yaw": 0.25})
+        status = value.statuses[-1]
+        assert status["pose"] == pytest.approx({"x": 0.0, "y": 0.0, "yaw": 0.0})
+        assert status["current_target"] == pytest.approx({"x": 1.0, "y": 0.0})
+        assert status["current_target_world"] == pytest.approx({"x": 12.0, "y": 9.0})
+        assert status["pose_frame"] == "odom"
     finally:
         value.close()
 
@@ -154,7 +166,7 @@ def test_model_specific_odometry_is_the_only_pose_feedback(harness):
     status = harness.statuses[-1]
 
     assert status["pose"] == pytest.approx({"x": 0.25, "y": 0.5, "yaw": 0.75})
-    assert status["feedback_source"] == "gazebo_model_odometry"
+    assert status["feedback_source"] == "gazebo_diff_drive_odometry"
 
 
 def test_cancel_and_estop_publish_repeated_zero_and_estop_latches(harness):
@@ -189,3 +201,30 @@ def test_rejected_reset_does_not_interrupt_running_command(harness):
 
     assert not rejected.success
     assert harness.controller._zero_burst_remaining == before
+
+
+def test_node_separates_ros_mission_time_from_wall_feedback_watchdog(tmp_path):
+    sim_time = [0.0]
+    wall_time = [0.0]
+    value = RosHarness(
+        write_route(tmp_path),
+        sim_time_fn=lambda: sim_time[0],
+        wall_time_fn=lambda: wall_time[0],
+    )
+    try:
+        value.publish_pose()
+        assert value.trigger("/hospital_mission/start").success
+
+        sim_time[0] = 90.0
+        wall_time[0] = 180.0
+        value.publish_pose()
+        value.controller._control_tick()
+        assert value.controller.core.state.value == "RUNNING"
+
+        sim_time[0] = 181.0
+        wall_time[0] = 181.0
+        value.publish_pose()
+        value.controller._control_tick()
+        assert value.controller.core.failure_code == "MISSION_TIMEOUT"
+    finally:
+        value.close()

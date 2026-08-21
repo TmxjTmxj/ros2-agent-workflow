@@ -19,9 +19,14 @@ from agent_ros.adapters.base import (
 )
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.adapters.nav2 import Nav2Adapter
-from agent_ros.adapters.hospital import HospitalDeliveryAdapter, HospitalSimulationRuntime
+from agent_ros.adapters.hospital import (
+    HospitalCaseAdapter,
+    HospitalDeliveryAdapter,
+    HospitalLifecycleClient,
+    HospitalSimulationRuntime,
+)
 from agent_ros.adapters.base import HospitalAction
-from agent_ros.discovery.models import GraphSnapshot
+from agent_ros.discovery.models import Endpoint, GraphSnapshot
 from agent_ros.runtime.audit import AuditIntegrityError, AuditOperation, AuditWriter
 from agent_ros.runtime.controller import RuntimeController, RuntimeControllerError
 from agent_ros.runtime.evidence import EvidenceError, EvidenceStore
@@ -38,6 +43,27 @@ class Probe:
                 "/cmd_vel": ("geometry_msgs/msg/Twist",),
                 "/odom": ("nav_msgs/msg/Odometry",),
             }
+        )
+
+
+class EmptyProbe:
+    def probe(self) -> GraphSnapshot:
+        return GraphSnapshot()
+
+
+class ConflictingProbe:
+    def probe(self) -> GraphSnapshot:
+        return GraphSnapshot(
+            topics={
+                "/cmd_vel": ("geometry_msgs/msg/Twist",),
+                "/odom": ("nav_msgs/msg/Odometry",),
+            },
+            topic_endpoints={
+                "/cmd_vel": (
+                    Endpoint("controller_a", "aa", "publisher"),
+                    Endpoint("controller_b", "bb", "publisher"),
+                )
+            },
         )
 
 
@@ -153,6 +179,77 @@ def write_profiles(
     }
     (root / "robots" / "robot.yaml").write_text(yaml.safe_dump(robot), encoding="utf-8")
     (root / "tasks" / "delivery.yaml").write_text(yaml.safe_dump(task), encoding="utf-8")
+
+
+def write_hospital_profiles(root: Path) -> None:
+    write_profiles(root, heartbeat_timeout=301.0, stage_timeout=60.0)
+    robot_path = root / "robots" / "robot.yaml"
+    robot = yaml.safe_load(robot_path.read_text(encoding="utf-8"))
+    robot["name"] = "hospital-amr"
+    robot["namespace"] = "/hospital_amr"
+    robot["adapter"] = {"kind": "hospital_delivery"}
+    robot["limits"] = {
+        "max_linear_velocity": 0.22,
+        "max_angular_velocity": 1.0,
+        "max_linear_acceleration": 0.5,
+        "max_angular_acceleration": 1.0,
+    }
+    robot["observation_sources"] = ["odometry", "camera", "scan"]
+    hospital_robot_path = root / "robots" / "hospital-amr.yaml"
+    hospital_robot_path.write_text(yaml.safe_dump(robot), encoding="utf-8")
+    robot_path.unlink()
+    task_path = root / "tasks" / "delivery.yaml"
+    task = yaml.safe_load(task_path.read_text(encoding="utf-8"))
+    task["name"] = "hospital-delivery"
+    task["robot_profile"] = "hospital-amr"
+    task["stages"] = [
+        {
+            "name": name,
+            "goal": {"frame": "world", "x": float(index), "y": 0.0, "yaw": 0.0},
+            "tolerance": 0.5,
+            "timeout": 60.0,
+        }
+        for index, name in enumerate(("pharmacy", "ward-2", "laboratory"), start=1)
+    ]
+    task["evidence"] = {"sources": ["odometry"]}
+    hospital_task_path = root / "tasks" / "hospital-delivery.yaml"
+    hospital_task_path.write_text(yaml.safe_dump(task), encoding="utf-8")
+    task_path.unlink()
+
+
+class SimTimeHospitalAdapter(HospitalCaseAdapter):
+    """Exact production adapter type with a deterministic simulated status source."""
+
+    def __init__(self) -> None:
+        super().__init__(HospitalLifecycleClient())
+        self.values = {"elapsed": 0.0, "stage_results": []}
+        self.test_channel = RecordingEmergencyChannel(self)
+        self.stop_count = 0
+
+    def probe(self) -> AdapterProbe:
+        return AdapterProbe(True, ("hospital.delivery",))
+
+    def validate(self) -> None:
+        return None
+
+    def start(self, task: object, safety_token=None) -> AdapterStatus:
+        assert task is HospitalAction.START
+        return self._activate_start(
+            safety_token,
+            lambda: AdapterStatus("running", values=self.values),
+        )
+
+    def status(self) -> AdapterStatus:
+        return AdapterStatus("running", values=self.values)
+
+    def cancel(self) -> AdapterStatus:
+        return AdapterStatus("cancelled", values=self.values)
+
+    def stop(self) -> None:
+        self.stop_count += 1
+
+    def _emergency_stop_channel(self):
+        return self.test_channel
 
 
 def controller(
@@ -685,6 +782,126 @@ def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path
     assert [item.name for item in adapter.started] == ["destination", "return"]
     assert active.state is SafetyState.RUNNING
     active.stop_runtime()
+
+
+def test_terminal_evidence_is_frozen_before_success_cleanup_and_served_after_stop(tmp_path, runtime_owner):
+    events = []
+
+    class TerminalEvidenceAdapter(RecordingAdapter):
+        def __init__(self):
+            super().__init__()
+            self.status_calls = 0
+            self.observe_after_stop_fails = False
+
+        def status(self):
+            self.status_calls += 1
+            return AdapterStatus(
+                "succeeded" if self.status_calls == 1 else "running"
+            )
+
+        def observe(self, source):
+            if self.observe_after_stop_fails and self.stop_count > 0:
+                raise AdapterError("STALE_FEEDBACK")
+            events.append(("observe", source, self.stop_count))
+            return Observation(source, 99.0, {"frozen": True})
+
+        def stop(self):
+            events.append(("stop", self.stop_count))
+            super().stop()
+
+    adapter = TerminalEvidenceAdapter()
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.001)
+    prepare(active)
+    active.run_task("delivery")
+
+    assert wait_until(lambda: active.state is SafetyState.STOPPED)
+    assert wait_until(lambda: adapter.stop_count >= 1)
+    assert ("observe", "camera", 0) in events
+    assert events.index(("observe", "camera", 0)) < events.index(("stop", 0))
+
+    adapter.observe_after_stop_fails = True
+    frozen = active.observe("camera")
+
+    assert frozen.source == "camera"
+    assert frozen.timestamp == 99.0
+    assert dict(frozen.values) == {"frozen": True}
+    assert events.count(("observe", "camera", 0)) == 1
+    active.stop_runtime()
+
+
+def test_terminal_evidence_freeze_failure_latches_estop_and_still_cleans(tmp_path, runtime_owner):
+    class BrokenFreezeAdapter(RecordingAdapter):
+        def status(self):
+            return AdapterStatus("succeeded")
+
+        def observe(self, source):
+            raise AdapterError("STALE_FEEDBACK")
+
+    adapter = BrokenFreezeAdapter()
+    active = controller(tmp_path, adapter, owner=runtime_owner, monitor_interval=0.001)
+    prepare(active)
+    active.run_task("delivery")
+
+    assert wait_until(lambda: active.state is SafetyState.ESTOPPED)
+    assert wait_until(lambda: adapter.stop_count >= 1)
+    assert not active._terminal_evidence_frozen
+    with pytest.raises(RuntimeControllerError, match="STALE_FEEDBACK"):
+        active.observe("camera")
+    active.stop_runtime()
+
+
+def test_hospital_terminal_odometry_is_built_from_success_status_without_live_observe(tmp_path, runtime_owner):
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+
+    class TerminalHospitalAdapter(SimTimeHospitalAdapter):
+        def __init__(self):
+            super().__init__()
+            self.live_observe_calls = 0
+
+        def status(self):
+            return AdapterStatus(
+                "succeeded",
+                values={
+                    "elapsed": 30.0,
+                    "stage_results": [
+                        {"elapsed": 10.0},
+                        {"elapsed": 20.0},
+                        {"elapsed": 30.0},
+                    ],
+                    "pose": {"x": 1.25, "y": -2.5, "yaw": 0.75},
+                    "sim_time": 30.0,
+                },
+            )
+
+        def observe(self, source):
+            self.live_observe_calls += 1
+            raise AssertionError("hospital terminal evidence must use the success status")
+
+    adapter = TerminalHospitalAdapter()
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=EmptyProbe(),
+        adapter_factory=lambda _profile: adapter,
+        monitor_interval=0.001,
+    )
+    runtime_owner(active)
+    active.discover_robot("hospital-amr")
+    active.validate_profile("hospital-amr")
+    active.run_task("hospital-delivery")
+
+    assert wait_until(lambda: active.state is SafetyState.STOPPED)
+    assert wait_until(lambda: adapter.stop_count >= 1)
+    observation = active.observe("odometry")
+
+    assert adapter.live_observe_calls == 0
+    assert observation.source == "odometry"
+    assert observation.timestamp == 30.0
+    assert dict(observation.values) == {"x": 1.25, "y": -2.5, "yaw": 0.75}
+    active.stop_runtime()
+
 
 
 def test_start_transition_is_audited_before_adapter_activation_and_failure_is_continuous(tmp_path, runtime_owner):
@@ -1754,6 +1971,266 @@ def test_owned_monitor_enforces_stage_timeout_without_mcp_polling(tmp_path, runt
 
     assert active.state is SafetyState.ESTOPPED
     active.stop_runtime()
+
+
+def _running_hospital_controller(tmp_path, runtime_owner, now):
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+    adapter = SimTimeHospitalAdapter()
+    active = controller(
+        tmp_path,
+        adapter,
+        owner=runtime_owner,
+        clock=lambda: now[0],
+        monitor_interval=10.0,
+    )
+    active.discover_robot("hospital-amr")
+    active.validate_profile("hospital-amr")
+    active.arm_robot("hospital-amr", challenge="ARM hospital-amr", dry_run=False)
+    active.run_task("hospital-delivery")
+    return active, adapter
+
+
+def test_hospital_runtime_uses_adapter_sim_time_not_slow_wall_time_for_budget(
+    tmp_path, runtime_owner
+):
+    now = [0.0]
+    active, adapter = _running_hospital_controller(tmp_path, runtime_owner, now)
+    adapter.values = {
+        "elapsed": 90.0,
+        "stage_results": [{"stage": "pharmacy", "elapsed": 30.0}],
+    }
+
+    # At RTF 0.5, a 90 second mission legitimately uses just over 180 seconds
+    # of wall time and must not consume the ROS-time task budget twice.
+    now[0] = 180.1
+    status = active._poll_running()
+
+    assert status.state == "running"
+    assert active.state is SafetyState.RUNNING
+    active.stop_runtime()
+
+
+def test_hospital_runtime_faults_when_current_sim_stage_exceeds_profile_budget(
+    tmp_path, runtime_owner
+):
+    now = [0.0]
+    active, adapter = _running_hospital_controller(tmp_path, runtime_owner, now)
+    adapter.values = {
+        "elapsed": 91.0,
+        "stage_results": [{"stage": "pharmacy", "elapsed": 30.0}],
+    }
+
+    now[0] = 100.0
+    with pytest.raises(RuntimeControllerError, match="TIMEOUT"):
+        active._poll_running()
+
+    assert active.state is SafetyState.ESTOPPED
+    active.stop_runtime()
+
+
+def test_hospital_runtime_keeps_separate_bounded_wall_liveness_deadline(
+    tmp_path, runtime_owner
+):
+    now = [0.0]
+    active, adapter = _running_hospital_controller(tmp_path, runtime_owner, now)
+    adapter.values = {"elapsed": 90.0, "stage_results": []}
+
+    now[0] = 300.001
+    with pytest.raises(RuntimeControllerError, match="TIMEOUT"):
+        active._poll_running()
+
+    assert active.state is SafetyState.ESTOPPED
+    active.stop_runtime()
+
+
+def test_sealed_hospital_discovery_validates_from_available_fixed_lifecycle_on_empty_graph(
+    tmp_path, runtime_owner
+):
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+    adapter = SimTimeHospitalAdapter()
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=EmptyProbe(),
+        adapter_factory=lambda _profile: adapter,
+    )
+    runtime_owner(active)
+
+    discovered = active.discover_robot("hospital-amr")
+    validated = active.validate_profile("hospital-amr")
+
+    assert discovered["capabilities"] == ["mobile_base.twist"]
+    assert validated["state"] == "ARMED"
+    active.stop_runtime()
+
+
+def test_hospital_stop_runtime_reaps_inflight_start_with_one_cleanup_deadline(
+    tmp_path, monkeypatch
+):
+    start_entered = threading.Event()
+    release_start = threading.Event()
+    stop_executed = threading.Event()
+    mission_start_executed = threading.Event()
+
+    def fixed_call(self, suffix, *, timeout, generation=None):
+        if suffix[0] == "start":
+            start_entered.set()
+            assert release_start.wait(1.0)
+            return {"ok": True, "running": True}
+        if suffix[0] == "stop":
+            stop_executed.set()
+            release_start.set()
+            return {"ok": True, "running": False}
+        if suffix[0] == "mission-start":
+            mission_start_executed.set()
+            return {"ok": True, "success": True}
+        raise AssertionError(suffix)
+
+    monkeypatch.setattr(HospitalLifecycleClient, "_run_fixed", fixed_call)
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+    client = HospitalLifecycleClient()
+    adapter = HospitalCaseAdapter(client)
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=EmptyProbe(),
+        adapter_factory=lambda _profile: adapter,
+        cleanup_timeout=0.8,
+        monitor_interval=10.0,
+    )
+    active.discover_robot("hospital-amr")
+    active.validate_profile("hospital-amr")
+    active.arm_robot("hospital-amr", challenge="ARM hospital-amr", dry_run=False)
+    active.run_task("hospital-delivery")
+    assert start_entered.wait(0.2)
+
+    started = time.monotonic()
+    result = active.stop_runtime()
+    elapsed = time.monotonic() - started
+
+    assert result == {"state": "ESTOPPED"}
+    assert elapsed <= 0.8
+    assert stop_executed.is_set()
+    assert client._start_receipt.done.is_set()
+    assert client._start_receipt.error is None
+    assert not mission_start_executed.is_set()
+    assert not client._worker._thread.is_alive()
+    assert not client._emergency_worker._thread.is_alive()
+
+
+def test_sealed_hospital_empty_graph_fallback_rejects_unavailable_fixed_lifecycle(
+    tmp_path, runtime_owner
+):
+    class UnavailableHospitalAdapter(SimTimeHospitalAdapter):
+        close_calls = 0
+
+        def probe(self):
+            return AdapterProbe(False, ("hospital.delivery",))
+
+        def close(self, timeout=1.0):
+            self.close_calls += 1
+            return super().close(timeout)
+
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+    adapter = UnavailableHospitalAdapter()
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=EmptyProbe(),
+        adapter_factory=lambda _profile: adapter,
+    )
+    runtime_owner(active)
+
+    with pytest.raises(RuntimeControllerError, match="UNSAFE_STATE"):
+        active.discover_robot("hospital-amr")
+    assert adapter.close_calls == 1
+
+
+def test_sealed_hospital_fallback_never_hides_live_command_publisher_conflict(
+    tmp_path, runtime_owner
+):
+    class CloseTrackingHospitalAdapter(SimTimeHospitalAdapter):
+        close_calls = 0
+
+        def close(self, timeout=1.0):
+            self.close_calls += 1
+            return super().close(timeout)
+
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+    adapter = CloseTrackingHospitalAdapter()
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=ConflictingProbe(),
+        adapter_factory=lambda _profile: adapter,
+    )
+    runtime_owner(active)
+
+    with pytest.raises(RuntimeControllerError, match="CONTROLLER_CONFLICT"):
+        active.discover_robot("hospital-amr")
+    assert adapter.close_calls == 1
+
+
+def test_tentative_adapter_cleanup_failure_poison_overrides_discovery_error(
+    tmp_path,
+):
+    class CleanupFailingHospitalAdapter(SimTimeHospitalAdapter):
+        close_calls = 0
+
+        def probe(self):
+            return AdapterProbe(False, ("hospital.delivery",))
+
+        def close(self, timeout=1.0):
+            self.close_calls += 1
+            return False
+
+    profiles = tmp_path / "profiles"
+    write_hospital_profiles(profiles)
+    adapter = CleanupFailingHospitalAdapter()
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=EmptyProbe(),
+        adapter_factory=lambda _profile: adapter,
+    )
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.discover_robot("hospital-amr")
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.discover_robot("hospital-amr")
+    assert adapter.close_calls == 1
+    assert HospitalCaseAdapter.close(adapter, 1.0)
+    with pytest.raises(RuntimeControllerError, match="CLEANUP_FAILED"):
+        active.stop_runtime()
+
+
+def test_empty_graph_never_grants_standard_adapter_profile_capabilities(
+    tmp_path, runtime_owner
+):
+    adapter = RecordingAdapter()
+    profiles = tmp_path / "profiles"
+    write_profiles(profiles)
+    active = RuntimeController(
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=EmptyProbe(),
+        adapter_factory=lambda _profile: adapter,
+    )
+    runtime_owner(active)
+
+    assert active.discover_robot("robot")["capabilities"] == []
+    with pytest.raises(RuntimeControllerError, match="PROFILE_INVALID"):
+        active.validate_profile("robot")
 
 
 def test_watchdog_fault_transition_is_audited_once_by_owned_monitor(tmp_path, runtime_owner):

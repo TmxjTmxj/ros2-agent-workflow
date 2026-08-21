@@ -142,6 +142,36 @@ class RobotAdapter(ABC):
     def observe(self, source: str) -> Observation:
         raise NotImplementedError
 
+    def freeze_terminal_evidence(
+        self,
+        sources: tuple[str, ...],
+        terminal_status: AdapterStatus | None = None,
+    ) -> Mapping[str, Observation]:
+        """Capture immutable post-success evidence while transports are still live.
+
+        Runtime owners call this before motion cleanup so later Agent
+        observations never race a closed ROS control plane. Adapters with a
+        status-carried terminal sample may override this and build the snapshot
+        directly from ``terminal_status``; the default implementation performs
+        one bounded adapter observation per requested source.
+        """
+        if not isinstance(sources, tuple) or not all(
+            isinstance(source, str) and source for source in sources
+        ):
+            raise AdapterError("PROFILE_INVALID")
+        captured: dict[str, Observation] = {}
+        for source in sources:
+            try:
+                observation = self.observe(source)
+            except Exception:
+                raise AdapterError("EVIDENCE_INVALID") from None
+            if not isinstance(observation, Observation) or observation.source != source:
+                raise AdapterError("EVIDENCE_INVALID")
+            if not isinstance(observation.values, Mapping):
+                raise AdapterError("EVIDENCE_INVALID")
+            captured[source] = observation
+        return MappingProxyType(captured)
+
     @abstractmethod
     def bind_physical_estop(self, handler: Callable[[bool], None]) -> bool:
         """Connect a non-agent safety input directly to the runtime latch."""

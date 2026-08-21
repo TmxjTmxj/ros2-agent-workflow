@@ -27,6 +27,7 @@ from agent_ros.adapters.hospital import (
     HospitalDeliveryAdapter,
     HospitalLifecycleClient,
     HospitalSimulationRuntime,
+    RclpyHospitalTransport,
 )
 from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.twist import TwistAdapter
@@ -1505,16 +1506,24 @@ def test_hospital_case_emergency_stop_uses_independent_fixed_worker_while_start_
     start_entered = threading.Event()
     release_start = threading.Event()
     stop_executed = threading.Event()
+    mission_start_executed = threading.Event()
+    stop_count = 0
 
-    def fixed_call(self, suffix, *, timeout):
+    def fixed_call(self, suffix, *, timeout, generation=None):
+        nonlocal stop_count
+        if generation is not None and self._start_was_cancelled(generation):
+            return None
         if suffix[0] == "start":
             start_entered.set()
             assert release_start.wait(1.0)
             return {"ok": True, "running": True}
         if suffix[0] == "mission-start":
+            mission_start_executed.set()
             return {"ok": True, "success": True}
         if suffix[0] == "stop":
+            stop_count += 1
             stop_executed.set()
+            release_start.set()
             return {"ok": True, "running": False}
         raise AssertionError(suffix)
 
@@ -1530,6 +1539,436 @@ def test_hospital_case_emergency_stop_uses_independent_fixed_worker_while_start_
     assert result.successful
     assert stop_executed.wait(0.2)
     release_start.set()
+    assert client._start_receipt.done.wait(0.5)
+    assert not mission_start_executed.is_set()
+    assert stop_count >= 2
+    assert adapter.close(1.0)
+
+
+def test_hospital_persistent_start_waits_for_fresh_diff_drive_odometry(monkeypatch):
+    transport = object.__new__(RclpyHospitalTransport)
+    statuses = iter(
+        (
+            {"state": "IDLE", "pose": None, "odom_age": None, "feedback_source": None},
+            {
+                "state": "IDLE",
+                "pose": {"x": 0.0, "y": 0.0, "yaw": 0.0},
+                "odom_age": 0.02,
+                "feedback_source": "gazebo_diff_drive_odometry",
+                "sim_time": 0.0,
+            },
+            {
+                "state": "IDLE",
+                "pose": {"x": 0.0, "y": 0.0, "yaw": 0.0},
+                "odom_age": 0.02,
+                "feedback_source": "gazebo_diff_drive_odometry",
+                "sim_time": 0.1,
+            },
+        )
+    )
+    status_calls = []
+    trigger_calls = []
+
+    def status(_self, _timeout):
+        status_calls.append(True)
+        return next(statuses)
+
+    def trigger(_self, action, timeout):
+        trigger_calls.append((action, timeout))
+        return {"ok": True, "success": True, "message": "STARTED"}
+
+    monkeypatch.setattr(RclpyHospitalTransport, "status", status)
+    monkeypatch.setattr(RclpyHospitalTransport, "trigger", trigger)
+    monkeypatch.setattr(RclpyHospitalTransport, "close", lambda _self: True)
+    monkeypatch.setattr(
+        HospitalLifecycleClient,
+        "_run_fixed",
+        lambda _self, suffix, *, timeout, generation=None: {
+            "ok": True,
+            "running": suffix[0] == "start",
+        },
+    )
+    monkeypatch.setattr("agent_ros.adapters.hospital.time.sleep", lambda _seconds: None)
+    client = HospitalLifecycleClient(transport)
+    try:
+        assert client.dispatch(HospitalAction.START)["state"] == "starting"
+        assert client._start_receipt.done.wait(0.5)
+        assert client._start_receipt.error is None
+        assert len(status_calls) == 3
+        assert trigger_calls == [(HospitalAction.START, 10.0)]
+    finally:
+        assert client.close(1.0)
+
+
+def test_hospital_emergency_burst_uses_typed_estop_not_process_cleanup(monkeypatch):
+    transport = object.__new__(RclpyHospitalTransport)
+    typed_calls = []
+    process_calls = []
+
+    def trigger(_self, action, timeout):
+        typed_calls.append((action, timeout))
+        return {"ok": True, "success": True, "message": "ESTOPPED"}
+
+    def fixed_call(_self, suffix, *, timeout, generation=None):
+        process_calls.append(tuple(suffix))
+        return {"ok": True, "running": False}
+
+    monkeypatch.setattr(RclpyHospitalTransport, "trigger", trigger)
+    monkeypatch.setattr(RclpyHospitalTransport, "close", lambda _self: True)
+    monkeypatch.setattr(HospitalLifecycleClient, "_run_fixed", fixed_call)
+    client = HospitalLifecycleClient(transport)
+    try:
+        client._latch_stop()
+
+        client.stop_emergency()
+
+        assert typed_calls == [(HospitalAction.STOP, 15.0)]
+        assert process_calls == []
+    finally:
+        assert client.close(1.0)
+
+
+def test_hospital_lifecycle_read_only_polling_does_not_consume_mutating_history(
+    monkeypatch,
+):
+    start_entered = threading.Event()
+    release_start = threading.Event()
+
+    def fixed_call(self, suffix, *, timeout, generation=None):
+        if suffix[0] == "start":
+            start_entered.set()
+            assert release_start.wait(1.0)
+            return {"ok": True, "running": True}
+        if suffix[0] == "mission-start":
+            return {"ok": True, "success": True}
+        if suffix[0] == "stop":
+            return {"ok": True, "running": False}
+        raise AssertionError(suffix)
+
+    monkeypatch.setattr(HospitalLifecycleClient, "_run_fixed", fixed_call)
+    client = HospitalLifecycleClient()
+    client.dispatch(HospitalAction.START)
+    assert start_entered.wait(0.2)
+
+    for _ in range(400):
+        assert client.dispatch(HospitalAction.STATUS)["state"] == "starting"
+        assert client.dispatch(HospitalAction.PROBE)["available"] is True
+
+    assert client.actions == (HospitalAction.START,)
+    client._latch_stop()
+    release_start.set()
+    assert client._start_receipt.done.wait(0.5)
+    assert client.close(1.0)
+
+
+def test_hospital_lifecycle_mutating_history_full_remains_fail_closed(monkeypatch):
+    stop_calls = 0
+
+    def fixed_call(self, suffix, *, timeout, generation=None):
+        nonlocal stop_calls
+        if suffix[0] == "stop":
+            stop_calls += 1
+            return {"ok": True, "running": False}
+        raise AssertionError(suffix)
+
+    monkeypatch.setattr(HospitalLifecycleClient, "_run_fixed", fixed_call)
+    client = HospitalLifecycleClient()
+    for _ in range(64):
+        assert client.dispatch(HospitalAction.VALIDATE)["state"] == "validated"
+
+    with pytest.raises(AdapterError, match="INTERNAL_ERROR"):
+        client.dispatch(HospitalAction.STOP)
+
+    assert client.actions == (HospitalAction.VALIDATE,) * 64
+    assert stop_calls == 0
+    assert client.close(1.0)
+
+
+def test_hospital_emergency_stop_interrupts_and_reaps_exact_inflight_start_process(
+    monkeypatch,
+):
+    start_entered = threading.Event()
+    start_released = threading.Event()
+    start_killed = threading.Event()
+    processes = []
+
+    class FixedProcess:
+        def __init__(self, suffix):
+            self.suffix = suffix
+            self.returncode = None
+            self.pid = 42420 if suffix[0] == "start" else 42421
+            processes.append(self)
+
+        def communicate(self, timeout=None):
+            if self.suffix[0] == "start":
+                start_entered.set()
+                assert start_released.wait(1.0)
+                if start_killed.is_set():
+                    self.returncode = -15
+                    return ("", "")
+                self.returncode = 0
+                return ('{"ok":true,"running":true}', "")
+            self.returncode = 0
+            return ('{"ok":true,"running":false}', "")
+
+        def poll(self):
+            return self.returncode
+
+        def terminate(self):
+            assert self.suffix[0] == "start"
+            start_killed.set()
+            start_released.set()
+
+        def kill(self):
+            self.terminate()
+
+    def fixed_popen(argv, **kwargs):
+        assert kwargs["shell"] is False
+        return FixedProcess(tuple(argv[2:]))
+
+    monkeypatch.setattr(subprocess, "Popen", fixed_popen)
+    monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
+    monkeypatch.setattr(
+        "agent_ros.adapters.hospital.os.killpg",
+        lambda pid, sig: next(
+            process for process in processes if process.pid == pid
+        ).terminate(),
+    )
+    client = HospitalLifecycleClient()
+    try:
+        client.dispatch(HospitalAction.START)
+        assert start_entered.wait(0.2)
+
+        client._latch_stop()
+        client.stop_emergency()
+
+        assert start_killed.wait(0.2)
+        assert client._start_receipt.done.wait(0.2)
+        assert client._start_receipt.error is None
+        assert not client._worker._failed
+        assert not client._emergency_worker._failed
+        assert client.close(0.5)
+        assert not client._worker._thread.is_alive()
+        assert not client._emergency_worker._thread.is_alive()
+        assert [process.suffix[0] for process in processes].count("stop") >= 1
+    finally:
+        start_released.set()
+        client.close(1.0)
+
+
+@pytest.mark.parametrize("startup_phase", ["build_reserved", "launch_recorded"])
+def test_hospital_initial_start_timeout_coordinates_inner_cleanup_before_outer_kill(
+    monkeypatch, startup_phase
+):
+    events = []
+    inner_owned = [startup_phase == "launch_recorded"]
+    reservation = [startup_phase == "build_reserved"]
+    processes = []
+
+    class FixedProcess:
+        def __init__(self, suffix):
+            self.suffix = suffix
+            self.pid = 42500 if suffix[0] == "start" else 42501
+            self.returncode = None
+            self.communicate_calls = 0
+            processes.append(self)
+
+        def communicate(self, timeout=None):
+            self.communicate_calls += 1
+            if self.suffix[0] == "start" and self.communicate_calls == 1:
+                events.append("start_timeout")
+                raise subprocess.TimeoutExpired(self.suffix, timeout)
+            if self.suffix[0] == "stop":
+                events.append("fixed_stop")
+                reservation[0] = False
+                inner_owned[0] = False
+                self.returncode = 0
+                return ('{"ok":true,"running":false}', "")
+            self.returncode = -9
+            return ("", "")
+
+        def poll(self):
+            return self.returncode
+
+        def kill(self):
+            events.append("non_group_kill")
+            self.returncode = -9
+
+    def fixed_popen(argv, **kwargs):
+        return FixedProcess(tuple(argv[2:]))
+
+    def fixed_killpg(pid, sig):
+        events.append("outer_group_kill")
+        next(process for process in processes if process.pid == pid).returncode = -9
+
+    monkeypatch.setattr(subprocess, "Popen", fixed_popen)
+    monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
+    monkeypatch.setattr("agent_ros.adapters.hospital.os.killpg", fixed_killpg)
+    client = HospitalLifecycleClient()
+    client.dispatch(HospitalAction.START)
+    assert client._start_receipt.done.wait(0.5)
+
+    assert isinstance(client._start_receipt.error, AdapterError)
+    assert client._start_receipt.error.code == "TIMEOUT"
+    assert events.index("fixed_stop") < events.index("outer_group_kill")
+    assert "non_group_kill" not in events
+    assert reservation == [False]
+    assert inner_owned == [False]
+    assert HospitalAction.START in client.actions
+    assert HospitalAction.STATUS not in client.actions
+    assert client.close(0.5) is False
+    assert not client._worker._thread.is_alive()
+    assert not client._emergency_worker._thread.is_alive()
+
+
+def test_hospital_initial_start_timeout_surfaces_coordinated_cleanup_failure(
+    monkeypatch,
+):
+    events = []
+    processes = []
+
+    class FixedProcess:
+        def __init__(self, suffix):
+            self.suffix = suffix
+            self.pid = 42600 if suffix[0] == "start" else 42601
+            self.returncode = None
+            self.calls = 0
+            processes.append(self)
+
+        def communicate(self, timeout=None):
+            self.calls += 1
+            if self.suffix[0] == "start" and self.calls == 1:
+                raise subprocess.TimeoutExpired(self.suffix, timeout)
+            if self.suffix[0] == "stop":
+                events.append("fixed_stop_failed")
+                self.returncode = 1
+                return ('{"ok":false}', "")
+            self.returncode = -9
+            return ("", "")
+
+        def poll(self):
+            return self.returncode
+
+        def kill(self):
+            self.returncode = -9
+
+    monkeypatch.setattr(
+        subprocess, "Popen", lambda argv, **kwargs: FixedProcess(tuple(argv[2:]))
+    )
+    monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
+    monkeypatch.setattr(
+        "agent_ros.adapters.hospital.os.killpg",
+        lambda pid, sig: (
+            events.append("outer_group_kill"),
+            setattr(next(p for p in processes if p.pid == pid), "returncode", -9),
+        ),
+    )
+    client = HospitalLifecycleClient()
+    client.dispatch(HospitalAction.START)
+    assert client._start_receipt.done.wait(0.5)
+
+    assert isinstance(client._start_receipt.error, AdapterError)
+    assert client._start_receipt.error.code == "CLEANUP_FAILED"
+    assert events == ["fixed_stop_failed", "outer_group_kill"]
+    assert client.close(0.5) is False
+    assert not client._worker._thread.is_alive()
+    assert not client._emergency_worker._thread.is_alive()
+
+
+def test_hospital_case_never_starts_mission_after_estop_wins_post_start_race(
+    monkeypatch, adapter_owner
+):
+    cancellation_checked = threading.Event()
+    release_checked_start = threading.Event()
+    spawned_suffixes = []
+    real_check = HospitalLifecycleClient._start_was_cancelled
+
+    def gated_check(self, generation):
+        cancelled = real_check(self, generation)
+        if not cancelled:
+            cancellation_checked.set()
+            assert release_checked_start.wait(1.0)
+        return cancelled
+
+    class FixedProcess:
+        returncode = 0
+
+        def communicate(self, timeout=None):
+            return ('{"ok":true,"running":false}', "")
+
+        def kill(self):
+            raise AssertionError("fixed process must not time out")
+
+    def fixed_popen(argv, **kwargs):
+        assert kwargs["shell"] is False
+        spawned_suffixes.append(tuple(argv[2:]))
+        return FixedProcess()
+
+    monkeypatch.setattr(HospitalLifecycleClient, "_start_was_cancelled", gated_check)
+    monkeypatch.setattr(subprocess, "Popen", fixed_popen)
+    client = HospitalLifecycleClient()
+    adapter = HospitalCaseAdapter(client)
+    adapter.start(HospitalAction.START, valid_permit(adapter, adapter_owner))
+    assert cancellation_checked.wait(0.2)
+
+    results = []
+    stopper = threading.Thread(
+        target=lambda: results.append(adapter._emergency_stop(timeout=0.5))
+    )
+    stopper.start()
+    assert not release_checked_start.wait(0.05)
+    release_checked_start.set()
+    stopper.join(0.5)
+    assert not stopper.is_alive()
+    result = results[0]
+    assert result.successful
+    assert client._start_receipt.done.wait(0.5)
+
+    assert ("mission-start",) not in spawned_suffixes
+    assert ("stop",) in spawned_suffixes
+    assert adapter.close(1.0)
+
+
+def test_hospital_case_odometry_observation_projects_only_closed_pose_schema(
+    monkeypatch,
+):
+    def fixed_call(self, suffix, *, timeout, generation=None):
+        assert suffix == ("mission-status",)
+        return {
+            "ok": True,
+            "status": {
+                "state": "SUCCEEDED",
+                "elapsed": 137.76,
+                "stage_results": [{"id": "pharmacy", "elapsed": 37.975}],
+                "pose": {"x": 0.25, "y": -0.5, "yaw": 1.25},
+            },
+        }
+
+    monkeypatch.setattr(HospitalLifecycleClient, "_run_fixed", fixed_call)
+    adapter = HospitalCaseAdapter(HospitalLifecycleClient(), clock=lambda: 42.0)
+
+    observation = adapter.observe("odometry")
+
+    assert observation.source == "odometry"
+    assert observation.timestamp == 42.0
+    assert dict(observation.values) == {"x": 0.25, "y": -0.5, "yaw": 1.25}
+    assert adapter.close(1.0)
+
+
+@pytest.mark.parametrize(
+    "pose",
+    [None, {}, {"x": 0.0, "y": 0.0}, {"x": float("nan"), "y": 0.0, "yaw": 0.0}],
+)
+def test_hospital_case_rejects_malformed_odometry_observation(monkeypatch, pose):
+    def fixed_call(self, suffix, *, timeout, generation=None):
+        return {"ok": True, "status": {"state": "RUNNING", "pose": pose}}
+
+    monkeypatch.setattr(HospitalLifecycleClient, "_run_fixed", fixed_call)
+    adapter = HospitalCaseAdapter(HospitalLifecycleClient())
+
+    with pytest.raises(AdapterError, match="INTERNAL_ERROR"):
+        adapter.observe("odometry")
+
     assert adapter.close(1.0)
 
 

@@ -1,0 +1,3884 @@
+{
+  "authority": "repository_profiles_only",
+  "case": "hospital_delivery",
+  "control_plane": "production_fastmcp_stdio",
+  "independent_acceptance_reference": {
+    "relative_path": "evidence/acceptance_report.json",
+    "role": "separate_independent_acceptance"
+  },
+  "observation": {
+    "source": "odometry",
+    "values": {
+      "x": 0.28976373019562984,
+      "y": 6.3202900949980485,
+      "yaw": 2.558580076006969
+    }
+  },
+  "result": "SUCCEEDED",
+  "schema_version": 1,
+  "tools": [
+    {
+      "ok": true,
+      "state": "DISCOVERED",
+      "tool": "discover_robot"
+    },
+    {
+      "ok": true,
+      "state": "ARMED",
+      "tool": "validate_profile"
+    },
+    {
+      "ok": true,
+      "state": "ARMED",
+      "tool": "arm_robot"
+    },
+    {
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "run_task"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "starting",
+      "ok": true,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 0.15000000000000002,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 0.8,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 0.8999999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 1.3,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 1.9000000000000001,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 1.9000000000000001,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 2.35,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 2.9000000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 2.9000000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 3.45,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 3.9000000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 3.9000000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 4.45,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 4.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 4.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 5.3500000000000005,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 5.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 5.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 6.2,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 6.8,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 6.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 7.1000000000000005,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 7.65,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 7.8999999999999995,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 7.95,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 8.549999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 8.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 8.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 9.45,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 9.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 9.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 10.25,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 10.85,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 10.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 11.25,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 11.799999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 11.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 12.1,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 12.649999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 12.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 12.95,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 13.549999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 13.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 14.0,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 14.5,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 14.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 14.95,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 15.5,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 15.899999999999999,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 15.95,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 16.55,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 16.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 16.95,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 17.55,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 17.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 17.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 18.45,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 18.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 18.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 19.349999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 19.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 19.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 20.25,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 20.849999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 20.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 21.15,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 21.7,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 21.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 21.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 22.45,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 22.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 22.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 23.25,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 23.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 23.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 24.2,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 24.849999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 24.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 25.099999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 25.7,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 25.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 26.099999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 26.65,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 26.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 27.05,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 27.599999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 27.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 27.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 28.349999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 28.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 28.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 29.099999999999998,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 29.65,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 29.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 29.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 30.4,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 30.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 30.9,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 31.2,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 31.8,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 31.900000000000002,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 32.050000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 32.650000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 32.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 33.1,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 33.75,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 33.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 34.2,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 34.800000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 34.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 35.5,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 35.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 36.0,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 36.650000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 36.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 37.1,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 37.75,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 37.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 38.2,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 38.800000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 38.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 39.1,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 39.75,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 39.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 40.050000000000004,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 40.650000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 40.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 40.95,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 41.6,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 41.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 41.900000000000006,
+      "ok": true,
+      "stage_index": 0,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 42.5,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 42.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 42.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 43.25,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 43.85,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 43.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 44.050000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 44.6,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 44.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 44.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 45.300000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 45.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 45.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 46.150000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 46.800000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 46.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 47.050000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 47.7,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 47.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 48.0,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 48.650000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 48.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 49.0,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 49.6,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 49.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 49.95,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 50.6,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 50.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 51.050000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 51.7,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 51.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 52.25,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 52.800000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 52.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 53.35,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 53.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 53.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 54.2,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 54.75,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 54.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 55.050000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 55.6,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 55.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 55.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 56.45,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 56.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 56.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 57.2,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 57.800000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 57.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 58.0,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 58.6,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 58.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 58.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 59.300000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 59.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 59.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 60.1,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 60.7,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 60.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 61.0,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 61.650000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 61.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 62.050000000000004,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 62.7,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 62.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 63.1,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 63.75,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 63.900000000000006,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 64.2,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 64.85000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 64.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 65.35000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 65.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 65.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 66.45,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 66.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 66.95,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 67.65,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 67.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 68.2,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 68.85000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 68.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 69.5,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 69.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 70.0,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 70.60000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 70.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 70.95,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 71.60000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 71.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 71.95,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 72.5,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 72.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 72.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 73.35000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 73.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 73.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 74.25,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 74.8,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 74.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 75.10000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 75.65,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 75.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 75.95,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 76.55,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 76.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 76.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 77.35000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 77.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 77.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 78.15,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 78.65,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 78.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 78.95,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 79.45,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 79.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 79.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 80.45,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 80.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 81.05,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 81.65,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 81.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 82.10000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 82.75,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 82.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 83.2,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 83.85000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 83.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 84.25,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 84.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 84.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 85.5,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 85.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 85.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 86.55,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 86.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 86.95,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 87.60000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 87.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 88.10000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 88.65,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 88.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 89.15,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 89.7,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 89.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 90.25,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 90.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 90.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 91.35000000000001,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 91.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 91.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 92.45,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 92.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 92.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 93.5,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 93.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 93.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 94.55,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 94.9,
+      "ok": true,
+      "stage_index": 1,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 94.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 95.60000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 95.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 95.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 96.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 96.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 96.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 97.2,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 97.8,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 97.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 98.0,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 98.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 98.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 98.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 99.2,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 99.75,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 99.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 99.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 100.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 100.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 100.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 101.25,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 101.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 101.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 101.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 102.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 102.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 102.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 103.15,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 103.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 103.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 103.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 104.35000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 104.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 104.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 105.10000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 105.65,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 105.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 105.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 106.35000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 106.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 106.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 107.05,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 107.60000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 107.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 107.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 108.3,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 108.85000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 108.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 109.05,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 109.60000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 109.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 109.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 110.35000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 110.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 110.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 111.15,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 111.65,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 111.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 111.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 112.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 112.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 112.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 113.4,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 113.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 113.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 114.3,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 114.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 114.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 115.35000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 115.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 115.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 116.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 116.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 117.10000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 117.65,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 117.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 118.10000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 118.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 118.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 119.15,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 119.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 119.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 120.15,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 120.75,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 120.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 121.2,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 121.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 121.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 122.4,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 122.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 122.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 123.3,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 123.85000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 123.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 124.2,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 124.75,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 124.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 125.15,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 125.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 125.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 126.10000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 126.60000000000001,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 126.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 126.9,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 127.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 127.89999999999999,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 127.89999999999999,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 128.25,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 128.85,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 128.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 129.1,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 129.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 129.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 129.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 130.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 130.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 130.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 131.1,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 131.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 131.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 131.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 132.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 132.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 132.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 133.2,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 133.79999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 133.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 133.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 134.5,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 134.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 134.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 135.25,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 135.79999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 135.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 135.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 136.45,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 136.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 136.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 137.1,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 137.64999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 137.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 137.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 138.39999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 138.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 138.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 139.04999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 139.54999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 139.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 139.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 140.2,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 140.7,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 140.89999999999998,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "running",
+      "elapsed": 140.95,
+      "ok": true,
+      "stage_index": 2,
+      "state": "RUNNING",
+      "tool": "task_status"
+    },
+    {
+      "adapter_state": "succeeded",
+      "elapsed": 141.1,
+      "ok": true,
+      "stage_index": 3,
+      "state": "STOPPED",
+      "tool": "task_status"
+    },
+    {
+      "ok": true,
+      "source": "odometry",
+      "tool": "observe"
+    },
+    {
+      "ok": true,
+      "state": "STOPPED",
+      "tool": "stop_runtime"
+    }
+  ],
+  "wall_elapsed_seconds": 321.95269924402237
+}

@@ -25,8 +25,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='tmxj',
-    maintainer_email='tmxj@users.noreply.github.com',
+    maintainer='Agent ROS2 maintainers',
+    maintainer_email='maintainers@example.invalid',
     description='ROS2智能车国赛仿真作业系统',
     license='MIT',
     entry_points={

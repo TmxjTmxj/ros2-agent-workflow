@@ -8,9 +8,9 @@
 [![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10-blue)](https://gazebosim.org)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-FastMCP-important)](https://modelcontextprotocol.io)
-[![Tests](https://img.shields.io/badge/tests-322%20passed-brightgreen)](#-跑测试322-个)
-[![Mission](https://img.shields.io/badge/mission-49.6s-58a6ff)](docs/AGENT-COMPARISON.md)
-[![Safety](https://img.shields.io/badge/safety-0%20collisions-brightgreen)](#-参考案例医院配送送药巡诊机器人赛项)
+[![Tests](https://img.shields.io/badge/tests-509%20passed-brightgreen)](#-跑测试509-个)
+[![Mission](https://img.shields.io/badge/mission-137.8s%20sim-58a6ff)](examples/hospital_delivery/evidence/acceptance_report.json)
+[![Safety](https://img.shields.io/badge/safety-0%20prohibited%20contacts-brightgreen)](#-参考案例医院配送送药巡诊机器人赛项)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 </div>
@@ -98,7 +98,10 @@ interfaces:
   command:    {topic: /cmd_vel, type: geometry_msgs/msg/Twist}
   odometry:   {topic: /odom,    type: nav_msgs/msg/Odometry}
 limits:
-  max_linear_velocity: 0.5
+  max_linear_velocity: 0.22
+  max_angular_velocity: 1.0
+  max_linear_acceleration: 0.5
+  max_angular_acceleration: 1.0
 safety:
   heartbeat_timeout: 1.0
   estop_topic: /emergency_stop
@@ -118,9 +121,10 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 ### 4. 可验证证据 —— 防伪造
 
 每个任务生成**独立于控制器的验收监控器**报告:
-- 三段式路线端点误差(实测 0.325 / 0.337 / 0.341 m)
+- 三段式路线端点误差(独立 DiffDrive 里程计首次进入端点容差时实测
+  0.4999 / 0.4985 / 0.4967 m)
 - 全程 `/cmd_vel` 发布者身份(GID)固定
-- 接触消息计数、禁止碰撞检测
+- 五个接触传感器消息计数、禁止接触检测
 - 初始/最终相机 PNG(640×480,可解码)
 
 ---
@@ -131,22 +135,36 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 
 这是**完整的赛题案例**:一辆 AMR(自主移动机器人)在医院病房环境中完成"取药 → 送药 → 巡视"三段式配送任务。
 
+底盘几何与驱动采用官方 TurtleBot3 Burger 规格（0.160 m 轮距、0.033 m
+轮半径），Gazebo `DiffDrive` 通过真实轮关节产生里程计。路线与任务 profile 的
+端点使用 `world` 坐标；控制器以 `route.start`（包括起始 yaw）执行刚体变换，映射到
+从零开始积分的 `odom` 坐标。前视相机是赛题所需的 task-specific accessory，并非
+TurtleBot3 Burger 原厂硬件。
+
+控制预算使用 ROS 仿真时钟；墙钟只用于进程与反馈停滞时的 fail-closed
+watchdog。因此低于实时速率的 Gazebo 不会重复消耗任务预算。该时钟划分遵循
+[ROS 2 Clock and Time 设计](https://design.ros2.org/articles/clock_and_time.html)。局部路径跟踪器采用
+固定前视点、曲率调速与大角度原地对正，算法思路源自 Apache-2.0 的
+[Nav2 Regulated Pure Pursuit 文档](https://docs.nav2.org/configuration/packages/configuring-regulated-pp.html)，
+同时保持 Burger 的 0.22 m/s 速度上限。
+
 ### 真实运行画面
 
 | 任务开始(相机视角) | 任务完成(相机视角) |
 |---|---|
 | ![初始](assets/hospital-camera-initial.png) | ![最终](assets/hospital-camera-final.png) |
 
-### 实测验收指标(schema-2,2026-08-13)
+### 实测验收指标(schema-2,2026-08-20)
 
 | 指标 | 实测值 |
 |------|--------|
 | 任务状态 | ✅ SUCCEEDED |
-| 三段端点误差 | 0.325 / 0.337 / 0.341 m(要求 ≤0.50 m) |
-| 总耗时 | 49.6 s(要求 ≤180 s) |
-| 停止漂移 | 0.0088 m(要求 ≤0.02 m) |
+| 三段端点误差 | 0.4999 / 0.4985 / 0.4967 m(独立里程计首次进入,要求 ≤0.50 m) |
+| 仿真总耗时 | 137.76 s ROS 仿真时钟(要求 ≤180 s) |
+| 墙钟诊断 | 205.56 s,实时时间因子 RTF=0.6702(不计入赛题预算) |
+| 停止漂移 | 0.0039 m(要求 ≤0.02 m) |
 | `/cmd_vel` 发布者 | 唯一(1 个 GID) |
-| 接触消息 | 12,831 条,禁止碰撞 **0** |
+| 接触传感器 | 69,691 条消息,五个端点持续可见,禁止接触 **0** |
 | 相机证据 | 初始 + 最终 PNG,640×480 可解码 |
 | 验证错误 | 无(`validation_errors: []`) |
 
@@ -157,7 +175,7 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 | 场地 | 7m×7m 纯色地面,四周 1.2m 挡板 | 24m×18m 医院病房世界(赛题精神泛化) |
 | 任务 | 取药 → 送药 → 巡诊 | 取药 → 送药 → 巡视(三段式) |
 | 障碍物 | 裁判随机放置 | 固定病房布局 + 动态避障 |
-| 限时 | 180 s | 180 s(实测 49.6 s) |
+| 限时 | 180 s | 180 s ROS 仿真时钟(实测 137.76 s) |
 
 ### 📊 Agent 工具链对比（Codex / Claude Code+DeepSeek / Hermes+DeepSeek）
 
@@ -167,9 +185,17 @@ Agent 控制 ROS2 出现区别，以及后人如何少走弯路。
 
 ### 验收证据(防伪造,随仓库发布)
 
-- **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,2026-08-13,SUCCEEDED)
+- **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,2026-08-20,SUCCEEDED)
 - **相机证据**: [任务开始](examples/hospital_delivery/evidence/acceptance-initial.png) / [任务完成](examples/hospital_delivery/evidence/acceptance-final.png)(640×480 PNG)
-- 报告由**独立监控器**生成,不信任控制器自报——所有指标都来自 ROS 话题的独立观测(发布者 GID 监控/接触监控/相机截图)。
+- **完整俯视演示视频**: [官方 Burger 医院送药俯视演示](examples/hospital_delivery/evidence/官方Burger医院送药_俯视演示.mp4)(320×240、29.4 s、真实 Gazebo 顶置相机延时画面)
+- **生产 MCP 工具轨迹**: [`evidence/mcp_agent_trace.json`](examples/hospital_delivery/evidence/mcp_agent_trace.json)(`discover→validate→arm→run→status→observe→stop_runtime`,最终 `SUCCEEDED`)
+- 报告由**独立监控器**生成,不信任控制器自报——阶段到达、误差、耗时和
+  停止漂移来自 `/odom` 独立样本；任务耗时来自其 ROS header stamp，墙钟仅作
+  watchdog 与 RTF 诊断。控制器状态只决定生命周期终态。
+  报告还包含发布者 GID 监控、接触监控和相机截图。
+- **终态证据屏障**:任务成功时先从成功状态冻结终点里程计等不可变快照,
+  再执行安全停止与进程清理；MCP 的 `observe` 只读该快照,不依赖已经关闭
+  的 ROS 控制面,因此成功取证与资源回收不会互相竞争。
 
 ---
 
@@ -185,10 +211,14 @@ Agent 控制 ROS2 出现区别，以及后人如何少走弯路。
 ### 1. 安装
 
 ```bash
-python3 -m venv .venv
-.venv/bin/pip install -e .
 source /opt/ros/lyrical/setup.bash
+export PYTHONNOUSERSITE=1
+python3 -m venv --system-site-packages .venv
+.venv/bin/pip install -e .
 ```
+
+`--system-site-packages` 让固定 native graph helper 使用与 ROS 2 相同的
+`rclpy`/EmPy 系统包；MCP stdio 子进程只转发白名单中的 ROS overlay 环境变量。
 
 ### 2. 一键运行医院配送案例(完整验证)
 
@@ -197,6 +227,17 @@ bash scripts/demo_hospital.sh --headless --verify
 ```
 
 启动 Gazebo 医院世界 → 运行三段配送任务 → 独立监控器验证 → 输出 `acceptance_report.json` + 相机截图。
+
+也可通过生产 MCP stdio 控制面执行同一固定案例并生成独立的工具调用轨迹：
+
+```bash
+source /opt/ros/lyrical/setup.bash
+.venv/bin/python examples/hospital_delivery/scripts/run_via_mcp.py
+```
+
+MCP trace 只证明 Agent 控制面调用顺序、终态取证与清理；它不会替代上面的
+独立 ROS 验收报告。成功轨迹原子写入
+`examples/hospital_delivery/evidence/mcp_agent_trace.json`。
 
 ### 3. 以 Agent 方式连接(推荐)
 
@@ -218,7 +259,7 @@ Agent: 紧急停止!
 Agent: 当前任务状态是什么?
 ```
 
-### 4. 跑测试(322 个)
+### 4. 跑测试(509 个)
 
 ```bash
 source /opt/ros/lyrical/setup.bash
@@ -251,7 +292,7 @@ ros2-agent-workflow/
 │   └── tests/                  #   案例测试
 ├── scripts/                    # 一键演示脚本
 ├── skills/                     # Agent 技能文档
-├── tests/                      # 框架测试(322 个)
+├── tests/                      # 框架与案例测试(509 个)
 └── assets/                     # 架构图、路线图、截图
 ```
 
@@ -259,9 +300,9 @@ ros2-agent-workflow/
 
 ## 🧪 测试与质量
 
-- **322 个测试**覆盖:Profile 校验、安全序列器、网关、审计、适配器、MCP 工具、验收报告解析
+- **509 个测试**覆盖:Profile 校验、安全序列器、网关、审计、适配器、MCP 工具、验收报告解析
 - 每个 Task 都经过 **5 轮代码审查循环**(Critical/Important/Minor 分级),修复后独立复审
-- 真实验收通过:三段误差、停止漂移、碰撞、相机证据全部达标
+- 真实验收通过:三段误差、停止漂移、禁止接触、相机证据全部达标
 
 ## 📄 License
 

@@ -455,19 +455,20 @@
       </axis>
     </joint>
 
-    <!--
-      Gazebo's official VelocityControl system applies the commanded planar
-      twist directly to the model. This keeps the competition route
-      deterministic while retaining collisions and all physical sensors.
-    -->
-    <plugin filename="gz-sim-velocity-control-system" name="gz::sim::systems::VelocityControl">
+    <!-- Real wheel-joint kinematics, matching the official Burger dimensions. -->
+    <plugin filename="gz-sim-diff-drive-system" name="gz::sim::systems::DiffDrive">
+      <left_joint>wheel_left_joint</left_joint>
+      <right_joint>wheel_right_joint</right_joint>
+      <wheel_separation>0.160</wheel_separation>
+      <wheel_radius>0.033</wheel_radius>
+      <max_linear_velocity>0.22</max_linear_velocity>
+      <max_angular_velocity>1.0</max_angular_velocity>
+      <max_linear_acceleration>0.5</max_linear_acceleration>
+      <max_angular_acceleration>1.0</max_angular_acceleration>
       <topic>cmd_vel</topic>
-    </plugin>
-
-    <plugin filename="gz-sim-odometry-publisher-system" name="gz::sim::systems::OdometryPublisher">
       <odom_topic>odom</odom_topic>
-      <odom_frame>odom</odom_frame>
-      <robot_base_frame>base_footprint</robot_base_frame>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_footprint</child_frame_id>
       <odom_publish_frequency>30</odom_publish_frequency>
       <tf_topic>/tf</tf_topic>
     </plugin>

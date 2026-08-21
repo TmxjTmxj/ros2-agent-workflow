@@ -45,7 +45,8 @@ class MissionControllerNode(Node):
         self,
         *,
         route_path: str | None = None,
-        time_fn: Callable[[], float] = time.monotonic,
+        sim_time_fn: Callable[[], float] | None = None,
+        wall_time_fn: Callable[[], float] = time.monotonic,
         context=None,
     ) -> None:
         super().__init__("hospital_mission_controller", context=context)
@@ -53,7 +54,10 @@ class MissionControllerNode(Node):
         self.declare_parameter("route_file", route_default)
         selected_route = str(self.get_parameter("route_file").value)
         self.core = MissionControllerCore(load_route(selected_route))
-        self._time_fn = time_fn
+        self._sim_time_fn = sim_time_fn or (
+            lambda: self.get_clock().now().nanoseconds / 1_000_000_000.0
+        )
+        self._wall_time_fn = wall_time_fn
         self._pose: Pose2D | None = None
         self._last_odom_received: float | None = None
         self._feedback_source: str | None = None
@@ -79,7 +83,7 @@ class MissionControllerNode(Node):
         )
 
     def _on_odom(self, msg: Odometry) -> None:
-        now = self._time_fn()
+        now = self._wall_time_fn()
         p = msg.pose.pose.position
         self._pose = Pose2D(
             float(p.x),
@@ -87,7 +91,7 @@ class MissionControllerNode(Node):
             normalize_angle(self._yaw_from_orientation(msg.pose.pose.orientation)),
         )
         self._last_odom_received = now
-        self._feedback_source = "gazebo_model_odometry"
+        self._feedback_source = "gazebo_diff_drive_odometry"
 
     def _on_scan(self, msg: LaserScan) -> None:
         candidates: list[float] = []
@@ -108,7 +112,9 @@ class MissionControllerNode(Node):
             response.success = False
             response.message = "ODOM_NOT_READY"
             return response
-        result = self.core.start(self._time_fn())
+        result = self.core.start(
+            self._sim_time_fn(), watchdog_now=self._wall_time_fn()
+        )
         response.success = result.accepted
         response.message = result.message
         return response
@@ -142,22 +148,31 @@ class MissionControllerNode(Node):
         msg.angular.z = float(angular)
         self._cmd_pub.publish(msg)
 
-    def _status_document(self, now: float) -> dict:
+    def _status_document(self, sim_now: float, wall_now: float) -> dict:
         status = self.core.status()
+        status["sim_time"] = float(sim_now)
         if self._pose is None:
             status["pose"] = None
         else:
             status["pose"] = {"x": self._pose.x, "y": self._pose.y, "yaw": self._pose.yaw}
         status["odom_age"] = (
-            None if self._last_odom_received is None else max(0.0, now - self._last_odom_received)
+            None
+            if self._last_odom_received is None
+            else max(0.0, wall_now - self._last_odom_received)
         )
         status["front_range"] = self._front_range if math.isfinite(self._front_range) else None
         status["feedback_source"] = self._feedback_source
         if self.core.stage_index < len(self.core.route.stages):
             stage = self.core.route.stages[self.core.stage_index]
             if self.core.waypoint_index < len(stage.waypoints):
-                target = stage.waypoints[self.core.waypoint_index]
+                world_target = stage.waypoints[self.core.waypoint_index]
+                target = self.core.waypoint_in_odom(world_target)
                 status["current_target"] = {"x": target.x, "y": target.y}
+                status["current_target_world"] = {
+                    "x": world_target.x,
+                    "y": world_target.y,
+                }
+                status["pose_frame"] = "odom"
                 status["distance_to_waypoint"] = (
                     None
                     if self._pose is None
@@ -166,12 +181,14 @@ class MissionControllerNode(Node):
         return status
 
     def _control_tick(self) -> None:
-        now = self._time_fn()
+        sim_now = self._sim_time_fn()
+        wall_now = self._wall_time_fn()
         command = self.core.update(
             self._pose,
-            now=now,
+            now=sim_now,
             front_range=self._front_range,
             odom_received_at=self._last_odom_received,
+            watchdog_now=wall_now,
         )
         if self.core.state in TERMINAL_STATES and self._last_state not in TERMINAL_STATES:
             self._zero_burst_remaining = 10
@@ -181,7 +198,9 @@ class MissionControllerNode(Node):
             self._zero_burst_remaining -= 1
         self._publish_command(command.linear, command.angular)
         status_msg = String()
-        status_msg.data = json.dumps(self._status_document(now), ensure_ascii=False, allow_nan=False)
+        status_msg.data = json.dumps(
+            self._status_document(sim_now, wall_now), ensure_ascii=False, allow_nan=False
+        )
         self._status_pub.publish(status_msg)
 
     def close(self) -> None:

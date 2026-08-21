@@ -4,7 +4,7 @@
   <name>smartcar_bringup</name>
   <version>0.1.0</version>
   <description>ROS2智能车国赛仿真作业系统 - 启动/控制/任务执行包</description>
-  <maintainer email="tmxj@users.noreply.github.com">tmxj</maintainer>
+  <maintainer email="maintainers@example.invalid">Agent ROS2 maintainers</maintainer>
   <license>MIT</license>
 
   <depend>rclpy</depend>

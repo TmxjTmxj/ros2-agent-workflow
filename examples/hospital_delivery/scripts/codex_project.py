@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 from pathlib import Path
@@ -13,9 +15,11 @@ import sys
 import tempfile
 import time
 from typing import Any
+import uuid
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+REPOSITORY_ROOT = PROJECT_ROOT.parents[1]
 DEFAULT_RUNTIME_DIR = PROJECT_ROOT / ".runtime"
 STATE_VERSION = 1
 MANAGED_PROCESS_NAME = "hospital-delivery-launch"
@@ -145,27 +149,102 @@ def terminate_managed_process(
     return not _process_group_members(pid) if owns_group else not process_matches(record)
 
 
+def terminate_spawned_launch(process: subprocess.Popen[Any], term_timeout: float = 8.0) -> bool:
+    """Boundedly reap the exact fixed launch process group before identity publication."""
+    try:
+        pid = int(process.pid)
+        if pid <= 0:
+            return False
+        leader_running = process.poll() is None
+        members = _process_group_members(pid)
+        if not leader_running and not members:
+            return True
+        if leader_running and os.getpgid(pid) != pid:
+            return False
+        os.killpg(pid, signal.SIGTERM)
+        if leader_running:
+            try:
+                process.wait(timeout=max(0.0, term_timeout))
+            except subprocess.TimeoutExpired:
+                pass
+        deadline = time.monotonic() + max(0.0, term_timeout)
+        while _process_group_members(pid) and time.monotonic() < deadline:
+            time.sleep(0.05)
+        if _process_group_members(pid):
+            os.killpg(pid, signal.SIGKILL)
+            if process.poll() is None:
+                try:
+                    process.wait(timeout=2.0)
+                except subprocess.TimeoutExpired:
+                    return False
+            kill_deadline = time.monotonic() + 2.0
+            while _process_group_members(pid) and time.monotonic() < kill_deadline:
+                time.sleep(0.05)
+        return process.poll() is not None and not _process_group_members(pid)
+    except (OSError, subprocess.TimeoutExpired, ValueError, TypeError):
+        return False
+
+
 def load_runtime_state(state_path: str | Path) -> dict[str, Any]:
     """Load state and separate live identities from stale, untrusted records."""
     path = Path(state_path)
     if not path.exists():
-        return {"version": STATE_VERSION, "processes": [], "stale_processes": []}
+        return {
+            "version": STATE_VERSION,
+            "processes": [],
+            "stale_processes": [],
+            "unresolved_process_groups": [],
+            "startup_token": None,
+        }
     try:
         payload = json.loads(path.read_text())
     except (OSError, json.JSONDecodeError) as exc:
         raise ProjectLifecycleError(f"invalid runtime state {path}: {exc}") from exc
-    if payload.get("version") != STATE_VERSION or not isinstance(payload.get("processes"), list):
+    startup_token = payload.get("startup_token")
+    if (
+        payload.get("version") != STATE_VERSION
+        or not isinstance(payload.get("processes"), list)
+        or (
+            startup_token is not None
+            and (not isinstance(startup_token, str) or not startup_token)
+        )
+    ):
         raise ProjectLifecycleError(f"unsupported runtime state format in {path}")
     live = []
     stale = []
+    unresolved_groups = []
     for record in payload["processes"]:
-        (live if process_matches(record) else stale).append(record)
-    return {"version": STATE_VERSION, "processes": live, "stale_processes": stale}
+        if process_matches(record):
+            live.append(record)
+            continue
+        stale.append(record)
+        if _record_is_authorized_launch(record):
+            pgid = int(record["pgid"])
+            members = sorted(_process_group_members(pgid))
+            if members:
+                unresolved_groups.append(
+                    {"pgid": pgid, "members": members, "record": record}
+                )
+    return {
+        "version": STATE_VERSION,
+        "processes": live,
+        "stale_processes": stale,
+        "unresolved_process_groups": unresolved_groups,
+        "startup_token": startup_token,
+    }
 
 
-def _write_state(path: Path, processes: list[dict[str, Any]]) -> None:
+def _write_state(
+    path: Path,
+    processes: list[dict[str, Any]],
+    *,
+    startup_token: str | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    payload = json.dumps({"version": STATE_VERSION, "processes": processes}, indent=2)
+    state: dict[str, Any] = {"version": STATE_VERSION, "processes": processes}
+    if startup_token is not None:
+        state["startup_token"] = startup_token
+    payload = json.dumps(state, indent=2)
     descriptor, temporary_name = tempfile.mkstemp(prefix="state-", suffix=".json", dir=path.parent)
     try:
         with os.fdopen(descriptor, "w") as handle:
@@ -280,6 +359,77 @@ def _require_exclusive_controller() -> dict[str, str]:
     return endpoints[0]
 
 
+def _native_graph_snapshot(
+    timeout: float, *, environment: dict[str, str] | None = None
+) -> dict[str, Any]:
+    """Collect one closed native ROS graph document through a killable helper."""
+    helper_timeout = min(6.0, max(0.001, float(timeout)))
+    argv = [
+        str(REPOSITORY_ROOT / ".venv" / "bin" / "python"),
+        "-m",
+        "agent_ros.discovery.native_probe",
+    ]
+    environment = dict(
+        _ros_environment(include_install=True)
+        if environment is None
+        else environment
+    )
+    environment["PYTHONNOUSERSITE"] = "1"
+    try:
+        result = subprocess.run(
+            argv,
+            cwd=REPOSITORY_ROOT,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=helper_timeout,
+            shell=False,
+        )
+    except (OSError, subprocess.SubprocessError, ValueError):
+        raise ProjectLifecycleError("native ROS graph probe failed") from None
+    if result.returncode != 0:
+        raise ProjectLifecycleError("native ROS graph probe failed")
+    try:
+        decoder = json.JSONDecoder()
+        document, end = decoder.raw_decode(result.stdout.lstrip())
+        if result.stdout.lstrip()[end:].strip():
+            raise ValueError
+    except (json.JSONDecodeError, TypeError, ValueError):
+        raise ProjectLifecycleError("native ROS graph probe returned invalid evidence") from None
+    required = {"nodes", "topics", "services", "actions", "topic_endpoints"}
+    if not isinstance(document, dict) or set(document) != required:
+        raise ProjectLifecycleError("native ROS graph probe returned invalid evidence")
+    for key in ("topics", "services", "actions", "topic_endpoints"):
+        if not isinstance(document[key], dict):
+            raise ProjectLifecycleError("native ROS graph probe returned invalid evidence")
+    if not isinstance(document["nodes"], list):
+        raise ProjectLifecycleError("native ROS graph probe returned invalid evidence")
+    return document
+
+
+def _native_cmd_vel_publishers(document: dict[str, Any]) -> list[dict[str, str]]:
+    raw = document["topic_endpoints"].get("/cmd_vel", [])
+    if not isinstance(raw, list):
+        raise ProjectLifecycleError("native ROS graph probe returned invalid evidence")
+    publishers: list[dict[str, str]] = []
+    required = {"node_name", "node_namespace", "gid", "endpoint_type"}
+    for endpoint in raw:
+        if (
+            not isinstance(endpoint, dict)
+            or set(endpoint) != required
+            or not all(isinstance(endpoint[key], str) for key in required)
+        ):
+            raise ProjectLifecycleError("native ROS graph probe returned invalid evidence")
+        if endpoint["endpoint_type"] != "publisher":
+            continue
+        namespace = endpoint["node_namespace"].rstrip("/")
+        node = f"{namespace}/{endpoint['node_name']}" if namespace else f"/{endpoint['node_name']}"
+        if not endpoint["node_name"] or not endpoint["gid"]:
+            raise ProjectLifecycleError("native ROS graph probe returned invalid evidence")
+        publishers.append({"node": node, "gid": endpoint["gid"]})
+    return publishers
+
+
 def _wait_for_graph(timeout: float) -> None:
     required_topics = {
         "/odom",
@@ -295,17 +445,38 @@ def _wait_for_graph(timeout: float) -> None:
         "/hospital_mission/reset",
     }
     deadline = time.monotonic() + timeout
+    environment = _ros_environment(include_install=True)
     missing_topics = set(required_topics)
     missing_services = set(required_services)
+    last_probe_error: ProjectLifecycleError | None = None
     while time.monotonic() < deadline:
-        topics = _run_ros(["ros2", "topic", "list"], timeout=5).stdout.splitlines()
-        services = _run_ros(["ros2", "service", "list"], timeout=5).stdout.splitlines()
+        remaining = deadline - time.monotonic()
+        try:
+            graph = _native_graph_snapshot(remaining, environment=environment)
+        except ProjectLifecycleError as exc:
+            last_probe_error = exc
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(min(0.5, max(0.0, deadline - time.monotonic())))
+            continue
+        topics = graph["topics"]
+        services = graph["services"]
         missing_topics = required_topics.difference(topics)
         missing_services = required_services.difference(services)
         if not missing_topics and not missing_services:
-            _require_exclusive_controller()
+            endpoints = _native_cmd_vel_publishers(graph)
+            if not endpoints:
+                time.sleep(min(0.5, max(0.0, deadline - time.monotonic())))
+                continue
+            if len(endpoints) != 1 or endpoints[0]["node"] != "/hospital_mission_controller":
+                raise ProjectLifecycleError(
+                    "mission requires exactly one /cmd_vel publisher endpoint owned by "
+                    f"/hospital_mission_controller; observed={endpoints}"
+                )
             return
-        time.sleep(0.5)
+        time.sleep(min(0.5, max(0.0, deadline - time.monotonic())))
+    if last_probe_error is not None:
+        raise ProjectLifecycleError("startup timed out; native ROS graph unavailable") from last_probe_error
     raise ProjectLifecycleError(
         f"startup timed out; missing topics={sorted(missing_topics)}, "
         f"missing services={sorted(missing_services)}"
@@ -354,91 +525,407 @@ class ProjectLifecycle:
         self.runtime_dir = Path(runtime_dir).resolve()
         self.state_path = self.runtime_dir / "state.json"
         self.log_path = self.runtime_dir / "launch.log"
+        self.lock_path = self.runtime_dir / "lifecycle.lock"
+        self.startup_path = self.runtime_dir / "startup.json"
+        self.startup_failure_path = self.runtime_dir / "startup-cleanup-failed.json"
+
+    @contextmanager
+    def _locked(self):
+        self.runtime_dir.mkdir(parents=True, exist_ok=True)
+        with self.lock_path.open("a+") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    def _load_startup(self) -> dict[str, Any] | None:
+        if not self.startup_path.exists():
+            return None
+        try:
+            payload = json.loads(self.startup_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProjectLifecycleError(f"invalid startup reservation: {exc}") from exc
+        if (
+            not isinstance(payload, dict)
+            or not isinstance(payload.get("token"), str)
+            or not payload["token"]
+            or type(payload.get("cancelled")) is not bool
+            or payload.get("phase") not in {"building", "handoff"}
+        ):
+            raise ProjectLifecycleError("invalid startup reservation")
+        unresolved = payload.get("unresolved_launch")
+        if unresolved is not None and (
+            not isinstance(unresolved, dict)
+            or isinstance(unresolved.get("pid"), bool)
+            or not isinstance(unresolved.get("pid"), int)
+            or unresolved["pid"] <= 0
+            or (
+                "record" in unresolved
+                and not isinstance(unresolved["record"], dict)
+            )
+        ):
+            raise ProjectLifecycleError("invalid startup reservation")
+        return payload
+
+    def _write_startup(self, payload: dict[str, Any]) -> None:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="startup-", suffix=".json", dir=self.runtime_dir
+        )
+        try:
+            with os.fdopen(descriptor, "w") as handle:
+                json.dump(payload, handle, allow_nan=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            Path(temporary_name).replace(self.startup_path)
+        finally:
+            Path(temporary_name).unlink(missing_ok=True)
+
+    def _load_startup_failure(self) -> dict[str, int] | None:
+        if not self.startup_failure_path.exists():
+            return None
+        try:
+            payload = json.loads(self.startup_failure_path.read_text())
+        except (OSError, json.JSONDecodeError) as exc:
+            raise ProjectLifecycleError(f"invalid startup cleanup marker: {exc}") from exc
+        pid = payload.get("pid") if isinstance(payload, dict) else None
+        if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+            raise ProjectLifecycleError("invalid startup cleanup marker")
+        return {"pid": pid}
+
+    def _write_startup_failure(self, pid: int) -> None:
+        descriptor, temporary_name = tempfile.mkstemp(
+            prefix="startup-cleanup-", suffix=".json", dir=self.runtime_dir
+        )
+        try:
+            with os.fdopen(descriptor, "w") as handle:
+                json.dump({"pid": int(pid)}, handle, allow_nan=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            Path(temporary_name).replace(self.startup_failure_path)
+        finally:
+            Path(temporary_name).unlink(missing_ok=True)
 
     def status(self) -> dict[str, Any]:
-        state = load_runtime_state(self.state_path)
+        with self._locked():
+            state = load_runtime_state(self.state_path)
+            startup = self._load_startup()
+            startup_failure = self._load_startup_failure()
+        unresolved_groups = [
+            {"pgid": item["pgid"], "members": item["members"]}
+            for item in state["unresolved_process_groups"]
+        ]
+        unresolved_startup = (
+            startup.get("unresolved_launch")
+            if startup is not None
+            else None
+        ) or startup_failure
+        if unresolved_startup is not None:
+            pid = int(unresolved_startup["pid"])
+            unresolved_groups.append(
+                {"pgid": pid, "members": sorted(_process_group_members(pid))}
+            )
         return {
             "ok": True,
-            "running": bool(state["processes"]),
+            "running": bool(
+                state["processes"]
+                or state["unresolved_process_groups"]
+                or startup is not None
+                or startup_failure is not None
+            ),
             "managed_processes": state["processes"],
             "stale_processes": state["stale_processes"],
+            "unresolved_process_groups": unresolved_groups,
         }
 
     def start(self, headless: bool = True, timeout: float = 45.0) -> dict[str, Any]:
-        state = load_runtime_state(self.state_path)
-        if state["processes"]:
-            raise ProjectLifecycleError("project is already running")
-        inspection = inspect_cmd_vel_publishers()
-        if not inspection["ok"]:
-            raise ProjectLifecycleError(f"cannot inspect /cmd_vel publishers: {inspection['error']}")
-        if inspection["endpoints"]:
-            raise ProjectLifecycleError(
-                "refusing startup because /cmd_vel already has publisher(s): "
-                + json.dumps(inspection["endpoints"], ensure_ascii=False)
-            )
-        build = subprocess.run(
-            ["colcon", "build", "--packages-select", "smartcar_bringup", "--symlink-install"],
-            cwd=PROJECT_ROOT,
-            env=_ros_environment(include_install=False),
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if build.returncode != 0:
-            raise ProjectLifecycleError(f"colcon build failed:\n{build.stdout}\n{build.stderr}")
-        self.runtime_dir.mkdir(parents=True, exist_ok=True)
-        log_handle = self.log_path.open("a", buffering=1)
-        command = [
-            "ros2", "launch", "smartcar_bringup", "hospital_delivery.launch.py",
-            f"headless:={'true' if headless else 'false'}",
-        ]
-        process = subprocess.Popen(
-            command,
-            cwd=PROJECT_ROOT,
-            env=_ros_environment(include_install=True),
-            stdout=log_handle,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-        log_handle.close()
-        record = record_process(process.pid, "hospital-delivery-launch")
-        _write_state(self.state_path, [record])
-        try:
-            _wait_for_graph(timeout)
-        except Exception as startup_error:
-            terminated = terminate_managed_process(record, require_authorized=True)
-            _write_state(self.state_path, [] if terminated else [record])
-            if not terminated:
+        token = uuid.uuid4().hex
+        preserve_startup_reservation = False
+        with self._locked():
+            state = load_runtime_state(self.state_path)
+            if state["processes"]:
+                raise ProjectLifecycleError("project is already running")
+            if self._load_startup() is not None:
+                raise ProjectLifecycleError("project startup is already reserved")
+            if self._load_startup_failure() is not None:
+                raise ProjectLifecycleError("project startup cleanup is unresolved")
+            if state["unresolved_process_groups"]:
+                groups = [
+                    {"pgid": item["pgid"], "members": item["members"]}
+                    for item in state["unresolved_process_groups"]
+                ]
                 raise ProjectLifecycleError(
-                    f"startup failed ({startup_error}); cleanup incomplete and identity retained"
-                ) from startup_error
-            raise
-        return {"ok": True, "running": True, "process": record, "log": str(self.log_path)}
+                    f"unresolved process group remains; refusing startup: {groups}"
+                )
+            self._write_startup(
+                {"token": token, "cancelled": False, "phase": "building"}
+            )
+        try:
+            inspection = inspect_cmd_vel_publishers()
+            if not inspection["ok"]:
+                raise ProjectLifecycleError(
+                    f"cannot inspect /cmd_vel publishers: {inspection['error']}"
+                )
+            if inspection["endpoints"]:
+                raise ProjectLifecycleError(
+                    "refusing startup because /cmd_vel already has publisher(s): "
+                    + json.dumps(inspection["endpoints"], ensure_ascii=False)
+                )
+            build = subprocess.run(
+                ["colcon", "build", "--packages-select", "smartcar_bringup", "--symlink-install"],
+                cwd=PROJECT_ROOT,
+                env=_ros_environment(include_install=False),
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+            if build.returncode != 0:
+                raise ProjectLifecycleError(
+                    f"colcon build failed:\n{build.stdout}\n{build.stderr}"
+                )
+            with self._locked():
+                startup = self._load_startup()
+                if (
+                    startup is None
+                    or startup["token"] != token
+                    or startup["cancelled"] is True
+                ):
+                    raise ProjectLifecycleError("project startup was cancelled")
+                self._write_startup(
+                    {"token": token, "cancelled": False, "phase": "handoff"}
+                )
+                log_handle = self.log_path.open("a", buffering=1)
+                command = [
+                    "ros2", "launch", "smartcar_bringup", "hospital_delivery.launch.py",
+                    f"headless:={'true' if headless else 'false'}",
+                ]
+                try:
+                    process = subprocess.Popen(
+                        command,
+                        cwd=PROJECT_ROOT,
+                        env=_ros_environment(include_install=True),
+                        stdout=log_handle,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                    )
+                    try:
+                        record = record_process(process.pid, "hospital-delivery-launch")
+                        _write_state(
+                            self.state_path, [record], startup_token=token
+                        )
+                    except Exception as handoff_error:
+                        if not terminate_spawned_launch(process):
+                            preserve_startup_reservation = True
+                            unresolved: dict[str, Any] = {"pid": int(process.pid)}
+                            if "record" in locals():
+                                unresolved["record"] = record
+                            try:
+                                self._write_startup_failure(int(process.pid))
+                            except Exception:
+                                pass
+                            try:
+                                self._write_startup(
+                                    {
+                                        "token": token,
+                                        "cancelled": True,
+                                        "phase": "handoff",
+                                        "unresolved_launch": unresolved,
+                                    }
+                                )
+                            except Exception:
+                                pass
+                            raise ProjectLifecycleError(
+                                "startup handoff failed; cleanup incomplete"
+                            ) from handoff_error
+                        raise
+                    else:
+                        self.startup_path.unlink(missing_ok=True)
+                finally:
+                    log_handle.close()
+            try:
+                _wait_for_graph(timeout)
+            except Exception as startup_error:
+                terminated = terminate_managed_process(record, require_authorized=True)
+                if (
+                    not terminated
+                    and not _process_group_members(int(record["pgid"]))
+                ):
+                    terminated = True
+                with self._locked():
+                    current = load_runtime_state(self.state_path)
+                    current_startup = self._load_startup()
+                    retained = list(current["processes"])
+                    for item in current["unresolved_process_groups"]:
+                        if item["record"] not in retained:
+                            retained.append(item["record"])
+                    if not terminated and record not in retained:
+                        retained.append(record)
+                    retained_token = (
+                        current["startup_token"]
+                        if current_startup is not None
+                        and current["startup_token"] == current_startup["token"]
+                        else None
+                    )
+                    _write_state(
+                        self.state_path,
+                        retained,
+                        startup_token=retained_token,
+                    )
+                if not terminated:
+                    raise ProjectLifecycleError(
+                        f"startup failed ({startup_error}); cleanup incomplete and identity retained"
+                    ) from startup_error
+                raise
+            return {
+                "ok": True,
+                "running": True,
+                "process": record,
+                "log": str(self.log_path),
+            }
+        finally:
+            with self._locked():
+                startup = self._load_startup()
+                if (
+                    startup is not None
+                    and startup["token"] == token
+                    and startup.get("unresolved_launch") is None
+                    and not preserve_startup_reservation
+                ):
+                    self.startup_path.unlink(missing_ok=True)
 
     def stop(self) -> dict[str, Any]:
-        state = load_runtime_state(self.state_path)
-        if state["processes"]:
-            try:
-                _service_call("/hospital_mission/estop", timeout=4)
-            except (subprocess.TimeoutExpired, OSError):
-                pass
-        results = []
-        for record in state["processes"]:
-            results.append(
-                {
-                    "pid": record["pid"],
-                    "terminated": terminate_managed_process(record, require_authorized=True),
-                }
+        with self._locked():
+            startup = self._load_startup()
+            startup_failure = self._load_startup_failure()
+            startup_unresolved = (
+                startup is not None
+                and (
+                    startup.get("unresolved_launch") is not None
+                    or startup.get("phase") == "handoff"
+                )
+            ) or startup_failure is not None
+            if startup is not None and not startup_unresolved:
+                self._write_startup(
+                    {
+                        "token": startup["token"],
+                        "cancelled": True,
+                        "phase": startup["phase"],
+                    }
+                )
+            state = load_runtime_state(self.state_path)
+            state_authority = [
+                *state["processes"],
+                *state["stale_processes"],
+                *(
+                    item["record"]
+                    for item in state["unresolved_process_groups"]
+                ),
+            ]
+            phase_only_committed = bool(
+                startup_unresolved
+                and startup is not None
+                and startup.get("phase") == "handoff"
+                and startup.get("unresolved_launch") is None
+                and startup_failure is None
+                and state.get("startup_token") == startup.get("token")
+                and state_authority
+                and all(
+                    _record_is_authorized_launch(record)
+                    for record in state_authority
+                )
             )
-        remaining = [
-            record for record, result in zip(state["processes"], results) if not result["terminated"]
-        ]
-        _write_state(self.state_path, remaining)
+
+            startup_unresolved_payload: list[dict[str, Any]] = []
+            if startup_unresolved:
+                unresolved_launch = (
+                    startup.get("unresolved_launch")
+                    if startup is not None
+                    else None
+                ) or startup_failure
+                if unresolved_launch is not None:
+                    unresolved_pid = int(unresolved_launch["pid"])
+                    members = sorted(_process_group_members(unresolved_pid))
+                    unresolved_record = unresolved_launch.get("record")
+                    if (
+                        members
+                        and isinstance(unresolved_record, dict)
+                        and _record_is_authorized_launch(unresolved_record)
+                        and process_matches(unresolved_record)
+                        and terminate_managed_process(
+                            unresolved_record, require_authorized=True
+                        )
+                    ):
+                        members = sorted(_process_group_members(unresolved_pid))
+                    if members:
+                        startup_unresolved_payload.append(
+                            {"pgid": unresolved_pid, "members": members}
+                        )
+                    else:
+                        self.startup_path.unlink(missing_ok=True)
+                        self.startup_failure_path.unlink(missing_ok=True)
+                        startup_unresolved = False
+
+            if state["processes"]:
+                try:
+                    _service_call("/hospital_mission/estop", timeout=4)
+                except (subprocess.TimeoutExpired, OSError):
+                    pass
+            results = []
+            for record in state["processes"]:
+                results.append(
+                    {
+                        "pid": record["pid"],
+                        "terminated": terminate_managed_process(
+                            record, require_authorized=True
+                        ),
+                    }
+                )
+            remaining = [
+                record
+                for record, result in zip(state["processes"], results)
+                if not result["terminated"]
+            ]
+            unresolved_groups = state["unresolved_process_groups"]
+            for item in unresolved_groups:
+                if item["record"] not in remaining:
+                    remaining.append(item["record"])
+            if (
+                phase_only_committed
+                and all(item["terminated"] for item in results)
+                and not unresolved_groups
+                and not remaining
+            ):
+                self.startup_path.unlink(missing_ok=True)
+                self.startup_failure_path.unlink(missing_ok=True)
+                startup_unresolved = False
+            retained_startup_token = (
+                startup["token"]
+                if phase_only_committed and startup_unresolved and startup is not None
+                else None
+            )
+            _write_state(
+                self.state_path,
+                remaining,
+                startup_token=retained_startup_token,
+            )
+            if not startup_unresolved:
+                self.startup_path.unlink(missing_ok=True)
+                self.startup_failure_path.unlink(missing_ok=True)
+            unresolved_payload = [
+                {"pgid": item["pgid"], "members": item["members"]}
+                for item in unresolved_groups
+            ]
+            unresolved_payload.extend(startup_unresolved_payload)
         return {
-            "ok": all(item["terminated"] for item in results),
-            "running": bool(remaining),
+            "ok": (
+                all(item["terminated"] for item in results)
+                and not unresolved_groups
+                and not startup_unresolved
+            ),
+            "running": bool(remaining or startup_unresolved),
             "terminated": results,
             "stale_processes": state["stale_processes"],
+            "unresolved_process_groups": unresolved_payload,
         }
 
 
