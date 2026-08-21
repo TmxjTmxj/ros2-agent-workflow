@@ -39,6 +39,11 @@
 
 ![系统架构](assets/architecture.svg)
 
+![开发时间线](assets/development-timeline.svg)
+
+> 📖 完整开发历程、13 个关键困难与最终解法见
+> [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)。
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    AI Agent (Codex / 任意 MCP 客户端)          │
@@ -153,6 +158,12 @@ watchdog。因此低于实时速率的 Gazebo 不会重复消耗任务预算。�
 | 任务开始(相机视角) | 任务完成(相机视角) |
 |---|---|
 | ![初始](assets/hospital-camera-initial.png) | ![最终](assets/hospital-camera-final.png) |
+
+俯视视角四帧采样（t=0/9/18/27 s）：
+
+![俯视运行四帧](assets/hospital-overhead-montage.png)
+
+[▶ 观看完整俯视演示视频](examples/hospital_delivery/evidence/官方Burger医院送药_俯视演示.mp4)
 
 ### 实测验收指标(schema-2,2026-08-20)
 
@@ -304,6 +315,9 @@ ros2-agent-workflow/
 │   └── safety/                 #   安全网关、序列器、状态机
 ├── mcp_server/
 │   └── ros2_mcp_server.py      # FastMCP Server(Agent 入口)
+├── docs/
+│   ├── DEVELOPMENT.md          # 开发历程与工程复盘
+│   └── AGENT-COMPARISON.md     # Agent 工具链对比
 ├── profiles/
 │   ├── robots/hospital-amr.yaml
 │   └── tasks/hospital-delivery.yaml
@@ -317,7 +331,7 @@ ros2-agent-workflow/
 ├── scripts/                    # 一键演示脚本
 ├── skills/                     # Agent 技能文档
 ├── tests/                      # 框架与案例测试(505 个唯一用例)
-└── assets/                     # 架构图、路线图、截图
+└── assets/                     # 架构图、路线图、时间线、运行截图
 ```
 
 ---

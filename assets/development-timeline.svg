@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="440" viewBox="0 0 1280 440">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+    </marker>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0d1117"/>
+      <stop offset="100%" stop-color="#161b22"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="440" fill="url(#bg)"/>
+  <text x="640" y="48" text-anchor="middle" fill="#f0f6fc" font-size="26" font-weight="700" font-family="'PingFang SC','Microsoft YaHei',sans-serif">开发时间线：从 Hermes 失败到 Codex 完整闭环</text>
+  <line x1="80" y1="108" x2="1210" y2="108" stroke="#30363d" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <g font-family="'PingFang SC','Microsoft YaHei',sans-serif">
+    <circle cx="110" cy="108" r="12" fill="#ff7b72"/>
+    <text x="110" y="60" text-anchor="middle" fill="#ff7b72" font-size="15" font-weight="700">08-12</text>
+    <text x="110" y="152" text-anchor="middle" fill="#f0f6fc" font-size="18" font-weight="700">Hermes + DeepSeek</text>
+    <text x="110" y="178" text-anchor="middle" fill="#8b949e" font-size="13">ROS2 接口调研</text>
+    <text x="110" y="200" text-anchor="middle" fill="#ff7b72" font-size="13">多次 60–400 s 超时</text>
+    <text x="110" y="222" text-anchor="middle" fill="#ff7b72" font-size="13">未形成验收闭环</text>
+
+    <circle cx="355" cy="108" r="12" fill="#d29922"/>
+    <text x="355" y="60" text-anchor="middle" fill="#d29922" font-size="15" font-weight="700">08-12 ~ 13</text>
+    <text x="355" y="152" text-anchor="middle" fill="#f0f6fc" font-size="18" font-weight="700">Codex 接管</text>
+    <text x="355" y="178" text-anchor="middle" fill="#8b949e" font-size="13">持久 ROS2 控制器</text>
+    <text x="355" y="200" text-anchor="middle" fill="#d29922" font-size="13">首个 Gazebo 三段成功</text>
+    <text x="355" y="222" text-anchor="middle" fill="#8b949e" font-size="13">当时仍用简化驱动</text>
+
+    <circle cx="600" cy="108" r="12" fill="#58a6ff"/>
+    <text x="600" y="60" text-anchor="middle" fill="#58a6ff" font-size="15" font-weight="700">08-19</text>
+    <text x="600" y="152" text-anchor="middle" fill="#f0f6fc" font-size="18" font-weight="700">Claude 模型审查</text>
+    <text x="600" y="178" text-anchor="middle" fill="#8b949e" font-size="13">发现视觉/物理不一致</text>
+    <text x="600" y="200" text-anchor="middle" fill="#58a6ff" font-size="13">0.46/0.08 → 0.160/0.033</text>
+    <text x="600" y="222" text-anchor="middle" fill="#8b949e" font-size="13">确定官方 Burger 方向</text>
+
+    <circle cx="845" cy="108" r="12" fill="#3fb950"/>
+    <text x="845" y="60" text-anchor="middle" fill="#3fb950" font-size="15" font-weight="700">08-20</text>
+    <text x="845" y="152" text-anchor="middle" fill="#f0f6fc" font-size="18" font-weight="700">官方 Burger 重构</text>
+    <text x="845" y="178" text-anchor="middle" fill="#8b949e" font-size="13">DiffDrive + RPP 内核</text>
+    <text x="845" y="200" text-anchor="middle" fill="#3fb950" font-size="13">137.76 s 独立验收</text>
+    <text x="845" y="222" text-anchor="middle" fill="#8b949e" font-size="13">俯视视频录制</text>
+
+    <circle cx="1090" cy="108" r="12" fill="#bc8cff"/>
+    <text x="1090" y="60" text-anchor="middle" fill="#bc8cff" font-size="15" font-weight="700">08-21</text>
+    <text x="1090" y="152" text-anchor="middle" fill="#f0f6fc" font-size="18" font-weight="700">终态证据屏障</text>
+    <text x="1090" y="178" text-anchor="middle" fill="#8b949e" font-size="13">先取证，后清理</text>
+    <text x="1090" y="200" text-anchor="middle" fill="#bc8cff" font-size="13">MCP trace SUCCEEDED</text>
+    <text x="1090" y="222" text-anchor="middle" fill="#8b949e" font-size="13">505 项测试门禁</text>
+  </g>
+
+  <g font-family="'PingFang SC','Microsoft YaHei',sans-serif">
+    <rect x="80" y="270" width="1140" height="120" rx="12" fill="#161b22" stroke="#30363d"/>
+    <text x="110" y="305" fill="#f0f6fc" font-size="16" font-weight="700">关键教训</text>
+    <text x="110" y="332" fill="#8b949e" font-size="14">① 运动闭环不能放在 Agent 推理循环里</text>
+    <text x="490" y="332" fill="#8b949e" font-size="14">② 赛题计时用 ROS /clock，墙钟只做卡死保护</text>
+    <text x="870" y="332" fill="#8b949e" font-size="14">③ 成功证据必须先冻结，再清理进程</text>
+    <text x="110" y="360" fill="#8b949e" font-size="14">④ 每次只验证一个根因，失败必须留下可复现证据</text>
+  </g>
+</svg>

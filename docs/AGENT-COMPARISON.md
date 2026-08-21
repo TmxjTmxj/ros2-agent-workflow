@@ -81,6 +81,7 @@ ROS2 adapter（Twist、Nav2 或受控的固定 lifecycle）
 ## 可复核入口
 
 - 通用 MCP 与安全架构：[`README.md`](../README.md)
+- 开发历程与困难复盘：[`DEVELOPMENT.md`](DEVELOPMENT.md)
 - 官方 Burger 三段送药案例：[`examples/hospital_delivery/`](../examples/hospital_delivery/)
 - 机器可读验收报告：[`examples/hospital_delivery/evidence/acceptance_report.json`](../examples/hospital_delivery/evidence/acceptance_report.json)
 - 机器人与任务 profiles：[`profiles/`](../profiles/)
