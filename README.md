@@ -8,7 +8,7 @@
 [![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10-blue)](https://gazebosim.org)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-FastMCP-important)](https://modelcontextprotocol.io)
-[![Tests](https://img.shields.io/badge/tests-509%20passed-brightgreen)](#-跑测试509-个)
+[![Tests](https://img.shields.io/badge/tests-505%20passed-brightgreen)](#-跑测试505-个)
 [![Mission](https://img.shields.io/badge/mission-137.8s%20sim-58a6ff)](examples/hospital_delivery/evidence/acceptance_report.json)
 [![Safety](https://img.shields.io/badge/safety-0%20prohibited%20contacts-brightgreen)](#-参考案例医院配送送药巡诊机器人赛项)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
@@ -259,11 +259,15 @@ Agent: 紧急停止!
 Agent: 当前任务状态是什么?
 ```
 
-### 4. 跑测试(509 个)
+### 4. 跑测试(505 个唯一用例)
 
 ```bash
+# 根框架测试(干净 venv,避免 ROS launch_testing 插件污染)
+.venv/bin/python -m pytest tests/ -q
+
+# 医院 ROS 案例测试(系统 ROS Python,能看到 rclpy/ros_gz_interfaces)
 source /opt/ros/lyrical/setup.bash
-python3 -m pytest tests/ examples/hospital_delivery/tests/ -q
+/usr/bin/python3 -m pytest examples/hospital_delivery/tests/ -q
 ```
 
 ---
@@ -292,7 +296,7 @@ ros2-agent-workflow/
 │   └── tests/                  #   案例测试
 ├── scripts/                    # 一键演示脚本
 ├── skills/                     # Agent 技能文档
-├── tests/                      # 框架与案例测试(509 个)
+├── tests/                      # 框架与案例测试(505 个唯一用例)
 └── assets/                     # 架构图、路线图、截图
 ```
 
@@ -300,7 +304,8 @@ ros2-agent-workflow/
 
 ## 🧪 测试与质量
 
-- **509 个测试**覆盖:Profile 校验、安全序列器、网关、审计、适配器、MCP 工具、验收报告解析
+- **505 个唯一测试**覆盖:Profile 校验、安全序列器、网关、审计、适配器、MCP 工具、验收报告解析
+  (根测试 365 项与医院 ROS 案例 147 项分层执行,去重后 505 项)
 - 每个 Task 都经过 **5 轮代码审查循环**(Critical/Important/Minor 分级),修复后独立复审
 - 真实验收通过:三段误差、停止漂移、禁止接触、相机证据全部达标
 
