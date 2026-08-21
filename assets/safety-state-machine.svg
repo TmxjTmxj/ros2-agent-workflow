@@ -1,55 +1,59 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 420" font-family="Arial, Helvetica, sans-serif">
-  <defs>
-    <marker id="ar2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#555"/>
-    </marker>
-  </defs>
-  <text x="450" y="32" text-anchor="middle" font-size="20" font-weight="bold" fill="#222">安全状态机（Fail-Closed）</text>
-
-  <!-- NEW -->
-  <ellipse cx="140" cy="150" rx="80" ry="42" fill="#E0E0E0" stroke="#888"/>
-  <text x="140" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#333">NEW</text>
-  <text x="140" y="163" text-anchor="middle" font-size="10" fill="#666">未激活</text>
-
-  <!-- DISCOVERED -->
-  <ellipse cx="330" cy="150" rx="95" ry="42" fill="#BBDEFB" stroke="#4A90D9"/>
-  <text x="330" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#1A3E6E">DISCOVERED</text>
-  <text x="330" y="163" text-anchor="middle" font-size="10" fill="#3A6E9E">已发现</text>
-
-  <!-- RUNNING -->
-  <ellipse cx="560" cy="150" rx="100" ry="48" fill="#C8E6C9" stroke="#43A047"/>
-  <text x="560" y="143" text-anchor="middle" font-size="15" font-weight="bold" fill="#1B5E20">RUNNING</text>
-  <text x="560" y="163" text-anchor="middle" font-size="10" fill="#2E7D32">任务执行中</text>
-
-  <!-- ESTOPPED -->
-  <ellipse cx="780" cy="150" rx="90" ry="42" fill="#FFCDD2" stroke="#D32F2F"/>
-  <text x="780" y="145" text-anchor="middle" font-size="14" font-weight="bold" fill="#B71C1C">ESTOPPED</text>
-  <text x="780" y="163" text-anchor="middle" font-size="10" fill="#C62828">急停闩锁</text>
-
-  <!-- FAULTED -->
-  <ellipse cx="560" cy="330" rx="100" ry="42" fill="#FFF3E0" stroke="#EF6C00"/>
-  <text x="560" y="325" text-anchor="middle" font-size="14" font-weight="bold" fill="#E65100">FAULTED</text>
-  <text x="560" y="343" text-anchor="middle" font-size="10" fill="#EF6C00">故障/心跳丢失</text>
-
-  <!-- transitions -->
-  <line x1="220" y1="150" x2="235" y2="150" stroke="#555" stroke-width="2" marker-end="url(#ar2)"/>
-  <text x="228" y="138" text-anchor="middle" font-size="10" fill="#555">discover</text>
-
-  <line x1="425" y1="150" x2="460" y2="150" stroke="#555" stroke-width="2" marker-end="url(#ar2)"/>
-  <text x="443" y="138" text-anchor="middle" font-size="10" fill="#555">arm + start</text>
-
-  <path d="M 560 198 C 560 260, 560 260, 560 286" fill="none" stroke="#EF6C00" stroke-width="2" marker-end="url(#ar2)"/>
-  <text x="575" y="248" font-size="10" fill="#EF6C00">watchdog / estop</text>
-
-  <path d="M 660 150 C 700 150, 730 150, 740 150" fill="none" stroke="#D32F2F" stroke-width="2" marker-end="url(#ar2)"/>
-  <text x="700" y="138" text-anchor="middle" font-size="10" fill="#D32F2F">estop</text>
-
-  <path d="M 690 185 C 640 260, 600 290, 570 300" fill="none" stroke="#888" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#ar2)"/>
-  <text x="660" y="258" font-size="10" fill="#888">supervisor stop</text>
-
-  <path d="M 560 198 C 520 240, 400 260, 350 192" fill="none" stroke="#888" stroke-width="2" stroke-dasharray="5,4" marker-end="url(#ar2)"/>
-  <text x="430" y="262" font-size="10" fill="#888">recover</text>
-
-  <!-- legend -->
-  <text x="120" y="395" font-size="11" fill="#666">实线 = 正常流程 · 虚线 = 恢复流程 · 红色 = 安全急停</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 680" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="sGray" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/></marker><marker id="sBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/></marker><marker id="sGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/></marker><marker id="sRed" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ff7b72"/></marker><marker id="sOrange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#d29922"/></marker><marker id="sPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#bc8cff"/></marker></defs>
+<rect width="1200" height="680" fill="#0d1117"/>
+<text x="600" y="38" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="22" font-weight="bold" fill="#f0f6fc">安全状态机 · Safety Gateway</text>
+<text x="600" y="64" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="13" fill="#8b949e">Fail-Closed：任何异常都进入安全停止，硬件急停不能由 Agent 复位</text>
+<rect x="70" y="104" width="180" height="82" rx="14" fill="#161b22" stroke="#8b949e" stroke-width="2"/>
+<text x="160.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#8b949e">NEW</text>
+<text x="160.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">初始状态</text>
+<rect x="330" y="104" width="190" height="82" rx="14" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
+<text x="425.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#58a6ff">DISCOVERED</text>
+<text x="425.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">机器人已发现</text>
+<rect x="730" y="104" width="190" height="82" rx="14" fill="#161b22" stroke="#d29922" stroke-width="2"/>
+<text x="825.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#d29922">ARMED</text>
+<text x="825.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">已授权，可启动</text>
+<rect x="980" y="104" width="200" height="82" rx="14" fill="#161b22" stroke="#3fb950" stroke-width="2"/>
+<text x="1080.0" y="136" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#3fb950">RUNNING</text>
+<text x="1080.0" y="158" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">任务执行中</text>
+<rect x="490" y="280" width="190" height="82" rx="14" fill="#161b22" stroke="#bc8cff" stroke-width="2"/>
+<text x="585.0" y="312" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#bc8cff">VALIDATED</text>
+<text x="585.0" y="334" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">硬件 Profile 已校验</text>
+<rect x="270" y="470" width="190" height="82" rx="14" fill="#161b22" stroke="#58a6ff" stroke-width="2"/>
+<text x="365.0" y="502" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#58a6ff">STOPPED</text>
+<text x="365.0" y="524" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">任务正常停止</text>
+<rect x="690" y="470" width="190" height="82" rx="14" fill="#161b22" stroke="#ff7b72" stroke-width="2"/>
+<text x="785.0" y="502" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#ff7b72">ESTOPPED</text>
+<text x="785.0" y="524" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">急停闩锁</text>
+<rect x="1000" y="470" width="190" height="82" rx="14" fill="#161b22" stroke="#d29922" stroke-width="2"/>
+<text x="1095.0" y="502" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="15.5" font-weight="bold" fill="#d29922">FAULTED</text>
+<text x="1095.0" y="524" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">心跳丢失 / 故障</text>
+<line x1="250" y1="145" x2="330" y2="145" stroke="#8b949e" stroke-width="2.5" marker-end="url(#sGray)"/>
+<text x="290" y="128" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">discover</text>
+<path d="M 425 186 C 425 226, 585 226, 585 280" fill="none" stroke="#bc8cff" stroke-width="2.5" marker-end="url(#sPurple)"/>
+<text x="500" y="216" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#bc8cff" fill="12">validate</text>
+<text x="500" y="236" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#8b949e" fill="11">hardware 模式</text>
+<path d="M 585 280 C 585 330, 825 330, 825 186" fill="none" stroke="#d29922" stroke-width="2.5" marker-end="url(#sOrange)"/>
+<text x="740" y="322" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#d29922" fill="12">arm</text>
+<text x="740" y="342" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="#8b949e" fill="11">operator challenge</text>
+<line x1="520" y1="145" x2="730" y2="145" stroke="#3fb950" stroke-width="2.5" marker-end="url(#sGreen)"/>
+<text x="625" y="128" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">validate（simulation 自动 arm）</text>
+<line x1="920" y1="145" x2="980" y2="145" stroke="#3fb950" stroke-width="2.5" marker-end="url(#sGreen)"/>
+<text x="950" y="128" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">start_task</text>
+<path d="M 1080 186 C 1080 300, 365 310, 365 470" fill="none" stroke="#58a6ff" stroke-width="2.5" marker-end="url(#sBlue)"/>
+<text x="655" y="282" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#58a6ff">cancel / succeed</text>
+<path d="M 1120 186 C 1140 300, 785 300, 785 470" fill="none" stroke="#ff7b72" stroke-width="2.5" marker-end="url(#sRed)"/>
+<text x="1015" y="282" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="13" fill="#ff7b72">estop</text>
+<path d="M 1130 186 C 1190 300, 1095 320, 1095 470" fill="none" stroke="#d29922" stroke-width="2.5" marker-end="url(#sOrange)"/>
+<text x="1092" y="290" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#d29922">fault / heartbeat lost</text>
+<path d="M 785 552 C 785 620, 160 620, 160 186" fill="none" stroke="#8b949e" stroke-width="2.2" stroke-dasharray="7,5" marker-end="url(#sGray)"/>
+<text x="480" y="622" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" fill="#8b949e">operator_reset · 仅 simulation；hardware 必须人工复位</text>
+<rect x="70" y="610" width="1060" height="46" rx="10" fill="#161b22" stroke="#30363d"/>
+<text x="140" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#3fb950">●</text>
+<text x="165" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">正常流程</text>
+<text x="300" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#ff7b72">●</text>
+<text x="325" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">安全急停 / 故障</text>
+<text x="500" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#bc8cff">●</text>
+<text x="525" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">硬件校验</text>
+<text x="700" y="639" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" fill="#8b949e">- -</text>
+<text x="745" y="639" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#8b949e">恢复路径（simulation only）</text>
 </svg>

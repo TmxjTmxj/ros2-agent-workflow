@@ -1,41 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560" font-family="Arial, Helvetica, sans-serif">
-  <defs>
-    <marker id="ar3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#D32F2F"/>
-    </marker>
-  </defs>
-  <text x="380" y="34" text-anchor="middle" font-size="20" font-weight="bold" fill="#222">医院配送参考案例 · 三段式路线</text>
-
-  <!-- 地图背景 -->
-  <rect x="40" y="70" width="680" height="430" rx="10" fill="#F5F5F5" stroke="#CCC"/>
-  <rect x="40" y="70" width="680" height="40" rx="10" fill="#E0E0E0"/>
-  <text x="380" y="96" text-anchor="middle" font-size="13" fill="#555">医院病房平面图（Gazebo Sim 10 · hospital_world_gz10.world）</text>
-
-  <!-- 路线 -->
-  <path d="M 120 420 L 300 300 L 460 180" fill="none" stroke="#D32F2F" stroke-width="5" marker-end="url(#ar3)"/>
-  <path d="M 120 420 L 300 300" fill="none" stroke="#D32F2F" stroke-width="5"/>
-  <path d="M 300 300 L 460 180" fill="none" stroke="#D32F2F" stroke-width="5"/>
-
-  <!-- 起点 -->
-  <circle cx="120" cy="420" r="26" fill="#43A047" stroke="#2E7D32" stroke-width="2"/>
-  <text x="120" y="425" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">起点</text>
-
-  <!-- 三个站点 -->
-  <circle cx="300" cy="300" r="24" fill="#1976D2" stroke="#0D47A1" stroke-width="2"/>
-  <text x="300" y="305" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">站点1</text>
-  <text x="300" y="250" text-anchor="middle" font-size="10" fill="#1565C0">(18.5, 3.5)</text>
-
-  <circle cx="460" cy="180" r="24" fill="#1976D2" stroke="#0D47A1" stroke-width="2"/>
-  <text x="460" y="185" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">站点2</text>
-  <text x="460" y="130" text-anchor="middle" font-size="10" fill="#1565C0">(20.0, 8.5)</text>
-
-  <circle cx="580" cy="260" r="24" fill="#D32F2F" stroke="#B71C1C" stroke-width="2"/>
-  <text x="580" y="265" text-anchor="middle" font-size="11" font-weight="bold" fill="#fff">站点3</text>
-  <text x="580" y="310" text-anchor="middle" font-size="10" fill="#C62828">(12.0, 14.5)</text>
-
-  <path d="M 460 200 C 500 230, 540 240, 558 244" fill="none" stroke="#D32F2F" stroke-width="4" marker-end="url(#ar3)"/>
-
-  <!-- 验收指标框 -->
-  <rect x="60" y="470" width="640" height="24" rx="6" fill="#FFF8E1" stroke="#F9A825"/>
-  <text x="380" y="487" text-anchor="middle" font-size="11" fill="#795548">实测：端点误差 .4999 / .4985 / .4967 m · 漂移 .0039 m · 接触消息 69,691 条（禁止接触 0）</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1180 760" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif">
+<defs><marker id="rBlue" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#58a6ff"/></marker><marker id="rGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#3fb950"/></marker><marker id="rPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#bc8cff"/></marker></defs>
+<rect width="1180" height="760" fill="#0d1117"/>
+<text x="590.0" y="42" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="21" font-weight="bold" fill="#f0f6fc">医院配送案例 · 真实世界坐标路线</text>
+<text x="590.0" y="66" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" fill="#8b949e">场地 24 m × 18 m；小车从 (12, 8) 出发，完成取药、送药、巡视三段任务</text>
+<rect x="60" y="80" width="840" height="560" rx="18" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+<rect x="70.0" y="414.0" width="343.3333333333333" height="216.0" rx="8" fill="#1d2b3a" stroke="#30363d" stroke-width="1"/>
+<text x="241.66666666666666" y="526.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">接待区</text>
+<rect x="343.3333333333333" y="414.0" width="343.3333333333333" height="216.0" rx="8" fill="#1d2b33" stroke="#30363d" stroke-width="1"/>
+<text x="515.0" y="526.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">候诊区</text>
+<rect x="616.6666666666666" y="414.0" width="343.3333333333333" height="216.0" rx="8" fill="#312b1d" stroke="#30363d" stroke-width="1"/>
+<text x="788.3333333333333" y="526.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">药房</text>
+<rect x="70.0" y="255.0" width="343.3333333333333" height="159.0" rx="8" fill="#1e2a33" stroke="#30363d" stroke-width="1"/>
+<text x="241.66666666666666" y="338.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">洗手间</text>
+<rect x="343.3333333333333" y="255.0" width="343.3333333333333" height="159.0" rx="8" fill="#261d31" stroke="#30363d" stroke-width="1"/>
+<text x="515.0" y="338.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">护士站</text>
+<rect x="616.6666666666666" y="255.0" width="343.3333333333333" height="159.0" rx="8" fill="#2a231d" stroke="#30363d" stroke-width="1"/>
+<text x="788.3333333333333" y="338.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">病房2</text>
+<rect x="70.0" y="90.0" width="343.3333333333333" height="165.0" rx="8" fill="#2a1d28" stroke="#30363d" stroke-width="1"/>
+<text x="241.66666666666666" y="176.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">诊断区</text>
+<rect x="343.3333333333333" y="90.0" width="343.3333333333333" height="165.0" rx="8" fill="#251d32" stroke="#30363d" stroke-width="1"/>
+<text x="515.0" y="176.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">实验室</text>
+<rect x="616.6666666666666" y="90.0" width="343.3333333333333" height="165.0" rx="8" fill="#1d2a2a" stroke="#30363d" stroke-width="1"/>
+<text x="788.3333333333333" y="176.5" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="14" fill="#8b949e">病房1</text>
+<rect x="68.0" y="88.0" width="824.0" height="544.0" rx="12" fill="none" stroke="#586069" stroke-width="2"/>
+<path d="M 480.0 390.0 L 518.4 416.2 L 552.6 446.2 L 586.8 476.2 L 586.8 513.8 L 629.5 521.2 L 672.2 521.2 L 702.1 525.0" fill="none" stroke="#58a6ff" stroke-width="3.2" marker-end="url(#rBlue)"/>
+<text x="586.7708333333334" y="487.75" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#58a6ff">① 药房取药</text>
+<path d="M 480.0 390.0 L 663.6 521.2 L 620.9 521.2 L 586.8 498.8 L 586.8 461.2 L 586.8 423.8 L 603.9 386.2 L 646.6 371.2 L 689.3 371.2 L 732.0 371.2 L 753.3 375.0" fill="none" stroke="#3fb950" stroke-width="3.2" marker-end="url(#rGreen)"/>
+<text x="586.7708333333334" y="401.75" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#3fb950">② 病房2送药</text>
+<path d="M 480.0 390.0 L 714.9 363.8 L 680.7 333.8 L 646.6 303.8 L 603.9 288.8 L 569.7 266.2 L 535.5 236.2 L 501.4 206.2 L 480.0 195.0" fill="none" stroke="#bc8cff" stroke-width="3.2" marker-end="url(#rPurple)"/>
+<text x="587.8541666666666" y="302.75" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#bc8cff">③ 实验室巡视</text>
+<circle cx="480.0" cy="390.0" r="15" fill="#3fb950" stroke="#0d1117" stroke-width="3"/>
+<text x="480.0" y="394.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" font-weight="bold" fill="#0d1117">起</text>
+<text x="470.0" y="368.0" text-anchor="end" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12" fill="#3fb950">起点 (12.0, 8.0)</text>
+<circle cx="702.0833333333334" cy="525.0" r="16" fill="#d29922" stroke="#0d1117" stroke-width="3"/>
+<text x="702.0833333333334" y="529.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11" font-weight="bold" fill="#0d1117">药</text>
+<text x="722.0833333333334" y="505.0" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#d29922">药房 (18.5, 3.5)</text>
+<circle cx="753.3333333333334" cy="375.0" r="16" fill="#58a6ff" stroke="#0d1117" stroke-width="3"/>
+<text x="753.3333333333334" y="379.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11" font-weight="bold" fill="#0d1117">病房</text>
+<text x="733.3333333333334" y="355.0" text-anchor="end" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#58a6ff">病房2 (20.0, 8.5)</text>
+<circle cx="480.0" cy="195.0" r="16" fill="#bc8cff" stroke="#0d1117" stroke-width="3"/>
+<text x="480.0" y="199.0" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11" font-weight="bold" fill="#0d1117">实</text>
+<text x="500.0" y="219.0" text-anchor="start" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#bc8cff">实验室 (12.0, 14.5)</text>
+<rect x="920" y="90" width="190" height="540" rx="16" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+<text x="1015" y="124" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="16" font-weight="bold" fill="#e6edf3">路线说明</text>
+<text x="1015" y="164" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">三段顺序</text>
+<text x="1015" y="182" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#e6edf3">取药 → 送药 → 巡视</text>
+<text x="1015" y="206" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">起点</text>
+<text x="1015" y="224" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#e6edf3">(12.0, 8.0) 朝 +x</text>
+<text x="1015" y="248" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">终点容差</text>
+<text x="1015" y="266" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#e6edf3">≤ 0.50 m</text>
+<text x="1015" y="290" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">任务预算</text>
+<text x="1015" y="308" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#e6edf3">180 s ROS 仿真时钟</text>
+<text x="1015" y="332" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">当前实测</text>
+<text x="1015" y="350" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#e6edf3">137.76 s ROS 仿真时钟</text>
+<text x="1015" y="374" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">停止漂移</text>
+<text x="1015" y="392" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#e6edf3">0.0039 m</text>
+<text x="1015" y="416" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#8b949e">禁止碰撞</text>
+<text x="1015" y="434" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" font-weight="bold" fill="#e6edf3">0</text>
+<text x="480.0" y="690" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="12.5" fill="#8b949e">实测端点误差：0.4999 / 0.4985 / 0.4967 m · 唯一 /cmd_vel 发布者 · 五路接触源 69,691 条消息</text>
+<text x="480.0" y="712" text-anchor="middle" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#6e7681">路线与验收数据均可由 config/mission_routes.json 和 evidence/acceptance_report.json 复核</text>
 </svg>
