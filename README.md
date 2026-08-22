@@ -4,6 +4,13 @@
 
 **让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"中国机器人大赛暨RoboCup·送药巡诊机器人赛项"为完整验证案例**
 
+> **English Abstract**: A safe, reproducible Agent-to-ROS2 automation framework.
+> Codex or any MCP client issues bounded task-level commands through FastMCP;
+> a fail-closed SafetyGateway authorizes motion; a single-writer ROS2 controller
+> drives a Gazebo TurtleBot3 Burger through a hospital delivery mission;
+> independent acceptance evidence, terminal snapshots, and 505 unique tests make
+> the result verifiable.
+
 [![ROS2](https://img.shields.io/badge/ROS2-lyrical-orange)](https://docs.ros.org)
 [![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10-blue)](https://gazebosim.org)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org)
@@ -212,6 +219,9 @@ watchdog。因此低于实时速率的 Gazebo 不会重复消耗任务预算。�
 [`docs/AGENT-COMPARISON.md`](docs/AGENT-COMPARISON.md) —— 为什么工具不同会导致
 Agent 控制 ROS2 出现区别，以及后人如何少走弯路。
 
+与其他公开 Agent-MCP-ROS2 项目的功能边界、安全设计和验收能力对比，见
+[`docs/PROJECT-COMPARISON.md`](docs/PROJECT-COMPARISON.md)。
+
 ### 验收证据(防伪造,随仓库发布)
 
 - **机器可验证 JSON 报告**: [`evidence/acceptance_report.json`](examples/hospital_delivery/evidence/acceptance_report.json)(schema-2,SUCCEEDED)
@@ -314,8 +324,9 @@ ros2-agent-workflow/
 ├── mcp_server/
 │   └── ros2_mcp_server.py      # FastMCP Server(Agent 入口)
 ├── docs/
-│   ├── DEVELOPMENT.md          # 开发历程与工程复盘
-│   └── AGENT-COMPARISON.md     # Agent 工具链对比
+│   ├── DEVELOPMENT.md           # 开发历程与工程复盘
+│   ├── AGENT-COMPARISON.md      # Agent 工具链对比
+│   └── PROJECT-COMPARISON.md    # 与公开 Agent-MCP-ROS2 项目对比
 ├── profiles/
 │   ├── robots/hospital-amr.yaml
 │   └── tasks/hospital-delivery.yaml
