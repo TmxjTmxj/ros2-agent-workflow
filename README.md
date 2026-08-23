@@ -19,6 +19,7 @@
 [![Mission](https://img.shields.io/badge/mission-137.8s%20sim-58a6ff)](examples/hospital_delivery/evidence/acceptance_report.json)
 [![Safety](https://img.shields.io/badge/safety-0%20prohibited%20contacts-brightgreen)](#-参考案例医院配送送药巡诊机器人赛项)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+[![CI](https://github.com/TmxjTmxj/ros2-agent-workflow/actions/workflows/ci.yml/badge.svg)](https://github.com/TmxjTmxj/ros2-agent-workflow/actions/workflows/ci.yml)
 
 </div>
 
@@ -259,6 +260,16 @@ python3 -m venv --system-site-packages .venv
 `--system-site-packages` 让固定 native graph helper 使用与 ROS 2 相同的
 `rclpy`/EmPy 系统包；MCP stdio 子进程只转发白名单中的 ROS overlay 环境变量。
 
+也可以使用一键命令：
+
+```bash
+make install
+make test
+```
+
+真机部署请从 [`docs/REAL-ROBOT.md`](docs/REAL-ROBOT.md) 开始，选择
+`twist` 或 `nav2` 适配器。
+
 ### 2. 一键运行医院配送案例(完整验证)
 
 ```bash
@@ -365,6 +376,9 @@ ros2-agent-workflow/
 ## 📄 License
 
 MIT —— 自由使用、修改、分发,保留版权声明即可。
+
+参与贡献请阅读 [`CONTRIBUTING.md`](CONTRIBUTING.md)；问题与建议请通过
+[issue template](.github/ISSUE_TEMPLATE) 提交。
 
 ## 🙏 致谢
 
