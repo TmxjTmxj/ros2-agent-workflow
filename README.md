@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/banner.svg" width="100%" alt="ros2-agent-workflow"/>
+<img src="assets/banner.png" width="100%" alt="ros2-agent-workflow"/>
 
 **让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"中国机器人大赛暨RoboCup·送药巡诊机器人赛项"为完整验证案例**
 
@@ -69,7 +69,7 @@
 
 ## 🏗️ 架构总览
 
-![系统架构](assets/architecture.svg)
+![系统架构](assets/architecture.png)
 
 > 📖 完整开发历程、13 个关键困难与最终解法见
 > [`docs/DEVELOPMENT.md`](docs/DEVELOPMENT.md)。
@@ -146,7 +146,7 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 
 ### 3. 安全内核 —— Fail-Closed 状态机
 
-![安全状态机](assets/safety-state-machine.svg)
+![安全状态机](assets/safety-state-machine.png)
 
 - **激活许可(Activation Permit)**:任何运动指令必须携带当前许可,急停后许可立即失效
 - **心跳监控**:任务执行期间持续监控,心跳丢失 → FAULTED → 安全停机
@@ -166,7 +166,7 @@ Profile 是**可审查的安全边界**:硬件模式必须经过验证,限制必
 
 ## 🏥 参考案例:医院配送(送药巡诊机器人赛项)
 
-![医院配送路线](assets/hospital-route.svg)
+![医院配送路线](assets/hospital-route.png)
 
 这是**完整的赛题案例**:一辆 AMR(自主移动机器人)在医院病房环境中完成"取药 → 送药 → 巡视"三段式配送任务。
 

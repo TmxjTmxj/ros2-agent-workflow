@@ -24,9 +24,9 @@
 
 ## 系统架构
 
-![系统架构](../assets/architecture.svg)
+![系统架构](../assets/architecture.png)
 
-![安全状态机](../assets/safety-state-machine.svg)
+![安全状态机](../assets/safety-state-machine.png)
 
 设计原则：
 
