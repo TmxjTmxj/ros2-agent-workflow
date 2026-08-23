@@ -25,6 +25,20 @@
 
 ---
 
+## 📖 目录
+
+- [项目是什么](#-项目是什么)
+- [架构总览](#-架构总览)
+- [核心组件](#-核心组件)
+- [参考案例：医院配送](#-参考案例医院配送送药巡诊机器人赛项)
+- [快速开始](#-快速开始)
+- [项目结构](#-项目结构)
+- [测试与质量](#-测试与质量)
+- [真机适配与贡献](#-真机适配与贡献)
+- [License](#-license)
+
+---
+
 ## 🎯 项目是什么
 
 这是一个 **基于 Codex（OpenAI）的 ROS2 自动化控制框架**：AI Agent 通过 **MCP 协议** 连接 ROS2 + Gazebo 仿真环境，以**任务级意图**（"把药从药房送到病房2"）驱动机器人完成复杂任务，而不是逐条下发底层指令。
@@ -38,6 +52,16 @@
 | 📦 **可复现** | 声明式 Profile 描述机器人能力,一键运行完整验证 |
 | 🧪 **赛题案例** | 以"送药巡诊机器人赛项"为完整参考案例,带真实验收报告与相机证据 |
 | 📊 **可验证证据** | 独立验收监控器,生成机器可验证的 JSON 证据,防伪造 |
+
+### 工程化程度
+
+| 设施 | 说明 |
+|------|------|
+| 🧪 **CI 自动测试** | GitHub Actions 在 Python 3.11 / 3.12 自动运行根测试与医院静态测试 |
+| ⚙️ **一键复现** | `make install` / `make test` / `make test-hospital` |
+| 🦾 **真机适配指南** | `docs/REAL-ROBOT.md` 提供 Twist / Nav2 硬件模式示例 |
+| 🤝 **贡献友好** | `CONTRIBUTING.md` + issue templates + MIT License |
+| 📚 **完整文档** | 开发复盘、社区对比、数据口径、安全与验收说明 |
 
 > **这个框架从一次真实的赛题出发**:原任务是让 Agent 完成中国机器人大赛暨RoboCup"送药巡诊机器人赛项"中的医院配送仿真赛题。我们将赛题固化为完整参考案例(`examples/hospital_delivery`),并抽象出一套**通用、安全、可复现**的 Agent 控制 ROS2 框架。赛题是案例,框架是产品。
 
@@ -351,7 +375,7 @@ ros2-agent-workflow/
 ├── scripts/                    # 一键演示脚本
 ├── skills/                     # Agent 技能文档
 ├── tests/                      # 框架与案例测试(505 个唯一用例)
-└── assets/                     # 架构图、路线图、时间线、运行截图
+└── assets/                     # 架构图、路线图、运行截图
 ```
 
 ---
@@ -372,6 +396,22 @@ ros2-agent-workflow/
   简历引用请使用 **505 个唯一测试**，不要使用中间版 509。
 - 每个 Task 都经过 **5 轮代码审查循环**(Critical/Important/Minor 分级),修复后独立复审
 - 真实验收通过:三段误差、停止漂移、禁止接触、相机证据全部达标
+
+## 🦾 真机适配与贡献
+
+真机部署入口：
+
+- [`docs/REAL-ROBOT.md`](docs/REAL-ROBOT.md)：Twist / Nav2 机器人 profile、物理急停、operator challenge、空载验证流程
+- 硬件模式默认 `dry_run=true`，必须通过 operator challenge 才能 arm
+- 运动控制由单写入者 ROS2 节点完成，Agent 不直接发布 `/cmd_vel`
+
+参与贡献：
+
+- [`CONTRIBUTING.md`](CONTRIBUTING.md)
+- [bug 报告模板](.github/ISSUE_TEMPLATE/bug_report.md)
+- [功能建议模板](.github/ISSUE_TEMPLATE/feature_request.md)
+
+---
 
 ## 📄 License
 
