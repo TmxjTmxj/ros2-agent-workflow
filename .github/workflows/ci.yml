@@ -57,7 +57,7 @@ jobs:
       - name: Install project and test dependencies
         run: |
           .venv/bin/python -m pip install -e .
-          .venv/bin/python -m pip install pytest
+          .venv/bin/python -m pip install pytest opencv-python-headless
 
       - name: Run hospital tests that do not need ROS2
         run: .venv/bin/python -m pytest examples/hospital_delivery/tests/test_run_via_mcp.py examples/hospital_delivery/tests/test_model_geometry.py examples/hospital_delivery/tests/test_acceptance_report.py -q

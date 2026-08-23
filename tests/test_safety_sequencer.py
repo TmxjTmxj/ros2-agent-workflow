@@ -113,17 +113,23 @@ def test_latch_rejects_every_queued_command_without_invoking_it():
             timeout=0.5,
         )
     )
+    queued_started = threading.Event()
     queued = ThreadCall(
-        lambda: sequencer.submit(
+        lambda: (queued_started.set(), sequencer.submit(
             sequencer.issue(), lambda: invoked.append("stale"), timeout=0.5
-        )
+        ))[1]
     )
     try:
         assert entered.wait(0.2)
+        assert queued_started.wait(0.2)
+        deadline = time.monotonic() + 0.5
+        while sequencer.pending_count < 1 and time.monotonic() < deadline:
+            time.sleep(0.005)
+        assert sequencer.pending_count == 1
         result = sequencer.latch_and_quiesce(lambda: None, timeout=0.02)
 
         with pytest.raises(_ActivationRejected, match="ESTOP_LATCHED"):
-            queued.result(0.2)
+            queued.result(1.0)
         assert invoked == []
         assert result.code == "TRANSPORT_UNQUIESCED"
     finally:
