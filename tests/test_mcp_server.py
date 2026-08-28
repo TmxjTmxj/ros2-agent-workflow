@@ -16,6 +16,10 @@ from agent_ros.safety.state import SafetyState
 from mcp_server import ros2_mcp_server
 
 
+def test_module_exposes_stdio_main():
+    assert callable(ros2_mcp_server.main)
+
+
 TOOL_NAMES = {
     "discover_robot",
     "validate_profile",

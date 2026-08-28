@@ -11,6 +11,7 @@ from typing import Sequence
 from agent_ros.discovery.inference import infer_capabilities
 from agent_ros.discovery.ros_graph import RosGraphProbe
 from agent_ros.errors import DiscoveryError, ProfileValidationError
+from agent_ros.profiles.defaults import default_profiles_root
 from agent_ros.profiles.loader import load_robot_profile
 from agent_ros.safety.challenge import ChallengeError, create_operator_challenge
 from agent_ros.safety.gateway import SafetyError, SafetyGateway
@@ -39,7 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="agent-ros")
     parser.add_argument("--json", action="store_true")
-    parser.add_argument("--profiles-root", type=Path, default=Path("profiles"))
+    parser.add_argument("--profiles-root", type=Path, default=default_profiles_root())
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command in ("discover", "validate", "status", "verify-profile"):
         item = subparsers.add_parser(command)

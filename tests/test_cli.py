@@ -5,6 +5,13 @@ from types import SimpleNamespace
 from agent_ros import cli
 
 
+def test_cli_uses_packaged_profiles_by_default(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+
+    assert cli.main(["--json", "status", "hospital-amr"]) == 0
+    assert '"profile":"hospital-amr"' in capsys.readouterr().out
+
+
 def _hardware_profile(*_args):
     return SimpleNamespace(name="robot", mode="hardware")
 

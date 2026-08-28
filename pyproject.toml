@@ -14,6 +14,10 @@ dependencies = [
     "jsonschema>=4.20",
 ]
 
+[project.scripts]
+agent-ros = "agent_ros.cli:main"
+agent-ros-mcp = "mcp_server.ros2_mcp_server:main"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

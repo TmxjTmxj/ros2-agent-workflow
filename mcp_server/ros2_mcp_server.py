@@ -29,6 +29,7 @@ from pydantic import Field
 
 from agent_ros.adapters.base import Observation
 from agent_ros.adapters.factory import RclpyAdapterFactory
+from agent_ros.profiles.defaults import default_profiles_root
 from agent_ros.runtime import (
     EvidenceError,
     EvidenceReference,
@@ -62,7 +63,7 @@ ReportId: TypeAlias = Annotated[
 ]
 
 _ROOT = Path(__file__).resolve().parents[1]
-_PROFILES_ROOT = _ROOT / "profiles"
+_PROFILES_ROOT = default_profiles_root()
 _RUNTIME_ROOT = _ROOT / ".runtime"
 _EVIDENCE_ROOT = _RUNTIME_ROOT / "evidence"
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -525,5 +526,9 @@ def create_server(
 mcp = create_server()
 
 
+def main() -> None:
+    create_server().run(transport="stdio", show_banner=False)
+
+
 if __name__ == "__main__":
-    mcp.run(transport="stdio", show_banner=False)
+    main()
