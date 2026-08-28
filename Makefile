@@ -2,7 +2,7 @@ PYTHON ?= python3
 VENV ?= .venv
 ROS_SETUP ?= /opt/ros/lyrical/setup.bash
 
-.PHONY: venv install test test-hospital verify clean
+.PHONY: venv install test smoke-wheel test-hospital verify clean
 
 venv:
 	$(PYTHON) -m venv $(VENV)
@@ -14,6 +14,9 @@ install: venv
 
 test:
 	$(VENV)/bin/python -m pytest tests/ -q
+
+smoke-wheel:
+	$(VENV)/bin/python -m pytest tests/test_distribution.py -q
 
 test-hospital:
 	@test -f $(ROS_SETUP) || (echo "ROS setup not found: $(ROS_SETUP)" && exit 1)
