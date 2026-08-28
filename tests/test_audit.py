@@ -6,7 +6,6 @@ import stat
 import threading
 
 import pytest
-
 from agent_ros.runtime.audit import (
     AuditError,
     AuditEvent,
@@ -25,15 +24,17 @@ def test_append_writes_sanitized_atomic_jsonl_with_time_state_outcome_and_endpoi
     monkeypatch.setenv("ROBOT_TEST_SECRET", "do-not-leak")
     writer = AuditWriter(audit_path, wall_clock=lambda: 1_700_000_000.25, monotonic_clock=lambda: 42.5)
 
-    writer.append(AuditEvent(
-        operation=AuditOperation.START_TASK,
-        state_before=SafetyState.ARMED,
-        state_after=SafetyState.RUNNING,
-        outcome=AuditOutcome.OK,
-        operation_data={"task": "delivery", "linear_velocity": 0.25},
-        endpoint_gids=("01", "02"),
-        error=RuntimeError("ROBOT_TEST_SECRET=do-not-leak /home/alice"),
-    ))
+    writer.append(
+        AuditEvent(
+            operation=AuditOperation.START_TASK,
+            state_before=SafetyState.ARMED,
+            state_after=SafetyState.RUNNING,
+            outcome=AuditOutcome.OK,
+            operation_data={"task": "delivery", "linear_velocity": 0.25},
+            endpoint_gids=("01", "02"),
+            error=RuntimeError("ROBOT_TEST_SECRET=do-not-leak /home/alice"),
+        )
+    )
 
     lines = audit_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
@@ -60,7 +61,8 @@ def test_append_only_adds_complete_json_records(tmp_path):
     writer.append(AuditEvent(AuditOperation.VALIDATE, SafetyState.DISCOVERED, SafetyState.ARMED, AuditOutcome.OK))
 
     assert [json.loads(line)["operation"] for line in audit_path.read_text().splitlines()] == [
-        "discover", "validate",
+        "discover",
+        "validate",
     ]
 
 
@@ -83,13 +85,9 @@ def test_audit_worker_failure_after_close_sentinel_still_exits_and_joins():
         AuditOutcome.OK,
     )
     append_errors = []
-    appender = threading.Thread(
-        target=lambda: _capture_audit_error(append_errors, worker.append, event, 1.0)
-    )
+    appender = threading.Thread(target=lambda: _capture_audit_error(append_errors, worker.append, event, 1.0))
     close_results = []
-    closer = threading.Thread(
-        target=lambda: close_results.append(worker.close(0.1))
-    )
+    closer = threading.Thread(target=lambda: close_results.append(worker.close(0.1)))
 
     appender.start()
     assert entered.wait(1.0)
@@ -128,18 +126,20 @@ def test_estop_audit_accepts_only_structured_stop_result_fields(tmp_path):
         monotonic_clock=lambda: 2.0,
     )
 
-    writer.append(AuditEvent(
-        AuditOperation.ESTOP,
-        SafetyState.RUNNING,
-        SafetyState.ESTOPPED,
-        AuditOutcome.OK,
-        operation_data={
-            "latched": True,
-            "activation_quiesced": False,
-            "safety_command_accepted": True,
-            "code": "TRANSPORT_UNQUIESCED",
-        },
-    ))
+    writer.append(
+        AuditEvent(
+            AuditOperation.ESTOP,
+            SafetyState.RUNNING,
+            SafetyState.ESTOPPED,
+            AuditOutcome.OK,
+            operation_data={
+                "latched": True,
+                "activation_quiesced": False,
+                "safety_command_accepted": True,
+                "code": "TRANSPORT_UNQUIESCED",
+            },
+        )
+    )
 
     record = json.loads(audit_path.read_text(encoding="utf-8"))
     assert record["operation_data"] == {
@@ -295,7 +295,8 @@ def test_append_rolls_back_a_partial_write_when_the_following_write_fails(tmp_pa
 
     initial.append(rejected)
     assert [json.loads(line)["operation"] for line in audit_path.read_text(encoding="utf-8").splitlines()] == [
-        "discover", "validate",
+        "discover",
+        "validate",
     ]
 
 
@@ -303,19 +304,17 @@ def test_append_rolls_back_a_partial_write_when_the_following_write_fails(tmp_pa
 @pytest.mark.parametrize("state", list(SafetyState))
 def test_each_operation_can_record_rejection_at_every_same_safety_state(tmp_path, operation, state):
     audit_path = tmp_path / "audit.jsonl"
-    operation_data = (
-        _STOP_RESULT_DATA
-        if operation in {AuditOperation.CANCEL, AuditOperation.ESTOP}
-        else {}
-    )
+    operation_data = _STOP_RESULT_DATA if operation in {AuditOperation.CANCEL, AuditOperation.ESTOP} else {}
 
-    AuditWriter(audit_path).append(AuditEvent(
-        operation,
-        state,
-        state,
-        AuditOutcome.REJECTED,
-        operation_data=operation_data,
-    ))
+    AuditWriter(audit_path).append(
+        AuditEvent(
+            operation,
+            state,
+            state,
+            AuditOutcome.REJECTED,
+            operation_data=operation_data,
+        )
+    )
 
     record = json.loads(audit_path.read_text(encoding="utf-8"))
     assert record["operation"] == operation.value
@@ -340,12 +339,14 @@ def test_rejected_outcome_cannot_forge_any_cross_state_transition(tmp_path, oper
     audit_path = tmp_path / "audit.jsonl"
 
     with pytest.raises(AuditError, match="invalid audit transition"):
-        AuditWriter(audit_path).append(AuditEvent(
-            operation,
-            before,
-            after,
-            AuditOutcome.REJECTED,
-        ))
+        AuditWriter(audit_path).append(
+            AuditEvent(
+                operation,
+                before,
+                after,
+                AuditOutcome.REJECTED,
+            )
+        )
     assert not audit_path.exists()
 
 
@@ -395,13 +396,15 @@ def test_new_session_is_rejected_when_previous_session_was_nonterminal(tmp_path,
     first.append(AuditEvent(AuditOperation.VALIDATE, SafetyState.DISCOVERED, SafetyState.ARMED, AuditOutcome.OK))
     first.append(AuditEvent(AuditOperation.START_TASK, SafetyState.ARMED, SafetyState.RUNNING, AuditOutcome.OK))
     if previous_state is SafetyState.FAULTED:
-        first.append(AuditEvent(
-            AuditOperation.HEARTBEAT,
-            SafetyState.RUNNING,
-            SafetyState.FAULTED,
-            AuditOutcome.FAULTED,
-            operation_data=_STOP_RESULT_DATA,
-        ))
+        first.append(
+            AuditEvent(
+                AuditOperation.HEARTBEAT,
+                SafetyState.RUNNING,
+                SafetyState.FAULTED,
+                AuditOutcome.FAULTED,
+                operation_data=_STOP_RESULT_DATA,
+            )
+        )
     second = AuditWriter(audit_path, wall_clock=lambda: 2.0, monotonic_clock=lambda: 2.0)
     second.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
 

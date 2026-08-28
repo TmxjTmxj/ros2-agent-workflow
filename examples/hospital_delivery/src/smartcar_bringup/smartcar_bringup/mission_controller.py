@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import math
-from pathlib import Path
 import time
-from typing import Callable
+from collections.abc import Callable
+from pathlib import Path
 
 import rclpy
 from ament_index_python.packages import get_package_share_directory
@@ -24,7 +24,6 @@ from .controller_core import (
     load_route,
     normalize_angle,
 )
-
 
 TERMINAL_STATES = {
     MissionState.SUCCEEDED,
@@ -54,9 +53,7 @@ class MissionControllerNode(Node):
         self.declare_parameter("route_file", route_default)
         selected_route = str(self.get_parameter("route_file").value)
         self.core = MissionControllerCore(load_route(selected_route))
-        self._sim_time_fn = sim_time_fn or (
-            lambda: self.get_clock().now().nanoseconds / 1_000_000_000.0
-        )
+        self._sim_time_fn = sim_time_fn or (lambda: self.get_clock().now().nanoseconds / 1_000_000_000.0)
         self._wall_time_fn = wall_time_fn
         self._pose: Pose2D | None = None
         self._last_odom_received: float | None = None
@@ -112,9 +109,7 @@ class MissionControllerNode(Node):
             response.success = False
             response.message = "ODOM_NOT_READY"
             return response
-        result = self.core.start(
-            self._sim_time_fn(), watchdog_now=self._wall_time_fn()
-        )
+        result = self.core.start(self._sim_time_fn(), watchdog_now=self._wall_time_fn())
         response.success = result.accepted
         response.message = result.message
         return response
@@ -155,11 +150,7 @@ class MissionControllerNode(Node):
             status["pose"] = None
         else:
             status["pose"] = {"x": self._pose.x, "y": self._pose.y, "yaw": self._pose.yaw}
-        status["odom_age"] = (
-            None
-            if self._last_odom_received is None
-            else max(0.0, wall_now - self._last_odom_received)
-        )
+        status["odom_age"] = None if self._last_odom_received is None else max(0.0, wall_now - self._last_odom_received)
         status["front_range"] = self._front_range if math.isfinite(self._front_range) else None
         status["feedback_source"] = self._feedback_source
         if self.core.stage_index < len(self.core.route.stages):
@@ -174,9 +165,7 @@ class MissionControllerNode(Node):
                 }
                 status["pose_frame"] = "odom"
                 status["distance_to_waypoint"] = (
-                    None
-                    if self._pose is None
-                    else math.hypot(target.x - self._pose.x, target.y - self._pose.y)
+                    None if self._pose is None else math.hypot(target.x - self._pose.x, target.y - self._pose.y)
                 )
         return status
 
@@ -198,9 +187,7 @@ class MissionControllerNode(Node):
             self._zero_burst_remaining -= 1
         self._publish_command(command.linear, command.angular)
         status_msg = String()
-        status_msg.data = json.dumps(
-            self._status_document(sim_now, wall_now), ensure_ascii=False, allow_nan=False
-        )
+        status_msg.data = json.dumps(self._status_document(sim_now, wall_now), ensure_ascii=False, allow_nan=False)
         self._status_pub.publish(status_msg)
 
     def close(self) -> None:

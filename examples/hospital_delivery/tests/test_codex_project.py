@@ -1,17 +1,15 @@
 import json
-from pathlib import Path
 import subprocess
 import sys
 import threading
-import time
+from pathlib import Path
 
 import cv2
 import pytest
-from sensor_msgs.msg import Image
-
 from scripts.capture_camera import CameraCaptureError, image_message_to_png
 from scripts.codex_project import (
     MANAGED_LAUNCH_PREFIX,
+    ProjectLifecycle,
     _native_graph_snapshot,
     _require_exclusive_controller,
     _wait_for_graph,
@@ -21,11 +19,10 @@ from scripts.codex_project import (
     parse_cmd_vel_publishers,
     process_matches,
     record_process,
-    terminate_spawned_launch,
     terminate_managed_process,
-    ProjectLifecycle,
+    terminate_spawned_launch,
 )
-
+from sensor_msgs.msg import Image
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -42,8 +39,7 @@ def _ready_native_graph():
             "/hospital_mission/status": ["std_msgs/msg/String"],
         },
         "services": {
-            f"/hospital_mission/{name}": ["std_srvs/srv/Trigger"]
-            for name in ("start", "cancel", "estop", "reset")
+            f"/hospital_mission/{name}": ["std_srvs/srv/Trigger"] for name in ("start", "cancel", "estop", "reset")
         },
         "actions": {},
         "topic_endpoints": {
@@ -96,9 +92,7 @@ def test_startup_readiness_uses_one_native_graph_snapshot_not_ros2_cli(monkeypat
         ),
     ],
 )
-def test_startup_readiness_fails_closed_on_missing_graph_or_controller_conflict(
-    monkeypatch, mutate
-):
+def test_startup_readiness_fails_closed_on_missing_graph_or_controller_conflict(monkeypatch, mutate):
     graph = _ready_native_graph()
     mutate(graph)
     monkeypatch.setattr("scripts.codex_project._ros_environment", lambda **_kwargs: {})
@@ -245,9 +239,7 @@ def test_forged_runtime_record_is_not_authorized_to_signal_process():
     proc = subprocess.Popen(["sleep", "30"], start_new_session=True)
     try:
         forged = record_process(proc.pid, name="hospital-delivery-launch")
-        assert not terminate_managed_process(
-            forged, term_timeout=0.05, require_authorized=True
-        )
+        assert not terminate_managed_process(forged, term_timeout=0.05, require_authorized=True)
         assert proc.poll() is None
     finally:
         proc.kill()
@@ -274,9 +266,7 @@ def test_failed_start_preserves_identity_when_cleanup_is_incomplete(tmp_path, mo
         "scripts.codex_project.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
     )
-    monkeypatch.setattr(
-        "scripts.codex_project.subprocess.Popen", lambda *args, **kwargs: type("P", (), {"pid": 123})()
-    )
+    monkeypatch.setattr("scripts.codex_project.subprocess.Popen", lambda *args, **kwargs: type("P", (), {"pid": 123})())
     monkeypatch.setattr("scripts.codex_project.record_process", lambda *args: record)
     monkeypatch.setattr(
         "scripts.codex_project._wait_for_graph",
@@ -330,9 +320,7 @@ def test_stop_linearizes_with_start_spawn_to_state_handoff(tmp_path, monkeypatch
 
     monkeypatch.setattr("scripts.codex_project.record_process", gated_record)
     monkeypatch.setattr("scripts.codex_project._wait_for_graph", lambda timeout: None)
-    monkeypatch.setattr(
-        "scripts.codex_project.process_matches", lambda candidate: candidate == record
-    )
+    monkeypatch.setattr("scripts.codex_project.process_matches", lambda candidate: candidate == record)
     monkeypatch.setattr(
         "scripts.codex_project.terminate_managed_process",
         lambda candidate, **kwargs: terminated.append(candidate) or True,
@@ -358,9 +346,7 @@ def test_stop_linearizes_with_start_spawn_to_state_handoff(tmp_path, monkeypatch
     assert json.loads(lifecycle.state_path.read_text())["processes"] == []
 
 
-def test_stop_holds_authority_until_termination_commit_before_new_start(
-    tmp_path, monkeypatch
-):
+def test_stop_holds_authority_until_termination_commit_before_new_start(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
     old_record = {
         "name": "hospital-delivery-launch",
@@ -373,9 +359,7 @@ def test_stop_holds_authority_until_termination_commit_before_new_start(
     }
     new_record = {**old_record, "pid": 222, "pgid": 222, "start_time_ticks": 2}
     lifecycle.runtime_dir.mkdir(parents=True, exist_ok=True)
-    lifecycle.state_path.write_text(
-        json.dumps({"version": 1, "processes": [old_record]})
-    )
+    lifecycle.state_path.write_text(json.dumps({"version": 1, "processes": [old_record]}))
     termination_started = threading.Event()
     release_termination = threading.Event()
     old_terminated = threading.Event()
@@ -384,8 +368,7 @@ def test_stop_holds_authority_until_termination_commit_before_new_start(
 
     monkeypatch.setattr(
         "scripts.codex_project.process_matches",
-        lambda record: record == new_record
-        or (record == old_record and not old_terminated.is_set()),
+        lambda record: record == new_record or (record == old_record and not old_terminated.is_set()),
     )
     monkeypatch.setattr("scripts.codex_project._process_group_members", lambda _pgid: [])
     monkeypatch.setattr("scripts.codex_project._service_call", lambda *a, **kw: {})
@@ -439,9 +422,7 @@ def test_stop_holds_authority_until_termination_commit_before_new_start(
     assert json.loads(lifecycle.state_path.read_text())["processes"] == [new_record]
 
 
-def test_cancelled_old_start_cleanup_never_overwrites_new_start_authority(
-    tmp_path, monkeypatch
-):
+def test_cancelled_old_start_cleanup_never_overwrites_new_start_authority(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
     old_record = {
         "name": "hospital-delivery-launch",
@@ -486,8 +467,7 @@ def test_cancelled_old_start_cleanup_never_overwrites_new_start_authority(
     )
     monkeypatch.setattr(
         "scripts.codex_project.process_matches",
-        lambda record: record == new_record
-        or (record == old_record and not old_dead.is_set()),
+        lambda record: record == new_record or (record == old_record and not old_dead.is_set()),
     )
     monkeypatch.setattr("scripts.codex_project._process_group_members", lambda _pgid: [])
     monkeypatch.setattr("scripts.codex_project._service_call", lambda *a, **kw: {})
@@ -537,9 +517,7 @@ def test_cancelled_old_start_cleanup_never_overwrites_new_start_authority(
     assert state["startup_token"] == new_token
 
 
-def test_stop_recovers_committed_handoff_after_start_reservation_unlink_failure(
-    tmp_path, monkeypatch
-):
+def test_stop_recovers_committed_handoff_after_start_reservation_unlink_failure(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
     record = {
         "name": "hospital-delivery-launch",
@@ -597,9 +575,7 @@ def test_stop_recovers_committed_handoff_after_start_reservation_unlink_failure(
     assert not lifecycle.startup_path.exists()
 
 
-def test_phase_only_handoff_never_trusts_unauthorized_state_record(
-    tmp_path, monkeypatch
-):
+def test_phase_only_handoff_never_trusts_unauthorized_state_record(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
     token = "handoff-token"
     unauthorized = {
@@ -612,9 +588,7 @@ def test_phase_only_handoff_never_trusts_unauthorized_state_record(
         "owns_process_group": True,
     }
     lifecycle.runtime_dir.mkdir(parents=True, exist_ok=True)
-    lifecycle._write_startup(
-        {"token": token, "cancelled": False, "phase": "handoff"}
-    )
+    lifecycle._write_startup({"token": token, "cancelled": False, "phase": "handoff"})
     __import__("scripts.codex_project", fromlist=["_write_state"])._write_state(
         lifecycle.state_path, [unauthorized], startup_token=token
     )
@@ -628,9 +602,7 @@ def test_phase_only_handoff_never_trusts_unauthorized_state_record(
     assert lifecycle.startup_path.exists()
 
 
-def test_phase_only_handoff_preserves_token_until_later_verified_cleanup(
-    tmp_path, monkeypatch
-):
+def test_phase_only_handoff_preserves_token_until_later_verified_cleanup(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
     token = "handoff-token"
     record = {
@@ -644,9 +616,7 @@ def test_phase_only_handoff_preserves_token_until_later_verified_cleanup(
     }
     members = [[612]]
     lifecycle.runtime_dir.mkdir(parents=True, exist_ok=True)
-    lifecycle._write_startup(
-        {"token": token, "cancelled": False, "phase": "handoff"}
-    )
+    lifecycle._write_startup({"token": token, "cancelled": False, "phase": "handoff"})
     __import__("scripts.codex_project", fromlist=["_write_state"])._write_state(
         lifecycle.state_path, [record], startup_token=token
     )
@@ -720,9 +690,7 @@ def test_stop_cancels_build_period_start_before_any_launch_spawn(tmp_path, monke
 
 
 @pytest.mark.parametrize("failure_point", ["record_identity", "state_publish"])
-def test_start_spawn_handoff_failure_terminates_exact_new_launch_group(
-    tmp_path, monkeypatch, failure_point
-):
+def test_start_spawn_handoff_failure_terminates_exact_new_launch_group(tmp_path, monkeypatch, failure_point):
     lifecycle = ProjectLifecycle(tmp_path)
     events = []
     record = {
@@ -773,9 +741,7 @@ def test_start_spawn_handoff_failure_terminates_exact_new_launch_group(
         monkeypatch.setattr("scripts.codex_project.record_process", lambda *args: record)
         monkeypatch.setattr(
             "scripts.codex_project._write_state",
-            lambda *args, **kwargs: (_ for _ in ()).throw(
-                OSError("state publish failed")
-            ),
+            lambda *args, **kwargs: (_ for _ in ()).throw(OSError("state publish failed")),
         )
 
     with pytest.raises(OSError):
@@ -787,9 +753,7 @@ def test_start_spawn_handoff_failure_terminates_exact_new_launch_group(
     assert not lifecycle.startup_path.exists()
 
 
-def test_start_handoff_cleanup_failure_retains_unresolved_reservation(
-    tmp_path, monkeypatch
-):
+def test_start_handoff_cleanup_failure_retains_unresolved_reservation(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
 
     class FixedProcess:
@@ -811,9 +775,7 @@ def test_start_handoff_cleanup_failure_retains_unresolved_reservation(
         "scripts.codex_project.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
     )
-    monkeypatch.setattr(
-        "scripts.codex_project.subprocess.Popen", lambda *a, **kw: FixedProcess()
-    )
+    monkeypatch.setattr("scripts.codex_project.subprocess.Popen", lambda *a, **kw: FixedProcess())
     monkeypatch.setattr(
         "scripts.codex_project.record_process",
         lambda *args: (_ for _ in ()).throw(OSError("identity unavailable")),
@@ -851,9 +813,7 @@ def test_spawn_cleanup_terminates_owned_group_when_leader_already_exited(monkeyp
         def poll(self):
             return 0
 
-    monkeypatch.setattr(
-        "scripts.codex_project._process_group_members", lambda pgid: list(members[0])
-    )
+    monkeypatch.setattr("scripts.codex_project._process_group_members", lambda pgid: list(members[0]))
 
     def killpg(pgid, sig):
         signals.append(sig)
@@ -882,9 +842,7 @@ def test_spawn_cleanup_kills_descendants_left_after_term_reaps_leader(monkeypatc
 
     leader = Leader()
     monkeypatch.setattr("scripts.codex_project.os.getpgid", lambda pid: pid)
-    monkeypatch.setattr(
-        "scripts.codex_project._process_group_members", lambda pgid: list(members[0])
-    )
+    monkeypatch.setattr("scripts.codex_project._process_group_members", lambda pgid: list(members[0]))
 
     def killpg(pgid, sig):
         signals.append(sig)
@@ -897,9 +855,7 @@ def test_spawn_cleanup_kills_descendants_left_after_term_reaps_leader(monkeypatc
     assert signals == [__import__("signal").SIGTERM, __import__("signal").SIGKILL]
 
 
-def test_unresolved_reservation_publish_failure_preserves_fail_closed_authority(
-    tmp_path, monkeypatch
-):
+def test_unresolved_reservation_publish_failure_preserves_fail_closed_authority(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
 
     class FixedProcess:
@@ -920,9 +876,7 @@ def test_unresolved_reservation_publish_failure_preserves_fail_closed_authority(
         "scripts.codex_project.subprocess.run",
         lambda *args, **kwargs: subprocess.CompletedProcess(args[0], 0, "", ""),
     )
-    monkeypatch.setattr(
-        "scripts.codex_project.subprocess.Popen", lambda *a, **kw: FixedProcess()
-    )
+    monkeypatch.setattr("scripts.codex_project.subprocess.Popen", lambda *a, **kw: FixedProcess())
     monkeypatch.setattr(
         "scripts.codex_project.record_process",
         lambda *args: (_ for _ in ()).throw(OSError("identity unavailable")),
@@ -959,15 +913,16 @@ def test_unresolved_reservation_publish_failure_preserves_fail_closed_authority(
         lifecycle.start()
 
 
-def test_stop_retains_stale_leader_record_when_recorded_pgid_members_remain(
-    tmp_path, monkeypatch
-):
+def test_stop_retains_stale_leader_record_when_recorded_pgid_members_remain(tmp_path, monkeypatch):
     lifecycle = ProjectLifecycle(tmp_path)
     record = {
         "name": "hospital-delivery-launch",
         "pid": 123,
         "start_time_ticks": 1,
-        "cmdline": [*__import__("scripts.codex_project", fromlist=["MANAGED_LAUNCH_PREFIX"]).MANAGED_LAUNCH_PREFIX, "headless:=true"],
+        "cmdline": [
+            *__import__("scripts.codex_project", fromlist=["MANAGED_LAUNCH_PREFIX"]).MANAGED_LAUNCH_PREFIX,
+            "headless:=true",
+        ],
         "cwd": str(PROJECT_ROOT),
         "pgid": 123,
         "owns_process_group": True,

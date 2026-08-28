@@ -5,7 +5,6 @@ import json
 from types import SimpleNamespace
 
 import pytest
-
 import scripts.run_via_mcp as run_via_mcp
 from scripts.run_via_mcp import (
     execute_tool_sequence,
@@ -55,9 +54,7 @@ class ReplayMcpClient:
     ("arguments", "expected_code"),
     [(["--help"], 0), (["--not-a-real-option"], 2)],
 )
-def test_mcp_runner_cli_arguments_never_start_the_control_plane(
-    monkeypatch, capsys, arguments, expected_code
-):
+def test_mcp_runner_cli_arguments_never_start_the_control_plane(monkeypatch, capsys, arguments, expected_code):
     async def forbidden_run():
         raise AssertionError("argument parsing must finish before MCP startup")
 
@@ -74,9 +71,7 @@ def test_mcp_runner_cli_arguments_never_start_the_control_plane(
 def test_mcp_agent_sequence_reaches_success_observes_and_explicitly_stops():
     client = ReplayMcpClient()
 
-    trace = asyncio.run(
-        execute_tool_sequence(client, wall_timeout=300.0, poll_interval=0.0)
-    )
+    trace = asyncio.run(execute_tool_sequence(client, wall_timeout=300.0, poll_interval=0.0))
 
     assert [name for name, _arguments in client.calls] == [
         "discover_robot",
@@ -112,9 +107,7 @@ def test_mcp_agent_sequence_reaches_success_observes_and_explicitly_stops():
 def test_mcp_agent_sequence_explicitly_stops_after_tool_failure():
     client = ReplayMcpClient(fail_tool="run_task")
 
-    trace = asyncio.run(
-        execute_tool_sequence(client, wall_timeout=300.0, poll_interval=0.0)
-    )
+    trace = asyncio.run(execute_tool_sequence(client, wall_timeout=300.0, poll_interval=0.0))
 
     assert [name for name, _arguments in client.calls][-1] == "stop_runtime"
     assert "observe" not in [name for name, _arguments in client.calls]
@@ -138,11 +131,7 @@ def test_mcp_agent_trace_records_fastmcp_raised_tool_error_without_raw_details()
                 )
             return await super().call_tool(name, arguments, timeout)
 
-    trace = asyncio.run(
-        execute_tool_sequence(
-            RaisedToolErrorClient(), wall_timeout=300.0, poll_interval=0.0
-        )
-    )
+    trace = asyncio.run(execute_tool_sequence(RaisedToolErrorClient(), wall_timeout=300.0, poll_interval=0.0))
 
     assert trace["result"] == "FAILED"
     assert trace["error_code"] == "CONTROLLER_CONFLICT"
@@ -157,9 +146,7 @@ def test_mcp_agent_trace_is_standard_json_and_atomically_replaces_stale_file(tmp
     path = tmp_path / "logs" / "mcp_agent_trace.json"
     path.parent.mkdir()
     path.write_text('{"result":"STALE_PASS"}\n', encoding="utf-8")
-    trace = asyncio.run(
-        execute_tool_sequence(ReplayMcpClient(), wall_timeout=300.0, poll_interval=0.0)
-    )
+    trace = asyncio.run(execute_tool_sequence(ReplayMcpClient(), wall_timeout=300.0, poll_interval=0.0))
 
     write_trace_atomic(path, trace)
 
@@ -170,15 +157,17 @@ def test_mcp_agent_trace_is_standard_json_and_atomically_replaces_stale_file(tmp
 
 
 def test_mcp_stdio_child_inherits_only_fixed_ros_overlay_environment():
-    environment = server_environment({
-        "PATH": "/opt/ros/lyrical/bin:/usr/bin",
-        "PYTHONPATH": "/opt/ros/lyrical/lib/python3.14/site-packages",
-        "AMENT_PREFIX_PATH": "/opt/ros/lyrical",
-        "ROS_DISTRO": "lyrical",
-        "ROS_DOMAIN_ID": "7",
-        "PYTHONNOUSERSITE": "0",
-        "PRIVATE_TOKEN": "must-not-cross-stdio-boundary",
-    })
+    environment = server_environment(
+        {
+            "PATH": "/opt/ros/lyrical/bin:/usr/bin",
+            "PYTHONPATH": "/opt/ros/lyrical/lib/python3.14/site-packages",
+            "AMENT_PREFIX_PATH": "/opt/ros/lyrical",
+            "ROS_DISTRO": "lyrical",
+            "ROS_DOMAIN_ID": "7",
+            "PYTHONNOUSERSITE": "0",
+            "PRIVATE_TOKEN": "must-not-cross-stdio-boundary",
+        }
+    )
 
     assert environment == {
         "PYTHONUNBUFFERED": "1",

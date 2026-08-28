@@ -4,19 +4,18 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
 import fcntl
 import json
 import os
-from pathlib import Path
 import signal
 import subprocess
 import sys
 import tempfile
 import time
-from typing import Any
 import uuid
-
+from contextlib import contextmanager
+from pathlib import Path
+from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = PROJECT_ROOT.parents[1]
@@ -110,9 +109,7 @@ def terminate_managed_process(
     require_authorized: bool = False,
 ) -> bool:
     """Terminate one verified process (or its verified owned process group)."""
-    if not process_matches(record) or (
-        require_authorized and not _record_is_authorized_launch(record)
-    ):
+    if not process_matches(record) or (require_authorized and not _record_is_authorized_launch(record)):
         return False
     pid = int(record["pid"])
     owns_group = bool(record.get("owns_process_group")) and int(record.get("pgid", -1)) == pid
@@ -129,14 +126,10 @@ def terminate_managed_process(
         return True
     deadline = time.monotonic() + term_timeout
     while time.monotonic() < deadline:
-        if (owns_group and not _process_group_members(pid)) or (
-            not owns_group and not process_matches(record)
-        ):
+        if (owns_group and not _process_group_members(pid)) or (not owns_group and not process_matches(record)):
             return True
         time.sleep(0.05)
-    if (owns_group and _process_group_members(pid)) or (
-        not owns_group and process_matches(record)
-    ):
+    if (owns_group and _process_group_members(pid)) or (not owns_group and process_matches(record)):
         try:
             send(signal.SIGKILL)
         except ProcessLookupError:
@@ -204,10 +197,7 @@ def load_runtime_state(state_path: str | Path) -> dict[str, Any]:
     if (
         payload.get("version") != STATE_VERSION
         or not isinstance(payload.get("processes"), list)
-        or (
-            startup_token is not None
-            and (not isinstance(startup_token, str) or not startup_token)
-        )
+        or (startup_token is not None and (not isinstance(startup_token, str) or not startup_token))
     ):
         raise ProjectLifecycleError(f"unsupported runtime state format in {path}")
     live = []
@@ -222,9 +212,7 @@ def load_runtime_state(state_path: str | Path) -> dict[str, Any]:
             pgid = int(record["pgid"])
             members = sorted(_process_group_members(pgid))
             if members:
-                unresolved_groups.append(
-                    {"pgid": pgid, "members": members, "record": record}
-                )
+                unresolved_groups.append({"pgid": pgid, "members": members, "record": record})
     return {
         "version": STATE_VERSION,
         "processes": live,
@@ -293,9 +281,7 @@ def _ros_environment(include_install: bool = False) -> dict[str, str]:
     if include_install:
         setup_parts.append(f"source {PROJECT_ROOT / 'install' / 'setup.bash'}")
     command = " && ".join(setup_parts + ["env -0"])
-    result = subprocess.run(
-        ["/bin/bash", "-lc", command], capture_output=True, check=True, timeout=10
-    )
+    result = subprocess.run(["/bin/bash", "-lc", command], capture_output=True, check=True, timeout=10)
     environment = {}
     for item in result.stdout.split(b"\0"):
         if b"=" in item:
@@ -359,9 +345,7 @@ def _require_exclusive_controller() -> dict[str, str]:
     return endpoints[0]
 
 
-def _native_graph_snapshot(
-    timeout: float, *, environment: dict[str, str] | None = None
-) -> dict[str, Any]:
+def _native_graph_snapshot(timeout: float, *, environment: dict[str, str] | None = None) -> dict[str, Any]:
     """Collect one closed native ROS graph document through a killable helper."""
     helper_timeout = min(6.0, max(0.001, float(timeout)))
     argv = [
@@ -369,11 +353,7 @@ def _native_graph_snapshot(
         "-m",
         "agent_ros.discovery.native_probe",
     ]
-    environment = dict(
-        _ros_environment(include_install=True)
-        if environment is None
-        else environment
-    )
+    environment = dict(_ros_environment(include_install=True) if environment is None else environment)
     environment["PYTHONNOUSERSITE"] = "1"
     try:
         result = subprocess.run(
@@ -478,8 +458,7 @@ def _wait_for_graph(timeout: float) -> None:
     if last_probe_error is not None:
         raise ProjectLifecycleError("startup timed out; native ROS graph unavailable") from last_probe_error
     raise ProjectLifecycleError(
-        f"startup timed out; missing topics={sorted(missing_topics)}, "
-        f"missing services={sorted(missing_services)}"
+        f"startup timed out; missing topics={sorted(missing_topics)}, " f"missing services={sorted(missing_services)}"
     )
 
 
@@ -560,18 +539,13 @@ class ProjectLifecycle:
             or isinstance(unresolved.get("pid"), bool)
             or not isinstance(unresolved.get("pid"), int)
             or unresolved["pid"] <= 0
-            or (
-                "record" in unresolved
-                and not isinstance(unresolved["record"], dict)
-            )
+            or ("record" in unresolved and not isinstance(unresolved["record"], dict))
         ):
             raise ProjectLifecycleError("invalid startup reservation")
         return payload
 
     def _write_startup(self, payload: dict[str, Any]) -> None:
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix="startup-", suffix=".json", dir=self.runtime_dir
-        )
+        descriptor, temporary_name = tempfile.mkstemp(prefix="startup-", suffix=".json", dir=self.runtime_dir)
         try:
             with os.fdopen(descriptor, "w") as handle:
                 json.dump(payload, handle, allow_nan=False)
@@ -594,9 +568,7 @@ class ProjectLifecycle:
         return {"pid": pid}
 
     def _write_startup_failure(self, pid: int) -> None:
-        descriptor, temporary_name = tempfile.mkstemp(
-            prefix="startup-cleanup-", suffix=".json", dir=self.runtime_dir
-        )
+        descriptor, temporary_name = tempfile.mkstemp(prefix="startup-cleanup-", suffix=".json", dir=self.runtime_dir)
         try:
             with os.fdopen(descriptor, "w") as handle:
                 json.dump({"pid": int(pid)}, handle, allow_nan=False)
@@ -612,19 +584,12 @@ class ProjectLifecycle:
             startup = self._load_startup()
             startup_failure = self._load_startup_failure()
         unresolved_groups = [
-            {"pgid": item["pgid"], "members": item["members"]}
-            for item in state["unresolved_process_groups"]
+            {"pgid": item["pgid"], "members": item["members"]} for item in state["unresolved_process_groups"]
         ]
-        unresolved_startup = (
-            startup.get("unresolved_launch")
-            if startup is not None
-            else None
-        ) or startup_failure
+        unresolved_startup = (startup.get("unresolved_launch") if startup is not None else None) or startup_failure
         if unresolved_startup is not None:
             pid = int(unresolved_startup["pid"])
-            unresolved_groups.append(
-                {"pgid": pid, "members": sorted(_process_group_members(pid))}
-            )
+            unresolved_groups.append({"pgid": pid, "members": sorted(_process_group_members(pid))})
         return {
             "ok": True,
             "running": bool(
@@ -651,21 +616,14 @@ class ProjectLifecycle:
                 raise ProjectLifecycleError("project startup cleanup is unresolved")
             if state["unresolved_process_groups"]:
                 groups = [
-                    {"pgid": item["pgid"], "members": item["members"]}
-                    for item in state["unresolved_process_groups"]
+                    {"pgid": item["pgid"], "members": item["members"]} for item in state["unresolved_process_groups"]
                 ]
-                raise ProjectLifecycleError(
-                    f"unresolved process group remains; refusing startup: {groups}"
-                )
-            self._write_startup(
-                {"token": token, "cancelled": False, "phase": "building"}
-            )
+                raise ProjectLifecycleError(f"unresolved process group remains; refusing startup: {groups}")
+            self._write_startup({"token": token, "cancelled": False, "phase": "building"})
         try:
             inspection = inspect_cmd_vel_publishers()
             if not inspection["ok"]:
-                raise ProjectLifecycleError(
-                    f"cannot inspect /cmd_vel publishers: {inspection['error']}"
-                )
+                raise ProjectLifecycleError(f"cannot inspect /cmd_vel publishers: {inspection['error']}")
             if inspection["endpoints"]:
                 raise ProjectLifecycleError(
                     "refusing startup because /cmd_vel already has publisher(s): "
@@ -680,23 +638,18 @@ class ProjectLifecycle:
                 timeout=120,
             )
             if build.returncode != 0:
-                raise ProjectLifecycleError(
-                    f"colcon build failed:\n{build.stdout}\n{build.stderr}"
-                )
+                raise ProjectLifecycleError(f"colcon build failed:\n{build.stdout}\n{build.stderr}")
             with self._locked():
                 startup = self._load_startup()
-                if (
-                    startup is None
-                    or startup["token"] != token
-                    or startup["cancelled"] is True
-                ):
+                if startup is None or startup["token"] != token or startup["cancelled"] is True:
                     raise ProjectLifecycleError("project startup was cancelled")
-                self._write_startup(
-                    {"token": token, "cancelled": False, "phase": "handoff"}
-                )
+                self._write_startup({"token": token, "cancelled": False, "phase": "handoff"})
                 log_handle = self.log_path.open("a", buffering=1)
                 command = [
-                    "ros2", "launch", "smartcar_bringup", "hospital_delivery.launch.py",
+                    "ros2",
+                    "launch",
+                    "smartcar_bringup",
+                    "hospital_delivery.launch.py",
                     f"headless:={'true' if headless else 'false'}",
                 ]
                 try:
@@ -710,9 +663,7 @@ class ProjectLifecycle:
                     )
                     try:
                         record = record_process(process.pid, "hospital-delivery-launch")
-                        _write_state(
-                            self.state_path, [record], startup_token=token
-                        )
+                        _write_state(self.state_path, [record], startup_token=token)
                     except Exception as handoff_error:
                         if not terminate_spawned_launch(process):
                             preserve_startup_reservation = True
@@ -734,9 +685,7 @@ class ProjectLifecycle:
                                 )
                             except Exception:
                                 pass
-                            raise ProjectLifecycleError(
-                                "startup handoff failed; cleanup incomplete"
-                            ) from handoff_error
+                            raise ProjectLifecycleError("startup handoff failed; cleanup incomplete") from handoff_error
                         raise
                     else:
                         self.startup_path.unlink(missing_ok=True)
@@ -746,10 +695,7 @@ class ProjectLifecycle:
                 _wait_for_graph(timeout)
             except Exception as startup_error:
                 terminated = terminate_managed_process(record, require_authorized=True)
-                if (
-                    not terminated
-                    and not _process_group_members(int(record["pgid"]))
-                ):
+                if not terminated and not _process_group_members(int(record["pgid"])):
                     terminated = True
                 with self._locked():
                     current = load_runtime_state(self.state_path)
@@ -762,8 +708,7 @@ class ProjectLifecycle:
                         retained.append(record)
                     retained_token = (
                         current["startup_token"]
-                        if current_startup is not None
-                        and current["startup_token"] == current_startup["token"]
+                        if current_startup is not None and current["startup_token"] == current_startup["token"]
                         else None
                     )
                     _write_state(
@@ -799,10 +744,7 @@ class ProjectLifecycle:
             startup_failure = self._load_startup_failure()
             startup_unresolved = (
                 startup is not None
-                and (
-                    startup.get("unresolved_launch") is not None
-                    or startup.get("phase") == "handoff"
-                )
+                and (startup.get("unresolved_launch") is not None or startup.get("phase") == "handoff")
             ) or startup_failure is not None
             if startup is not None and not startup_unresolved:
                 self._write_startup(
@@ -816,10 +758,7 @@ class ProjectLifecycle:
             state_authority = [
                 *state["processes"],
                 *state["stale_processes"],
-                *(
-                    item["record"]
-                    for item in state["unresolved_process_groups"]
-                ),
+                *(item["record"] for item in state["unresolved_process_groups"]),
             ]
             phase_only_committed = bool(
                 startup_unresolved
@@ -829,18 +768,13 @@ class ProjectLifecycle:
                 and startup_failure is None
                 and state.get("startup_token") == startup.get("token")
                 and state_authority
-                and all(
-                    _record_is_authorized_launch(record)
-                    for record in state_authority
-                )
+                and all(_record_is_authorized_launch(record) for record in state_authority)
             )
 
             startup_unresolved_payload: list[dict[str, Any]] = []
             if startup_unresolved:
                 unresolved_launch = (
-                    startup.get("unresolved_launch")
-                    if startup is not None
-                    else None
+                    startup.get("unresolved_launch") if startup is not None else None
                 ) or startup_failure
                 if unresolved_launch is not None:
                     unresolved_pid = int(unresolved_launch["pid"])
@@ -851,15 +785,11 @@ class ProjectLifecycle:
                         and isinstance(unresolved_record, dict)
                         and _record_is_authorized_launch(unresolved_record)
                         and process_matches(unresolved_record)
-                        and terminate_managed_process(
-                            unresolved_record, require_authorized=True
-                        )
+                        and terminate_managed_process(unresolved_record, require_authorized=True)
                     ):
                         members = sorted(_process_group_members(unresolved_pid))
                     if members:
-                        startup_unresolved_payload.append(
-                            {"pgid": unresolved_pid, "members": members}
-                        )
+                        startup_unresolved_payload.append({"pgid": unresolved_pid, "members": members})
                     else:
                         self.startup_path.unlink(missing_ok=True)
                         self.startup_failure_path.unlink(missing_ok=True)
@@ -875,15 +805,11 @@ class ProjectLifecycle:
                 results.append(
                     {
                         "pid": record["pid"],
-                        "terminated": terminate_managed_process(
-                            record, require_authorized=True
-                        ),
+                        "terminated": terminate_managed_process(record, require_authorized=True),
                     }
                 )
             remaining = [
-                record
-                for record, result in zip(state["processes"], results)
-                if not result["terminated"]
+                record for record, result in zip(state["processes"], results, strict=False) if not result["terminated"]
             ]
             unresolved_groups = state["unresolved_process_groups"]
             for item in unresolved_groups:
@@ -899,9 +825,7 @@ class ProjectLifecycle:
                 self.startup_failure_path.unlink(missing_ok=True)
                 startup_unresolved = False
             retained_startup_token = (
-                startup["token"]
-                if phase_only_committed and startup_unresolved and startup is not None
-                else None
+                startup["token"] if phase_only_committed and startup_unresolved and startup is not None else None
             )
             _write_state(
                 self.state_path,
@@ -911,17 +835,10 @@ class ProjectLifecycle:
             if not startup_unresolved:
                 self.startup_path.unlink(missing_ok=True)
                 self.startup_failure_path.unlink(missing_ok=True)
-            unresolved_payload = [
-                {"pgid": item["pgid"], "members": item["members"]}
-                for item in unresolved_groups
-            ]
+            unresolved_payload = [{"pgid": item["pgid"], "members": item["members"]} for item in unresolved_groups]
             unresolved_payload.extend(startup_unresolved_payload)
         return {
-            "ok": (
-                all(item["terminated"] for item in results)
-                and not unresolved_groups
-                and not startup_unresolved
-            ),
+            "ok": (all(item["terminated"] for item in results) and not unresolved_groups and not startup_unresolved),
             "running": bool(remaining or startup_unresolved),
             "terminated": results,
             "stale_processes": state["stale_processes"],
@@ -972,9 +889,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "reset":
             return _emit(_service_call("/hospital_mission/reset"))
         if args.command == "camera":
-            output = args.output or str(
-                PROJECT_ROOT / "logs" / f"camera-{int(time.time())}.png"
-            )
+            output = args.output or str(PROJECT_ROOT / "logs" / f"camera-{int(time.time())}.png")
             result = _run_ros(
                 [
                     sys.executable,

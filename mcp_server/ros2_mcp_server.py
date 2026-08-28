@@ -19,14 +19,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Annotated, TypeAlias
 
-from fastmcp import FastMCP
-from fastmcp.tools import ToolResult
-from fastmcp.utilities.types import Image
-from jsonschema import Draft202012Validator
-from mcp.types import ToolAnnotations
-from PIL import Image as PillowImage
-from pydantic import Field
-
 from agent_ros.adapters.base import Observation
 from agent_ros.adapters.factory import RclpyAdapterFactory
 from agent_ros.profiles.defaults import default_profiles_root
@@ -37,6 +29,13 @@ from agent_ros.runtime import (
     RuntimeController,
     RuntimeControllerError,
 )
+from fastmcp import FastMCP
+from fastmcp.tools import ToolResult
+from fastmcp.utilities.types import Image
+from jsonschema import Draft202012Validator
+from mcp.types import ToolAnnotations
+from PIL import Image as PillowImage
+from pydantic import Field
 
 
 class ProfileName(str, Enum):
@@ -128,7 +127,7 @@ def _response(data_schema):
         "properties": {
             "ok": {"type": "boolean"},
             "data": data_schema,
-            "error": _ERROR_SCHEMA["properties"]["error"],
+            "error": _ERROR_SCHEMA["properties"]["error"],  # type: ignore[index]
         },
         "oneOf": [
             _object({"ok": {"const": True}, "data": data_schema}, ("ok", "data")),
@@ -139,58 +138,101 @@ def _response(data_schema):
 
 
 _RESPONSE_SCHEMAS = {
-    "discover_robot": _response(_object({
-        "profile": _TEXT,
-        "state": _STATE,
-        "capabilities": {"type": "array", "items": _TEXT},
-        "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
-    }, ("profile", "state", "capabilities", "hardware_safety_channel"))),
-    "validate_profile": _response(_object({
-        "profile": _TEXT,
-        "state": _STATE,
-        "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
-    }, ("profile", "state", "hardware_safety_channel"))),
+    "discover_robot": _response(
+        _object(
+            {
+                "profile": _TEXT,
+                "state": _STATE,
+                "capabilities": {"type": "array", "items": _TEXT},
+                "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
+            },
+            ("profile", "state", "capabilities", "hardware_safety_channel"),
+        )
+    ),
+    "validate_profile": _response(
+        _object(
+            {
+                "profile": _TEXT,
+                "state": _STATE,
+                "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
+            },
+            ("profile", "state", "hardware_safety_channel"),
+        )
+    ),
     "connection_status": _response(_object({"state": _STATE}, ("state",))),
-    "list_capabilities": _response(_object({
-        "capabilities": {"type": "array", "items": _TEXT},
-    }, ("capabilities",))),
-    "arm_robot": _response(_object({
-        "profile": _TEXT,
-        "state": _STATE,
-        "dry_run": {"type": "boolean"},
-    }, ("profile", "state"))),
-    "run_task": _response(_object({
-        "task": _TEXT,
-        "state": _STATE,
-        "profile": _TEXT,
-        "dry_run": {"type": "boolean"},
-    }, ("task",))),
-    "task_status": _response(_object({
-        "state": _STATE,
-        "task": {"oneOf": [_TEXT, {"type": "null"}]},
-        "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
-        "adapter_state": _TEXT,
-        "code": {"oneOf": [_TEXT, {"type": "null"}]},
-        "elapsed": {"type": "number", "minimum": 0},
-        "stage_index": {"type": "integer", "minimum": 0},
-    }, ("state", "task", "hardware_safety_channel"))),
+    "list_capabilities": _response(
+        _object(
+            {
+                "capabilities": {"type": "array", "items": _TEXT},
+            },
+            ("capabilities",),
+        )
+    ),
+    "arm_robot": _response(
+        _object(
+            {
+                "profile": _TEXT,
+                "state": _STATE,
+                "dry_run": {"type": "boolean"},
+            },
+            ("profile", "state"),
+        )
+    ),
+    "run_task": _response(
+        _object(
+            {
+                "task": _TEXT,
+                "state": _STATE,
+                "profile": _TEXT,
+                "dry_run": {"type": "boolean"},
+            },
+            ("task",),
+        )
+    ),
+    "task_status": _response(
+        _object(
+            {
+                "state": _STATE,
+                "task": {"oneOf": [_TEXT, {"type": "null"}]},
+                "hardware_safety_channel": {"type": "string", "enum": ["simulation_only", "unverified", "verified"]},
+                "adapter_state": _TEXT,
+                "code": {"oneOf": [_TEXT, {"type": "null"}]},
+                "elapsed": {"type": "number", "minimum": 0},
+                "stage_index": {"type": "integer", "minimum": 0},
+            },
+            ("state", "task", "hardware_safety_channel"),
+        )
+    ),
     "cancel_task": _response(_object({"state": _STATE, "adapter_state": _TEXT}, ("state", "adapter_state"))),
     "emergency_stop": _response(_object({"state": _STATE}, ("state",))),
-    "observe": _response(_object({
-        "source": {"type": "string", "enum": ["odometry", "camera", "scan"]},
-        "timestamp": {"type": "number"},
-        "values": _object({
-            "x": {"type": "number"},
-            "y": {"type": "number"},
-            "yaw": {"type": "number"},
-        }, ()),
-    }, ("source", "timestamp", "values"))),
-    "get_evidence": _response(_object({
-        "report_id": _TEXT,
-        "relative_path": _TEXT,
-        "media_type": {"type": "string", "enum": ["application/json", "image/png"]},
-        "size": {"type": "integer", "minimum": 0},
-    }, ("report_id", "relative_path", "media_type", "size"))),
+    "observe": _response(
+        _object(
+            {
+                "source": {"type": "string", "enum": ["odometry", "camera", "scan"]},
+                "timestamp": {"type": "number"},
+                "values": _object(
+                    {
+                        "x": {"type": "number"},
+                        "y": {"type": "number"},
+                        "yaw": {"type": "number"},
+                    },
+                    (),
+                ),
+            },
+            ("source", "timestamp", "values"),
+        )
+    ),
+    "get_evidence": _response(
+        _object(
+            {
+                "report_id": _TEXT,
+                "relative_path": _TEXT,
+                "media_type": {"type": "string", "enum": ["application/json", "image/png"]},
+                "size": {"type": "integer", "minimum": 0},
+            },
+            ("report_id", "relative_path", "media_type", "size"),
+        )
+    ),
     "stop_runtime": _response(_object({"state": _STATE}, ("state",))),
 }
 
@@ -270,7 +312,8 @@ def _annotations(name: str) -> ToolAnnotations:
     return ToolAnnotations(
         readOnlyHint=read_only,
         destructiveHint=destructive,
-        idempotentHint=name in {
+        idempotentHint=name
+        in {
             "connection_status",
             "list_capabilities",
             "task_status",
@@ -289,10 +332,12 @@ def _meta(name: str, timeout: float) -> dict[str, object]:
         "authority": "repository_profiles_only",
     }
     if name == "arm_robot":
-        metadata.update({
-            "hardware_dry_run_default": True,
-            "challenge_source": "operator_only",
-        })
+        metadata.update(
+            {
+                "hardware_dry_run_default": True,
+                "challenge_source": "operator_only",
+            }
+        )
     if name == "emergency_stop":
         metadata["hardware_reset"] = "operator_only"
     return metadata
@@ -402,11 +447,7 @@ def create_server(
         raise ValueError("timeout must be within (0, 30]")
     operation_timeout = float(timeout)
     controller_for_call = (lambda: controller) if controller is not None else get_runtime_controller
-    evidence_for_call = (
-        (lambda: evidence_store)
-        if evidence_store is not None
-        else _default_evidence_store
-    )
+    evidence_for_call = (lambda: evidence_store) if evidence_store is not None else _default_evidence_store
     capabilities: tuple[str, ...] = ()
     capabilities_lock = threading.Lock()
 
@@ -455,7 +496,9 @@ def create_server(
 
     @register("validate_profile", "Validate the active reviewed robot profile.")
     def validate_profile(profile_name: ProfileName) -> ToolResult:
-        return _invoke(lambda: controller_for_call().validate_profile(profile_name.value), _RESPONSE_SCHEMAS["validate_profile"])
+        return _invoke(
+            lambda: controller_for_call().validate_profile(profile_name.value), _RESPONSE_SCHEMAS["validate_profile"]
+        )
 
     @register("connection_status", "Read the current bounded runtime connection state.")
     def connection_status() -> ToolResult:
@@ -484,7 +527,9 @@ def create_server(
 
     @register("run_task", "Run a reviewed task profile after safety authorization.")
     def run_task(task_name: TaskName, dry_run: bool = False) -> ToolResult:
-        return _invoke(lambda: controller_for_call().run_task(task_name.value, dry_run=dry_run), _RESPONSE_SCHEMAS["run_task"])
+        return _invoke(
+            lambda: controller_for_call().run_task(task_name.value, dry_run=dry_run), _RESPONSE_SCHEMAS["run_task"]
+        )
 
     @register("task_status", "Read the active task and adapter status.")
     def task_status() -> ToolResult:
@@ -514,7 +559,9 @@ def create_server(
 
     @register("get_evidence", "Read a managed evidence report by opaque identifier.")
     def get_evidence(report_id: ReportId | None = None) -> ToolResult:
-        return _evidence_result(controller_for_call(), evidence_for_call(), report_id, _RESPONSE_SCHEMAS["get_evidence"])
+        return _evidence_result(
+            controller_for_call(), evidence_for_call(), report_id, _RESPONSE_SCHEMAS["get_evidence"]
+        )
 
     @register("stop_runtime", "Safely stop and close the managed ROS runtime.")
     def stop_runtime() -> ToolResult:

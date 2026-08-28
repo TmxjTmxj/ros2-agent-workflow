@@ -109,11 +109,7 @@ class RclpyAdapterFactory:
                 ),
             )
         if profile.adapter.kind == "hospital_delivery":
-            if (
-                profile.name != "hospital-amr"
-                or profile.mode != "simulation"
-                or profile.namespace != "/hospital_amr"
-            ):
+            if profile.name != "hospital-amr" or profile.mode != "simulation" or profile.namespace != "/hospital_amr":
                 raise AdapterError("PROFILE_INVALID")
             return lambda client: HospitalCaseAdapter(client)
         if profile.adapter.kind == "nav2":

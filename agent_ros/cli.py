@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 from agent_ros.discovery.inference import infer_capabilities
 from agent_ros.discovery.ros_graph import RosGraphProbe
@@ -59,7 +59,11 @@ def _run(args: argparse.Namespace) -> dict[str, object]:
         return {"profile": profile.name, "state": "NEW"}
     report = infer_capabilities(RosGraphProbe().probe())
     if args.command == "discover":
-        return {"profile": profile.name, "capabilities": list(report.capability_names), "blocking_warnings": list(report.blocking_warnings)}
+        return {
+            "profile": profile.name,
+            "capabilities": list(report.capability_names),
+            "blocking_warnings": list(report.blocking_warnings),
+        }
     gateway = SafetyGateway(profile)
     gateway.discover(report)
     gateway.validate()

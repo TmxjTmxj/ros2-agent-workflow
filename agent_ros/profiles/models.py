@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from math import isfinite
-from typing import Any, Mapping
+from typing import Any
 
 from agent_ros.errors import ProfileValidationError
-
 
 TWIST_TYPE = "geometry_msgs/msg/Twist"
 ODOMETRY_TYPE = "nav_msgs/msg/Odometry"
@@ -105,16 +105,38 @@ class RobotProfile:
     observation_sources: tuple[str, ...]
 
     @classmethod
-    def from_mapping(cls, value: object) -> "RobotProfile":
+    def from_mapping(cls, value: object) -> RobotProfile:
         data = _mapping(value, "robot profile")
-        _only_keys(data, {
-            "name", "mode", "namespace", "frames", "adapter", "interfaces", "limits", "safety",
-            "observation_sources",
-        }, "robot profile")
-        _required_keys(data, {
-            "name", "mode", "namespace", "frames", "adapter", "interfaces", "limits", "safety",
-            "observation_sources",
-        }, "robot profile")
+        _only_keys(
+            data,
+            {
+                "name",
+                "mode",
+                "namespace",
+                "frames",
+                "adapter",
+                "interfaces",
+                "limits",
+                "safety",
+                "observation_sources",
+            },
+            "robot profile",
+        )
+        _required_keys(
+            data,
+            {
+                "name",
+                "mode",
+                "namespace",
+                "frames",
+                "adapter",
+                "interfaces",
+                "limits",
+                "safety",
+                "observation_sources",
+            },
+            "robot profile",
+        )
         name = _text(data.get("name"), "robot name")
         mode = data.get("mode")
         if mode not in {"simulation", "hardware"}:
@@ -166,20 +188,28 @@ class RobotProfile:
             or interfaces.odometry.topic != "/odom"
             or interfaces.odometry.type != ODOMETRY_TYPE
         ):
-            raise ProfileValidationError(
-                "hospital delivery adapter is confined to the reviewed simulation case"
-            )
+            raise ProfileValidationError("hospital delivery adapter is confined to the reviewed simulation case")
 
         limits_data = _mapping(data.get("limits"), "limits")
-        _only_keys(limits_data, {
-            "max_linear_velocity", "max_angular_velocity", "max_linear_acceleration",
-            "max_angular_acceleration",
-        }, "limits")
+        _only_keys(
+            limits_data,
+            {
+                "max_linear_velocity",
+                "max_angular_velocity",
+                "max_linear_acceleration",
+                "max_angular_acceleration",
+            },
+            "limits",
+        )
         limits = MotionLimits(
             max_linear_velocity=_finite_positive(limits_data.get("max_linear_velocity"), "max_linear_velocity"),
             max_angular_velocity=_finite_positive(limits_data.get("max_angular_velocity"), "max_angular_velocity"),
-            max_linear_acceleration=_finite_positive(limits_data.get("max_linear_acceleration"), "max_linear_acceleration"),
-            max_angular_acceleration=_finite_positive(limits_data.get("max_angular_acceleration"), "max_angular_acceleration"),
+            max_linear_acceleration=_finite_positive(
+                limits_data.get("max_linear_acceleration"), "max_linear_acceleration"
+            ),
+            max_angular_acceleration=_finite_positive(
+                limits_data.get("max_angular_acceleration"), "max_angular_acceleration"
+            ),
         )
 
         safety_data = _mapping(data.get("safety"), "safety")
@@ -187,7 +217,9 @@ class RobotProfile:
         heartbeat_raw = safety_data.get("heartbeat_timeout")
         safety = SafetyConfig(
             heartbeat_timeout=(None if heartbeat_raw is None else _finite_positive(heartbeat_raw, "heartbeat_timeout")),
-            estop_topic=(None if safety_data.get("estop_topic") is None else _text(safety_data["estop_topic"], "estop_topic")),
+            estop_topic=(
+                None if safety_data.get("estop_topic") is None else _text(safety_data["estop_topic"], "estop_topic")
+            ),
         )
         if mode == "hardware" and (safety.heartbeat_timeout is None or safety.estop_topic is None):
             raise ProfileValidationError("hardware safety configuration requires heartbeat_timeout and estop_topic")
@@ -209,7 +241,9 @@ def _validate_adapter_interfaces(kind: str, interfaces: RobotInterfaces) -> None
             raise ProfileValidationError("Nav2 adapter requires nav2_msgs/action/NavigateToPose action type")
     elif kind == "follow_joint_trajectory":
         if interfaces.trajectory is None or interfaces.trajectory.type != FOLLOW_JOINT_TRAJECTORY_TYPE:
-            raise ProfileValidationError("trajectory adapter requires control_msgs/action/FollowJointTrajectory action type")
+            raise ProfileValidationError(
+                "trajectory adapter requires control_msgs/action/FollowJointTrajectory action type"
+            )
     elif kind == "hospital_delivery":
         if interfaces.command is None or interfaces.command.type != TWIST_TYPE:
             raise ProfileValidationError("hospital delivery adapter requires the fixed Twist command interface")
@@ -243,14 +277,32 @@ class TaskProfile:
     recovery_policy: str
 
     @classmethod
-    def from_mapping(cls, value: object) -> "TaskProfile":
+    def from_mapping(cls, value: object) -> TaskProfile:
         data = _mapping(value, "task profile")
-        _only_keys(data, {
-            "name", "robot_profile", "stages", "required_sensors", "evidence", "recovery_policy",
-        }, "task profile")
-        _required_keys(data, {
-            "name", "robot_profile", "stages", "required_sensors", "evidence", "recovery_policy",
-        }, "task profile")
+        _only_keys(
+            data,
+            {
+                "name",
+                "robot_profile",
+                "stages",
+                "required_sensors",
+                "evidence",
+                "recovery_policy",
+            },
+            "task profile",
+        )
+        _required_keys(
+            data,
+            {
+                "name",
+                "robot_profile",
+                "stages",
+                "required_sensors",
+                "evidence",
+                "recovery_policy",
+            },
+            "task profile",
+        )
         name = _text(data.get("name"), "task name")
         robot_profile = _text(data.get("robot_profile"), "robot_profile")
         stages_raw = data.get("stages")
@@ -273,12 +325,14 @@ class TaskProfile:
                 y=_finite(goal_data.get("y"), f"stages[{index}].goal.y"),
                 yaw=_finite(goal_data.get("yaw"), f"stages[{index}].goal.yaw"),
             )
-            stages.append(TaskStage(
-                name=stage_name,
-                goal=goal,
-                tolerance=_finite_positive(stage.get("tolerance"), f"stages[{index}].tolerance"),
-                timeout=_finite_positive(stage.get("timeout"), f"stages[{index}].timeout"),
-            ))
+            stages.append(
+                TaskStage(
+                    name=stage_name,
+                    goal=goal,
+                    tolerance=_finite_positive(stage.get("tolerance"), f"stages[{index}].tolerance"),
+                    timeout=_finite_positive(stage.get("timeout"), f"stages[{index}].timeout"),
+                )
+            )
         required_sensors = _string_list(data.get("required_sensors"), "required_sensors")
         evidence = _mapping(data.get("evidence"), "evidence")
         _only_keys(evidence, {"sources"}, "evidence")

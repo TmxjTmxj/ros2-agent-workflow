@@ -6,19 +6,20 @@ import threading
 from types import SimpleNamespace
 
 import pytest
-
+from agent_ros.discovery import ros_graph
 from agent_ros.discovery.inference import infer_capabilities
 from agent_ros.discovery.models import Endpoint, GraphSnapshot
 from agent_ros.discovery.ros_graph import RosGraphProbe
-from agent_ros.discovery import ros_graph
 from agent_ros.errors import DiscoveryError
 
 
 def test_infers_mobile_base_only_with_command_and_feedback():
-    snapshot = GraphSnapshot(topics={
-        "/cmd_vel": ("geometry_msgs/msg/Twist",),
-        "/odom": ("nav_msgs/msg/Odometry",),
-    })
+    snapshot = GraphSnapshot(
+        topics={
+            "/cmd_vel": ("geometry_msgs/msg/Twist",),
+            "/odom": ("nav_msgs/msg/Odometry",),
+        }
+    )
     assert infer_capabilities(snapshot).capability_names == ("mobile_base.twist",)
 
 
@@ -68,13 +69,15 @@ def test_discovery_infers_standard_capabilities_with_deterministic_confidence():
 
 
 def test_discovery_report_preserves_reviewed_endpoint_type_evidence_for_safety_validation():
-    report = infer_capabilities(GraphSnapshot(
-        topics={
-            "/cmd_vel": ("geometry_msgs/msg/Twist",),
-            "/odom": ("nav_msgs/msg/Odometry",),
-        },
-        actions={"/navigate_to_pose": ("nav2_msgs/action/NavigateToPose",)},
-    ))
+    report = infer_capabilities(
+        GraphSnapshot(
+            topics={
+                "/cmd_vel": ("geometry_msgs/msg/Twist",),
+                "/odom": ("nav_msgs/msg/Odometry",),
+            },
+            actions={"/navigate_to_pose": ("nav2_msgs/action/NavigateToPose",)},
+        )
+    )
 
     assert report.topic_types["/cmd_vel"] == ("geometry_msgs/msg/Twist",)
     assert report.topic_types["/odom"] == ("nav_msgs/msg/Odometry",)
@@ -85,10 +88,27 @@ def test_probe_uses_fixed_ros2_argv_and_preserves_duplicate_endpoint_gids():
     calls: list[tuple[str, ...]] = []
     responses = {
         ("ros2", "node", "list", "--no-daemon", "--spin-time", "0.5"): "/controller\n/odometry\n",
-        ("ros2", "topic", "list", "-t", "--no-daemon", "--spin-time", "0.5"): "/cmd_vel [geometry_msgs/msg/Twist]\n/odom [nav_msgs/msg/Odometry]\n",
+        (
+            "ros2",
+            "topic",
+            "list",
+            "-t",
+            "--no-daemon",
+            "--spin-time",
+            "0.5",
+        ): "/cmd_vel [geometry_msgs/msg/Twist]\n/odom [nav_msgs/msg/Odometry]\n",
         ("ros2", "action", "list", "-t"): "",
         ("ros2", "service", "list", "-t", "--no-daemon", "--spin-time", "0.5"): "",
-        ("ros2", "topic", "info", "/cmd_vel", "--verbose", "--no-daemon", "--spin-time", "0.5"): """Type: geometry_msgs/msg/Twist
+        (
+            "ros2",
+            "topic",
+            "info",
+            "/cmd_vel",
+            "--verbose",
+            "--no-daemon",
+            "--spin-time",
+            "0.5",
+        ): """Type: geometry_msgs/msg/Twist
 Publisher count: 2
 Node name: controller
 Node namespace: /
@@ -143,9 +163,7 @@ def test_probe_collects_independent_fixed_graph_queries_concurrently():
 
 
 def test_probe_only_inspects_bounded_typed_command_candidates_with_many_topics():
-    unrelated = "".join(
-        f"/sensor_{index} [sensor_msgs/msg/Image]\n" for index in range(1000)
-    )
+    unrelated = "".join(f"/sensor_{index} [sensor_msgs/msg/Image]\n" for index in range(1000))
     topic_list = unrelated + "/cmd_vel [geometry_msgs/msg/Twist]\n"
     calls: list[tuple[str, ...]] = []
 
@@ -211,12 +229,14 @@ def _fake_native_modules(events, *, create_error=None, destroy_error=None, spin_
 
         def get_publishers_info_by_topic(self, topic):
             assert topic == "/cmd_vel"
-            return [SimpleNamespace(
-                node_name="controller",
-                node_namespace="/",
-                endpoint_gid=bytes.fromhex("0102"),
-                endpoint_type=SimpleNamespace(name="PUBLISHER"),
-            )]
+            return [
+                SimpleNamespace(
+                    node_name="controller",
+                    node_namespace="/",
+                    endpoint_gid=bytes.fromhex("0102"),
+                    endpoint_type=SimpleNamespace(name="PUBLISHER"),
+                )
+            ]
 
         def destroy_node(self):
             events.append(("node.destroy",))
@@ -276,19 +296,23 @@ def test_production_probe_uses_one_native_participant_maps_gid_and_cleans_lifecy
     assert snapshot.actions["/navigate_to_pose"] == ("nav2_msgs/action/NavigateToPose",)
     endpoint = snapshot.topic_endpoints["/cmd_vel"][0]
     assert (endpoint.node_name, endpoint.node_namespace, endpoint.gid, endpoint.endpoint_type) == (
-        "controller", "/", "0102", "publisher"
+        "controller",
+        "/",
+        "0102",
+        "publisher",
     )
     assert [event[0] for event in events].count("context.init") == 1
     assert ("executor.spin_once", 0.5) in events
     assert [event[0] for event in events][-4:] == [
-        "executor.remove", "node.destroy", "executor.shutdown", "context.try_shutdown"
+        "executor.remove",
+        "node.destroy",
+        "executor.shutdown",
+        "context.try_shutdown",
     ]
 
 
 @pytest.mark.parametrize("failure", ["create", "spin", "destroy"])
-def test_production_native_probe_start_spin_or_cleanup_failure_is_fail_closed(
-    monkeypatch, failure
-):
+def test_production_native_probe_start_spin_or_cleanup_failure_is_fail_closed(monkeypatch, failure):
     events = []
     error = RuntimeError(failure)
     modules = _fake_native_modules(
@@ -312,12 +336,14 @@ def test_production_probe_runs_one_fixed_native_helper_subprocess(monkeypatch):
         "services": {},
         "actions": {},
         "topic_endpoints": {
-            "/cmd_vel": [{
-                "node_name": "controller",
-                "node_namespace": "/",
-                "gid": "0102",
-                "endpoint_type": "publisher",
-            }]
+            "/cmd_vel": [
+                {
+                    "node_name": "controller",
+                    "node_namespace": "/",
+                    "gid": "0102",
+                    "endpoint_type": "publisher",
+                }
+            ]
         },
     }
     calls = []
@@ -344,9 +370,7 @@ def test_production_probe_runs_one_fixed_native_helper_subprocess(monkeypatch):
         subprocess.CompletedProcess([], 0, '{"nodes":[],"topics":{}}', ""),
     ],
 )
-def test_production_native_helper_nonzero_or_malformed_json_fails_closed(
-    monkeypatch, result
-):
+def test_production_native_helper_nonzero_or_malformed_json_fails_closed(monkeypatch, result):
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: result)
 
     with pytest.raises(DiscoveryError):

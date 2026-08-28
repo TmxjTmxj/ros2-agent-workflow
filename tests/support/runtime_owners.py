@@ -2,16 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from contextlib import ExitStack, contextmanager
-from typing import Iterator, TypeVar
+from typing import TypeVar
 
 import pytest
-
 from agent_ros.adapters.base import RobotAdapter
 from agent_ros.runtime.controller import RuntimeController
 from agent_ros.safety.gateway import SafetyGateway
 from agent_ros.safety.supervisor import SafetySupervisor
-
 
 _T = TypeVar("_T")
 
@@ -55,6 +54,7 @@ def owned_supervisor(supervisor: SafetySupervisor) -> Iterator[SafetySupervisor]
 
 def _owner_fixture(context_manager):
     with ExitStack() as stack:
+
         def own(value: _T) -> _T:
             return stack.enter_context(context_manager(value))
 

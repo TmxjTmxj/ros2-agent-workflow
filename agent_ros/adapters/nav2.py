@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from agent_ros.adapters._safety import (
-    _EmergencyStopChannel,
     _HARDWARE_CHANNEL_GUARD,
+    _EmergencyStopChannel,
 )
 from agent_ros.adapters.base import (
     AdapterError,
@@ -22,7 +22,6 @@ from agent_ros.adapters.base import (
 )
 from agent_ros.profiles.models import NAVIGATE_TO_POSE_TYPE, RobotProfile, TaskStage
 from agent_ros.safety.sequencer import _ActivationPermit
-
 
 _ZERO_BURST_COUNT = 3
 
@@ -187,7 +186,16 @@ class Nav2Adapter(RobotAdapter):
 class RclpyNav2Transport:
     """Typed rclpy ActionClient transport with no caller-provided action type."""
 
-    def __init__(self, node, action_name: str, command_topic: str, estop_topic: str, *, cancel_timeout: float = 1.0, clock: Callable[[], float] = time.monotonic) -> None:
+    def __init__(
+        self,
+        node,
+        action_name: str,
+        command_topic: str,
+        estop_topic: str,
+        *,
+        cancel_timeout: float = 1.0,
+        clock: Callable[[], float] = time.monotonic,
+    ) -> None:
         try:
             from geometry_msgs.msg import Twist
             from nav2_msgs.action import NavigateToPose
@@ -204,6 +212,7 @@ class RclpyNav2Transport:
         self._state = "idle"
         self._cancel_requested = False
         import threading
+
         self._lock = threading.RLock()
         self._clock = clock
         self._cancel_timeout = cancel_timeout
@@ -243,7 +252,6 @@ class RclpyNav2Transport:
         self._cancel_requested = False
         self._emergency_latched = False
         self._goal_generation += 1
-        generation = self._goal_generation
         self._goal_permit = activation_permit
         self._goal_handle = None
         self._cancel_enqueued_for = None
@@ -253,9 +261,7 @@ class RclpyNav2Transport:
 
     def track_goal(self, future: object, activation_permit: object) -> None:
         generation = self._goal_generation
-        future.add_done_callback(
-            lambda completed: self._goal_response(completed, activation_permit, generation)
-        )
+        future.add_done_callback(lambda completed: self._goal_response(completed, activation_permit, generation))
 
     def _goal_response(self, future, activation_permit=None, goal_generation: int | None = None) -> None:
         with self._lock:
@@ -274,9 +280,8 @@ class RclpyNav2Transport:
                 except Exception:
                     self._state = "faulted"
                     return
-            stale = (
-                type(activation_permit) is _ActivationPermit
-                and not activation_permit._sequencer.is_current(activation_permit)
+            stale = type(activation_permit) is _ActivationPermit and not activation_permit._sequencer.is_current(
+                activation_permit
             )
             if self._cancel_requested or getattr(self, "_emergency_latched", False) or stale:
                 if accepted:

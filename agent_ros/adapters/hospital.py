@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import threading
-import time
 import json
 import math
 import os
 import signal
 import subprocess
+import threading
+import time
 from collections import deque
 from collections.abc import Callable, Mapping
 from pathlib import Path
@@ -206,13 +206,8 @@ class RclpyHospitalTransport:
         self._status_received_at: float | None = None
         self._closed = False
         try:
-            self._clients = {
-                action: create_client(Trigger, service)
-                for action, service in self._SERVICES.items()
-            }
-            self._subscription = create_subscription(
-                String, "/hospital_mission/status", self._receive_status, 10
-            )
+            self._clients = {action: create_client(Trigger, service) for action, service in self._SERVICES.items()}
+            self._subscription = create_subscription(String, "/hospital_mission/status", self._receive_status, 10)
         except Exception:
             raise AdapterError("PROFILE_INVALID") from None
 
@@ -222,9 +217,7 @@ class RclpyHospitalTransport:
             raise AdapterError("PROFILE_INVALID")
         deadline = time.monotonic() + max(0.0, timeout)
         try:
-            if not client.wait_for_service(
-                timeout_sec=max(0.0, deadline - time.monotonic())
-            ):
+            if not client.wait_for_service(timeout_sec=max(0.0, deadline - time.monotonic())):
                 raise AdapterError("TIMEOUT")
             request_type = getattr(getattr(client, "srv_type", None), "Request", None)
             if request_type is None:
@@ -428,9 +421,7 @@ class HospitalLifecycleClient:
         """Send the immediate stop on the independent worker and await it."""
         transport = self._transport
         command = (
-            (lambda: transport.trigger(
-                HospitalAction.STOP, self._TIMEOUTS[HospitalAction.STOP]
-            ))
+            (lambda: transport.trigger(HospitalAction.STOP, self._TIMEOUTS[HospitalAction.STOP]))
             if transport is not None
             else (lambda: self._execute_action(HospitalAction.STOP))
         )
@@ -462,13 +453,8 @@ class HospitalLifecycleClient:
                 successful = False
         if self._transport is not None:
             successful = self._transport.close() and successful
-        successful = (
-            self._worker.close(max(0.0, deadline - time.monotonic())) and successful
-        )
-        successful = (
-            self._emergency_worker.close(max(0.0, deadline - time.monotonic()))
-            and successful
-        )
+        successful = self._worker.close(max(0.0, deadline - time.monotonic())) and successful
+        successful = self._emergency_worker.close(max(0.0, deadline - time.monotonic())) and successful
         return successful
 
     def _latch_stop(self) -> None:
@@ -481,17 +467,13 @@ class HospitalLifecycleClient:
             return self._stop_latched or generation != self._cancellation_generation
 
     def _execute_start(self, generation: int) -> Mapping[str, object]:
-        start_result = self._run_fixed(
-            ("start", "--timeout", "60"), timeout=120.0, generation=generation
-        )
+        start_result = self._run_fixed(("start", "--timeout", "60"), timeout=120.0, generation=generation)
         if start_result is None:
             return self._compensate_cancelled_start()
         if self._start_was_cancelled(generation):
             return self._compensate_cancelled_start()
         if self._transport is None:
-            mission_result = self._run_fixed(
-                ("mission-start",), timeout=10.0, generation=generation
-            )
+            mission_result = self._run_fixed(("mission-start",), timeout=10.0, generation=generation)
         else:
             if self._start_was_cancelled(generation):
                 return self._compensate_cancelled_start()
@@ -566,9 +548,7 @@ class HospitalLifecycleClient:
             return dict(receipt.value)
         return None
 
-    def _submit_and_wait(
-        self, action: HospitalAction, *, timeout: float | None = None
-    ) -> Mapping[str, object]:
+    def _submit_and_wait(self, action: HospitalAction, *, timeout: float | None = None) -> Mapping[str, object]:
         try:
             receipt = self._worker.submit(lambda: self._execute_action(action))
         except Exception:
@@ -605,9 +585,7 @@ class HospitalLifecycleClient:
                 # The repository lifecycle lock first cancels a pre-spawn
                 # reservation or observes a fully recorded launch. Only then
                 # may the exact outer START process group be interrupted.
-                payload = self._run_fixed(
-                    command, timeout=max(0.0, deadline - time.monotonic())
-                )
+                payload = self._run_fixed(command, timeout=max(0.0, deadline - time.monotonic()))
             finally:
                 self._interrupt_inflight_start(deadline)
         else:
@@ -636,15 +614,11 @@ class HospitalLifecycleClient:
                 raise
             except OSError:
                 raise AdapterError("UNSAFE_STATE") from None
-        if receipt is not None and not receipt.done.wait(
-            max(0.0, deadline - time.monotonic())
-        ):
+        if receipt is not None and not receipt.done.wait(max(0.0, deadline - time.monotonic())):
             raise AdapterError("TIMEOUT")
 
     @staticmethod
-    def _signal_exact_start_group(
-        process: subprocess.Popen[str], sig: signal.Signals
-    ) -> None:
+    def _signal_exact_start_group(process: subprocess.Popen[str], sig: signal.Signals) -> None:
         pgid = os.getpgid(process.pid)
         if pgid != process.pid:
             raise AdapterError("UNSAFE_STATE")
@@ -675,10 +649,7 @@ class HospitalLifecycleClient:
                 # linearization point. An initial START is also registered as
                 # an owned process-group leader before emergency stop can win.
                 with self._lock:
-                    if (
-                        self._stop_latched
-                        or generation != self._cancellation_generation
-                    ):
+                    if self._stop_latched or generation != self._cancellation_generation:
                         return None
                     process = subprocess.Popen(
                         argv,
@@ -700,9 +671,7 @@ class HospitalLifecycleClient:
                     # Coordinate with the inner lifecycle before touching the
                     # outer wrapper. Its file lock makes a build reservation
                     # cancellable and a spawned launch visible in state first.
-                    self._run_fixed(
-                        ("stop",), timeout=self._TIMEOUTS[HospitalAction.STOP]
-                    )
+                    self._run_fixed(("stop",), timeout=self._TIMEOUTS[HospitalAction.STOP])
                 except Exception:
                     cleanup_failed = True
                 try:
@@ -746,9 +715,7 @@ class HospitalCaseAdapter(RobotAdapter):
 
     __slots__ = ("_client", "_clock", "_safety_channel", "_safety_sequencer", "_runtime_owner_close")
 
-    def __init__(
-        self, client: HospitalLifecycleClient, *, clock: Callable[[], float] = time.monotonic
-    ) -> None:
+    def __init__(self, client: HospitalLifecycleClient, *, clock: Callable[[], float] = time.monotonic) -> None:
         if type(client) is not HospitalLifecycleClient:
             raise AdapterError("PROFILE_INVALID")
         self._client = client
@@ -760,9 +727,7 @@ class HospitalCaseAdapter(RobotAdapter):
         deadline = time.monotonic() + max(0.0, float(timeout))
         successful = True
         try:
-            successful = self._client.close(
-                max(0.0, deadline - time.monotonic())
-            ) and successful
+            successful = self._client.close(max(0.0, deadline - time.monotonic())) and successful
         except Exception:
             successful = False
         return super().close(max(0.0, deadline - time.monotonic())) and successful
@@ -799,11 +764,7 @@ class HospitalCaseAdapter(RobotAdapter):
             projected: dict[str, float] = {}
             for key in ("x", "y", "yaw"):
                 value = pose.get(key)
-                if (
-                    isinstance(value, bool)
-                    or not isinstance(value, (int, float))
-                    or not math.isfinite(float(value))
-                ):
+                if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
                     raise AdapterError("INTERNAL_ERROR")
                 projected[key] = float(value)
             result = projected
@@ -820,9 +781,7 @@ class HospitalCaseAdapter(RobotAdapter):
         time used to declare ``succeeded``. Reusing it avoids a second live
         ROS observation between success and cleanup.
         """
-        if not isinstance(sources, tuple) or not all(
-            isinstance(source, str) and source for source in sources
-        ):
+        if not isinstance(sources, tuple) or not all(isinstance(source, str) and source for source in sources):
             raise AdapterError("PROFILE_INVALID")
         captured: dict[str, Observation] = dict(
             super().freeze_terminal_evidence(
@@ -840,11 +799,7 @@ class HospitalCaseAdapter(RobotAdapter):
         projected: dict[str, float] = {}
         for key in ("x", "y", "yaw"):
             value = pose.get(key)
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(float(value))
-            ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
                 raise AdapterError("EVIDENCE_INVALID")
             projected[key] = float(value)
         sim_time = terminal_status.values.get("sim_time")

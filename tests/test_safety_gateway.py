@@ -7,37 +7,37 @@ import threading
 from dataclasses import FrozenInstanceError
 
 import pytest
-
 from agent_ros.discovery.models import Capability, DiscoveryReport
 from agent_ros.profiles.models import RobotProfile
 from agent_ros.safety.challenge import create_operator_challenge
 from agent_ros.safety.gateway import SafetyError, SafetyGateway, SafetyTransition
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
-from tests.support.runtime_owners import gateway_owner
 
 
 def robot_profile(mode: str = "simulation", heartbeat_timeout: float | None = 1.0) -> RobotProfile:
     safety = {"heartbeat_timeout": heartbeat_timeout, "estop_topic": "/emergency_stop"}
-    return RobotProfile.from_mapping({
-        "name": "robot",
-        "mode": mode,
-        "namespace": "/robot",
-        "frames": {"base": "base_link", "odom": "odom"},
-        "adapter": {"kind": "twist"},
-        "interfaces": {
-            "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
-            "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
-        },
-        "limits": {
-            "max_linear_velocity": 0.5,
-            "max_angular_velocity": 1.0,
-            "max_linear_acceleration": 0.5,
-            "max_angular_acceleration": 1.0,
-        },
-        "safety": safety,
-        "observation_sources": ["odometry"],
-    })
+    return RobotProfile.from_mapping(
+        {
+            "name": "robot",
+            "mode": mode,
+            "namespace": "/robot",
+            "frames": {"base": "base_link", "odom": "odom"},
+            "adapter": {"kind": "twist"},
+            "interfaces": {
+                "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
+                "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
+            },
+            "limits": {
+                "max_linear_velocity": 0.5,
+                "max_angular_velocity": 1.0,
+                "max_linear_acceleration": 0.5,
+                "max_angular_acceleration": 1.0,
+            },
+            "safety": safety,
+            "observation_sources": ["odometry"],
+        }
+    )
 
 
 def compatible_report() -> DiscoveryReport:
@@ -109,11 +109,7 @@ def test_concurrent_estop_attempts_keep_their_own_frozen_stop_result(
     successful = EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
     gateway = prepared_gateway(robot_profile(), gateway_owner)
     gateway.start_task(linear_velocity=0.1, angular_velocity=0.0)
-    gateway._stop_callback = lambda _timeout: (
-        degraded
-        if threading.current_thread().name == "attempt-a"
-        else successful
-    )
+    gateway._stop_callback = lambda _timeout: degraded if threading.current_thread().name == "attempt-a" else successful
     paused = "b" if winner == "a" else "a"
     paused_ready = threading.Event()
     release_paused = threading.Event()

@@ -47,7 +47,7 @@ class TwistCommand:
             raise AdapterError("PROFILE_INVALID")
 
     @classmethod
-    def zero(cls) -> "TwistCommand":
+    def zero(cls) -> TwistCommand:
         return cls(0.0, 0.0)
 
 
@@ -71,8 +71,10 @@ class NavigationGoal:
     yaw: float
 
     def __post_init__(self) -> None:
-        if not isinstance(self.frame, str) or not self.frame or not all(
-            _finite(value) for value in (self.x, self.y, self.yaw)
+        if (
+            not isinstance(self.frame, str)
+            or not self.frame
+            or not all(_finite(value) for value in (self.x, self.y, self.yaw))
         ):
             raise AdapterError("PROFILE_INVALID")
 
@@ -155,9 +157,7 @@ class RobotAdapter(ABC):
         directly from ``terminal_status``; the default implementation performs
         one bounded adapter observation per requested source.
         """
-        if not isinstance(sources, tuple) or not all(
-            isinstance(source, str) and source for source in sources
-        ):
+        if not isinstance(sources, tuple) or not all(isinstance(source, str) and source for source in sources):
             raise AdapterError("PROFILE_INVALID")
         captured: dict[str, Observation] = {}
         for source in sources:
@@ -210,10 +210,7 @@ class RobotAdapter(ABC):
                 successful = False
             else:
                 successful = channel._close(max(0.0, deadline - time.monotonic()))
-            successful = (
-                sequencer.close(max(0.0, deadline - time.monotonic()))
-                and successful
-            )
+            successful = sequencer.close(max(0.0, deadline - time.monotonic())) and successful
         owner_close = getattr(self, "_runtime_owner_close", None)
         if owner_close is not None:
             try:
@@ -289,7 +286,7 @@ class RobotAdapter(ABC):
             raise AdapterError(code) from None
 
 
-def create_adapter(profile: "RobotProfile", transport: object, **kwargs: Any) -> RobotAdapter:
+def create_adapter(profile: RobotProfile, transport: object, **kwargs: Any) -> RobotAdapter:
     """Select only repository-implemented adapter kinds from a reviewed profile."""
     kind = getattr(getattr(profile, "adapter", None), "kind", None)
     if kind == "twist":

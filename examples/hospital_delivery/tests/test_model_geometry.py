@@ -1,11 +1,9 @@
-from pathlib import Path
 import xml.etree.ElementTree as ET
+from pathlib import Path
 
 import pytest
 import yaml
-
 from smartcar_bringup.controller_core import ControllerConfig
-
 
 MODEL = Path(__file__).resolve().parents[1] / "models" / "hospital_amr" / "model.sdf"
 WORLD = Path(__file__).resolve().parents[1] / "worlds" / "hospital_world_gz10.world"
@@ -72,10 +70,7 @@ def test_profile_controller_and_diff_drive_share_conservative_burger_limits():
         "max_linear_acceleration": controller.max_linear_acceleration,
         "max_angular_acceleration": controller.max_angular_acceleration,
     } == expected
-    assert {
-        key: float(diff.findtext(key))
-        for key in expected
-    } == expected
+    assert {key: float(diff.findtext(key)) for key in expected} == expected
 
 
 def test_base_collision_matches_official_burger_mesh_scale():
@@ -160,9 +155,7 @@ def test_body_contact_sensor_and_world_contact_system_are_enabled():
     assert world.find("plugin[@name='gz::sim::systems::Contact']") is not None
 
     bridges = yaml.safe_load(BRIDGE_CONFIG.read_text())
-    contact_bridges = [
-        item for item in bridges if item["ros_topic_name"] == "/hospital_amr/contacts"
-    ]
+    contact_bridges = [item for item in bridges if item["ros_topic_name"] == "/hospital_amr/contacts"]
     assert len(contact_bridges) == len(expected)
     assert all("/sensor/" in item["gz_topic_name"] for item in contact_bridges)
 

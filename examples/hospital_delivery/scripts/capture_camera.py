@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import argparse
 import json
 import sys
 import time
+from pathlib import Path
 
 
 class CameraCaptureError(RuntimeError):
@@ -75,9 +75,7 @@ def capture_one_frame(
         while not received and time.monotonic() < deadline:
             executor.spin_once(timeout_sec=min(0.2, deadline - time.monotonic()))
         if not received:
-            raise CameraCaptureError(
-                f"no camera frame received from {topic} within {timeout:.1f}s"
-            )
+            raise CameraCaptureError(f"no camera frame received from {topic} within {timeout:.1f}s")
         return image_message_to_png(received[-1], output_path)
     finally:
         node.destroy_subscription(subscription)

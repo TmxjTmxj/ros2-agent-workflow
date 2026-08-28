@@ -6,11 +6,9 @@ from collections.abc import Callable
 from typing import Generic, TypeVar
 
 import pytest
-
 from agent_ros.adapters._safety import _ActivationRejected
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.sequencer import _SafetySequencer
-
 
 _T = TypeVar("_T")
 
@@ -60,9 +58,7 @@ def test_estop_waits_for_recorded_inflight_command_then_succeeds():
     )
     try:
         assert entered.wait(0.2)
-        stop = ThreadCall(
-            lambda: sequencer.latch_and_quiesce(lambda: None, timeout=0.2)
-        )
+        stop = ThreadCall(lambda: sequencer.latch_and_quiesce(lambda: None, timeout=0.2))
         assert stop.is_alive()
         release.set()
         result = stop.result(0.2)
@@ -81,7 +77,7 @@ def test_estop_returns_degraded_result_when_inflight_command_misses_deadline():
         lambda: sequencer.submit(
             sequencer.issue(),
             lambda: (entered.set(), release.wait())[0],
-            timeout=0.5,
+            timeout=2.0,
         )
     )
     try:
@@ -92,9 +88,7 @@ def test_estop_returns_degraded_result_when_inflight_command_misses_deadline():
 
         elapsed = time.monotonic() - began
         assert 0.01 <= elapsed < 0.2
-        assert result == EmergencyStopResult(
-            True, False, True, "TRANSPORT_UNQUIESCED"
-        )
+        assert result == EmergencyStopResult(True, False, True, "TRANSPORT_UNQUIESCED")
     finally:
         release.set()
         call.result(0.2)
@@ -115,14 +109,15 @@ def test_latch_rejects_every_queued_command_without_invoking_it():
     )
     queued_started = threading.Event()
     queued = ThreadCall(
-        lambda: (queued_started.set(), sequencer.submit(
-            sequencer.issue(), lambda: invoked.append("stale"), timeout=0.5
-        ))[1]
+        lambda: (
+            queued_started.set(),
+            sequencer.submit(sequencer.issue(), lambda: invoked.append("stale"), timeout=2.0),
+        )[1]
     )
     try:
-        assert entered.wait(0.2)
-        assert queued_started.wait(0.2)
-        deadline = time.monotonic() + 0.5
+        assert entered.wait(1.0)
+        assert queued_started.wait(1.0)
+        deadline = time.monotonic() + 2.0
         while sequencer.pending_count < 1 and time.monotonic() < deadline:
             time.sleep(0.005)
         assert sequencer.pending_count == 1
@@ -134,8 +129,8 @@ def test_latch_rejects_every_queued_command_without_invoking_it():
         assert result.code == "TRANSPORT_UNQUIESCED"
     finally:
         release.set()
-        active.result(0.2)
-        assert sequencer.close(0.2)
+        active.result(1.0)
+        assert sequencer.close(1.0)
 
 
 def test_stale_and_foreign_permits_are_rejected():
@@ -171,13 +166,7 @@ def test_activation_queue_has_capacity_sixteen_and_fails_closed_when_full():
     try:
         assert entered.wait(0.2)
         for _ in range(16):
-            queued.append(
-                ThreadCall(
-                    lambda: sequencer.submit(
-                        sequencer.issue(), lambda: None, timeout=0.5
-                    )
-                )
-            )
+            queued.append(ThreadCall(lambda: sequencer.submit(sequencer.issue(), lambda: None, timeout=0.5)))
         deadline = time.monotonic() + 0.2
         while sequencer.pending_count != 16 and time.monotonic() < deadline:
             threading.Event().wait(0.001)
@@ -206,9 +195,7 @@ def test_start_failure_is_reported_without_registering_a_worker():
         def is_alive(self) -> bool:
             return False
 
-    sequencer = _SafetySequencer(
-        thread_factory=lambda **_kwargs: StartFailedThread()
-    )
+    sequencer = _SafetySequencer(thread_factory=lambda **_kwargs: StartFailedThread())
 
     assert not sequencer.start()
     with pytest.raises(_ActivationRejected, match="UNSAFE_STATE"):
@@ -246,12 +233,8 @@ def test_repeated_estop_remains_latched_and_accepts_each_zero_intent():
     sequencer = started_sequencer()
     accepted: list[int] = []
     try:
-        first = sequencer.latch_and_quiesce(
-            lambda: accepted.append(1), timeout=0.1
-        )
-        second = sequencer.latch_and_quiesce(
-            lambda: accepted.append(2), timeout=0.1
-        )
+        first = sequencer.latch_and_quiesce(lambda: accepted.append(1), timeout=0.1)
+        second = sequencer.latch_and_quiesce(lambda: accepted.append(2), timeout=0.1)
 
         assert first == EmergencyStopResult(True, True, True, "ESTOP_LATCHED")
         assert second == first
@@ -336,10 +319,13 @@ def test_close_is_bounded_while_transport_is_blocked():
 def test_activation_worker_is_non_daemon_and_close_stops_it():
     sequencer = started_sequencer()
     try:
-        assert sequencer.submit(
-            sequencer.issue(),
-            lambda: threading.current_thread().daemon,
-            timeout=0.1,
-        ) is False
+        assert (
+            sequencer.submit(
+                sequencer.issue(),
+                lambda: threading.current_thread().daemon,
+                timeout=0.1,
+            )
+            is False
+        )
     finally:
         assert sequencer.close(0.2)

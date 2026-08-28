@@ -12,7 +12,6 @@ from typing import Generic, TypeVar
 
 from agent_ros.safety.outcome import EmergencyStopResult
 
-
 _T = TypeVar("_T")
 _QUEUE_CAPACITY = 16
 _PERMIT_CONSTRUCTION_GUARD = object()
@@ -40,7 +39,7 @@ class _ActivationPermit:
 
     def __init__(
         self,
-        sequencer: "_SafetySequencer",
+        sequencer: _SafetySequencer,
         generation: int,
         nonce: object,
         construction_guard: object,
@@ -74,9 +73,7 @@ class _SafetySequencer:
 
     def __init__(self, *, thread_factory: Callable[..., object] = threading.Thread) -> None:
         self._condition = threading.Condition()
-        self._queue: queue.Queue[_Receipt[object]] = queue.Queue(
-            maxsize=_QUEUE_CAPACITY
-        )
+        self._queue: queue.Queue[_Receipt[object]] = queue.Queue(maxsize=_QUEUE_CAPACITY)
         self._thread: object | None = None
         self._thread_factory = thread_factory
         self._accepting = False
@@ -152,9 +149,7 @@ class _SafetySequencer:
         if not receipt.done.wait(remaining):
             with self._condition:
                 if not receipt.done.is_set():
-                    self._complete_receipt_locked(
-                        receipt, error=_ActivationRejected("TIMEOUT")
-                    )
+                    self._complete_receipt_locked(receipt, error=_ActivationRejected("TIMEOUT"))
                     self._latch_locked("ESTOP_LATCHED")
                     self._condition.notify_all()
                     raise _ActivationRejected("TIMEOUT")
@@ -229,12 +224,7 @@ class _SafetySequencer:
         with self._condition:
             if thread is None:
                 return True
-            return (
-                not thread.is_alive()
-                and self._queue.empty()
-                and self._in_flight is None
-                and not self._failed
-            )
+            return not thread.is_alive() and self._queue.empty() and self._in_flight is None and not self._failed
 
     def is_current(self, permit: object) -> bool:
         with self._condition:
@@ -242,11 +232,7 @@ class _SafetySequencer:
                 self._require_owned_locked(permit)
             except _ActivationRejected:
                 return False
-            return (
-                self._worker_ready_locked()
-                and not self._latched
-                and permit._generation == self._generation
-            )
+            return self._worker_ready_locked() and not self._latched and permit._generation == self._generation
 
     def require_current(self, permit: object) -> None:
         with self._condition:
@@ -277,9 +263,7 @@ class _SafetySequencer:
                     continue
                 receipt = self._queue.get_nowait()
                 if self._latched or receipt.generation != self._generation:
-                    self._complete_receipt_locked(
-                        receipt, error=_ActivationRejected("ESTOP_LATCHED")
-                    )
+                    self._complete_receipt_locked(receipt, error=_ActivationRejected("ESTOP_LATCHED"))
                     self._queue.task_done()
                     continue
                 self._in_flight = receipt
@@ -313,9 +297,7 @@ class _SafetySequencer:
     def _reject_queued_locked(self, code: str) -> None:
         while not self._queue.empty():
             receipt = self._queue.get_nowait()
-            self._complete_receipt_locked(
-                receipt, error=_ActivationRejected(code)
-            )
+            self._complete_receipt_locked(receipt, error=_ActivationRejected(code))
             self._queue.task_done()
 
     @staticmethod
@@ -334,13 +316,7 @@ class _SafetySequencer:
 
     def _worker_ready_locked(self) -> bool:
         thread = self._thread
-        if (
-            thread is None
-            or not self._accepting
-            or self._closed
-            or self._failed
-            or not thread.is_alive()
-        ):
+        if thread is None or not self._accepting or self._closed or self._failed or not thread.is_alive():
             if thread is not None and not thread.is_alive() and not self._closed:
                 self._failed = True
                 self._accepting = False
@@ -349,20 +325,12 @@ class _SafetySequencer:
         return True
 
     def _require_owned_locked(self, permit: object) -> None:
-        if (
-            type(permit) is not _ActivationPermit
-            or permit._sequencer is not self
-            or permit._nonce is not self._nonce
-        ):
+        if type(permit) is not _ActivationPermit or permit._sequencer is not self or permit._nonce is not self._nonce:
             raise _ActivationRejected("PROFILE_INVALID")
 
     @staticmethod
     def _deadline(timeout: float) -> float:
-        if (
-            isinstance(timeout, bool)
-            or not isinstance(timeout, (int, float))
-            or not math.isfinite(timeout)
-        ):
+        if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout):
             raise _ActivationRejected("PROFILE_INVALID")
         return time.monotonic() + max(0.0, timeout)
 

@@ -9,7 +9,6 @@ from pathlib import Path
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 
-
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON = Path(sys.executable)
 TOOL_NAMES = {

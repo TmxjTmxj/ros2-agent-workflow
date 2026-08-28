@@ -11,9 +11,8 @@ import re
 import secrets
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
-
 
 _PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 _DEFAULT_TTL_SECONDS = 60.0
@@ -42,7 +41,11 @@ def create_operator_challenge(
 ) -> str:
     """Create one short-lived token for a local operator, never for MCP callers."""
     _validate_profile_name(profile_name)
-    if not isinstance(ttl_seconds, (int, float)) or isinstance(ttl_seconds, bool) or not 0 < ttl_seconds <= _MAX_TTL_SECONDS:
+    if (
+        not isinstance(ttl_seconds, (int, float))
+        or isinstance(ttl_seconds, bool)
+        or not 0 < ttl_seconds <= _MAX_TTL_SECONDS
+    ):
         raise ChallengeError("invalid challenge lifetime")
     runtime = _secure_runtime_dir(runtime_dir)
     current_boot_id = _validated_boot_id(boot_id)

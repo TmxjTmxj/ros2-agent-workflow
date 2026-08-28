@@ -1,13 +1,26 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import os
 import subprocess
-import sys
+import tomllib
 import venv
 from pathlib import Path
 
+from fastmcp import Client
+from fastmcp.client.transports import StdioTransport
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_project_declares_dev_quality_tools():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    tools = set(project["project"]["optional-dependencies"]["dev"])
+
+    assert {"ruff", "mypy", "pytest-cov", "pip-audit", "pre-commit"} <= {
+        tool.split("=", 1)[0].split(">", 1)[0] for tool in tools
+    }
 
 
 def test_built_wheel_installs_and_runs_cli_outside_repository(tmp_path):
@@ -49,3 +62,20 @@ def test_built_wheel_installs_and_runs_cli_outside_repository(tmp_path):
     )
 
     assert json.loads(completed.stdout) == {"profile": "hospital-amr", "state": "NEW"}
+
+    async def verify_installed_mcp() -> None:
+        transport = StdioTransport(
+            command=str(environment / "bin" / "agent-ros-mcp"),
+            args=[],
+            cwd=str(tmp_path),
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            keep_alive=False,
+        )
+        async with Client(transport) as client:
+            assert {tool.name for tool in await client.list_tools()} >= {
+                "connection_status",
+                "emergency_stop",
+                "run_task",
+            }
+
+    asyncio.run(verify_installed_mcp())

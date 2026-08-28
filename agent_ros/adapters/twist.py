@@ -2,15 +2,15 @@
 
 from __future__ import annotations
 
-import time
 import math
 import threading
+import time
 from collections.abc import Callable
 from typing import Protocol
 
 from agent_ros.adapters._safety import (
-    _EmergencyStopChannel,
     _HARDWARE_CHANNEL_GUARD,
+    _EmergencyStopChannel,
 )
 from agent_ros.adapters.base import (
     AdapterError,
@@ -27,7 +27,6 @@ from agent_ros.safety.sequencer import (
     _ActivationRejected,
     _SafetySequencer,
 )
-
 
 _ZERO_BURST_COUNT = 3
 
@@ -174,11 +173,20 @@ class TwistAdapter(RobotAdapter):
         return sample
 
 
-
 class RclpyTwistTransport:
     """Structured rclpy transport, imported lazily so non-ROS tooling remains usable."""
 
-    def __init__(self, node, command_topic: str, odometry_topic: str, estop_topic: str, limits=None, *, control_period: float = 0.05, stale_after: float = 1.0) -> None:
+    def __init__(
+        self,
+        node,
+        command_topic: str,
+        odometry_topic: str,
+        estop_topic: str,
+        limits=None,
+        *,
+        control_period: float = 0.05,
+        stale_after: float = 1.0,
+    ) -> None:
         try:
             from geometry_msgs.msg import Twist
             from nav_msgs.msg import Odometry
@@ -285,7 +293,11 @@ class RclpyTwistTransport:
             permit = getattr(self, "_stage_permit", None)
         if stage is None:
             return
-        if sample is None or self._clock() - sample.timestamp > self._stale_after or sample.timestamp - self._clock() > 0.05:
+        if (
+            sample is None
+            or self._clock() - sample.timestamp > self._stale_after
+            or sample.timestamp - self._clock() > 0.05
+        ):
             self.stop_waypoint()
             self._state = AdapterStatus("faulted", "STALE_FEEDBACK")
             return
@@ -305,22 +317,26 @@ class RclpyTwistTransport:
         linear_delta = self._limits.max_linear_acceleration * self._period
         angular_delta = self._limits.max_angular_acceleration * self._period
         command = TwistCommand(
-            max(self._last_command.linear_velocity - linear_delta, min(self._last_command.linear_velocity + linear_delta, desired_linear)),
-            max(self._last_command.angular_velocity - angular_delta, min(self._last_command.angular_velocity + angular_delta, desired_angular)),
+            max(
+                self._last_command.linear_velocity - linear_delta,
+                min(self._last_command.linear_velocity + linear_delta, desired_linear),
+            ),
+            max(
+                self._last_command.angular_velocity - angular_delta,
+                min(self._last_command.angular_velocity + angular_delta, desired_angular),
+            ),
         )
         before_publish = getattr(self, "_before_publish", None)
         if before_publish is not None:
             before_publish()
+
         def enqueue() -> None:
             if generation != self._generation or self._stage is None:
                 return
             self.publish(command)
             self._last_command = command
 
-        if (
-            type(permit) is not _ActivationPermit
-            or permit._sequencer is not self._safety_sequencer
-        ):
+        if type(permit) is not _ActivationPermit or permit._sequencer is not self._safety_sequencer:
             self._disable_unsafe_stage()
             return
         try:

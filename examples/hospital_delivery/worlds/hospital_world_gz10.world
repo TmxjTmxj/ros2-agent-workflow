@@ -81,7 +81,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="outer_wall_top">
       <static>true</static>
       <pose>12 18 1.25 0 0 0</pose>
@@ -106,7 +106,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="outer_wall_left">
       <static>true</static>
       <pose>0 9 1.25 0 0 0</pose>
@@ -131,7 +131,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="outer_wall_right">
       <static>true</static>
       <pose>24 9 1.25 0 0 0</pose>
@@ -156,7 +156,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_reception_blue">
       <static>true</static>
       <pose>4 3.5 0.01 0 0 0</pose>
@@ -174,7 +174,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_waiting_green">
       <static>true</static>
       <pose>12 3.5 0.012 0 0 0</pose>
@@ -192,7 +192,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_pharmacy_yellow">
       <static>true</static>
       <pose>20 3.5 0.014 0 0 0</pose>
@@ -210,7 +210,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_diagnosis_red">
       <static>true</static>
       <pose>4 15 0.016 0 0 0</pose>
@@ -228,7 +228,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_lab_purple">
       <static>true</static>
       <pose>12 15 0.018 0 0 0</pose>
@@ -246,7 +246,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_ward1_white">
       <static>true</static>
       <pose>20 15 0.02 0 0 0</pose>
@@ -264,7 +264,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_restroom_cyan">
       <static>true</static>
       <pose>4 10.5 0.022 0 0 0</pose>
@@ -282,7 +282,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_corridor_gray">
       <static>true</static>
       <pose>12 9.5 0.024 0 0 0</pose>
@@ -300,7 +300,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="floor_ward2_orange">
       <static>true</static>
       <pose>20 10.5 0.026 0 0 0</pose>
@@ -318,7 +318,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_reception_waiting_1">
       <static>true</static>
       <pose>8 1.7 1.25 0 0 0</pose>
@@ -343,7 +343,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_reception_waiting_2">
       <static>true</static>
       <pose>8 5.3 1.25 0 0 0</pose>
@@ -368,7 +368,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_waiting_pharmacy_1">
       <static>true</static>
       <pose>16 1.7 1.25 0 0 0</pose>
@@ -393,7 +393,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_waiting_pharmacy_2">
       <static>true</static>
       <pose>16 5.3 1.25 0 0 0</pose>
@@ -418,7 +418,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_diag_lab_1">
       <static>true</static>
       <pose>8 13.2 1.25 0 0 0</pose>
@@ -443,7 +443,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_diag_lab_2">
       <static>true</static>
       <pose>8 16.8 1.25 0 0 0</pose>
@@ -468,7 +468,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_lab_ward1_1">
       <static>true</static>
       <pose>16 13.2 1.25 0 0 0</pose>
@@ -493,7 +493,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_lab_ward1_2">
       <static>true</static>
       <pose>16 16.8 1.25 0 0 0</pose>
@@ -518,7 +518,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_bottom_upper_left">
       <static>true</static>
       <pose>4 7.2 1.25 0 0 0</pose>
@@ -543,7 +543,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_bottom_upper_right">
       <static>true</static>
       <pose>20 7.2 1.25 0 0 0</pose>
@@ -568,7 +568,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_top_lower_left">
       <static>true</static>
       <pose>4 12.5 1.25 0 0 0</pose>
@@ -593,7 +593,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="wall_top_lower_right">
       <static>true</static>
       <pose>20 12.5 1.25 0 0 0</pose>
@@ -618,7 +618,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="nurse_station_counter">
       <static>true</static>
       <pose>12 9.2 0.55 0 0 0</pose>
@@ -643,7 +643,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="nurse_station_back">
       <static>true</static>
       <pose>12 10.0 0.8 0 0 0</pose>
@@ -668,7 +668,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="reception_desk">
       <static>true</static>
       <pose>3.5 2.2 0.45 0 0 0</pose>
@@ -693,7 +693,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="waiting_chair_0">
       <static>true</static>
       <pose>10 3.0 0.25 0 0 0</pose>
@@ -718,7 +718,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="waiting_chair_back_0">
       <static>true</static>
       <pose>10 3.25 0.65 0 0 0</pose>
@@ -743,7 +743,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="waiting_chair_1">
       <static>true</static>
       <pose>12 3.0 0.25 0 0 0</pose>
@@ -768,7 +768,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="waiting_chair_back_1">
       <static>true</static>
       <pose>12 3.25 0.65 0 0 0</pose>
@@ -793,7 +793,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="waiting_chair_2">
       <static>true</static>
       <pose>14 3.0 0.25 0 0 0</pose>
@@ -818,7 +818,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="waiting_chair_back_2">
       <static>true</static>
       <pose>14 3.25 0.65 0 0 0</pose>
@@ -843,7 +843,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="pharmacy_shelf_1">
       <static>true</static>
       <pose>21.5 2.0 0.9 0 0 0</pose>
@@ -868,7 +868,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="pharmacy_counter">
       <static>true</static>
       <pose>19.2 5.5 0.45 0 0 0</pose>
@@ -893,7 +893,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="diagnosis_table">
       <static>true</static>
       <pose>4.2 15.5 0.45 0 0 0</pose>
@@ -918,7 +918,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="diagnosis_chair">
       <static>true</static>
       <pose>5.8 15.5 0.25 0 0 0</pose>
@@ -943,7 +943,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="lab_table">
       <static>true</static>
       <pose>12 15.8 0.55 0 0 0</pose>
@@ -968,7 +968,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="lab_sample_tube">
       <static>true</static>
       <pose>11.2 15.8 1.2 0 0 0</pose>
@@ -995,7 +995,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="ward1_bed">
       <static>true</static>
       <pose>20 15.2 0.45 0 0 0</pose>
@@ -1020,7 +1020,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="ward1_pillow">
       <static>true</static>
       <pose>19.3 15.2 0.8 0 0 0</pose>
@@ -1045,7 +1045,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="ward1_cabinet">
       <static>true</static>
       <pose>22 16.2 0.6 0 0 0</pose>
@@ -1070,7 +1070,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="ward2_bed">
       <static>true</static>
       <pose>20 10.5 0.45 0 0 0</pose>
@@ -1095,7 +1095,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="ward2_pillow">
       <static>true</static>
       <pose>19.3 10.5 0.8 0 0 0</pose>
@@ -1120,7 +1120,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="ward2_cabinet">
       <static>true</static>
       <pose>22 11.2 0.6 0 0 0</pose>
@@ -1145,7 +1145,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="restroom_sink">
       <static>true</static>
       <pose>3.0 10.5 0.55 0 0 0</pose>
@@ -1170,7 +1170,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="restroom_toilet">
       <static>true</static>
       <pose>5.0 10.5 0.35 0 0 0</pose>
@@ -1197,7 +1197,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="SIGN_RECEPTION">
       <static>true</static>
       <pose>4 6.8 1.4 0 0 0</pose>
@@ -1222,7 +1222,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="SIGN_WAITING">
       <static>true</static>
       <pose>12 6.8 1.4 0 0 0</pose>
@@ -1247,7 +1247,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="SIGN_PHARMACY">
       <static>true</static>
       <pose>20 6.8 1.4 0 0 0</pose>
@@ -1272,7 +1272,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="SIGN_DIAGNOSIS">
       <static>true</static>
       <pose>4 12.7 1.4 0 0 0</pose>
@@ -1297,7 +1297,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="SIGN_LAB">
       <static>true</static>
       <pose>12 12.7 1.4 0 0 0</pose>
@@ -1322,7 +1322,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="SIGN_WARD1">
       <static>true</static>
       <pose>20 12.7 1.4 0 0 0</pose>
@@ -1347,7 +1347,7 @@
         </visual>
       </link>
     </model>
-    
+
     <model name="SIGN_NURSE_STATION">
       <static>true</static>
       <pose>12 9.8 1.7 0 0 0</pose>
@@ -1372,8 +1372,8 @@
         </visual>
       </link>
     </model>
-    
-  
+
+
     <!-- ===== 医院服务机器人 AMR ===== -->
     <include>
       <uri>model://hospital_amr</uri>

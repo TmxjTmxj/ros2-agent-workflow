@@ -4,14 +4,12 @@ import json
 import subprocess
 import sys
 import threading
-import time
 from types import ModuleType, SimpleNamespace
 
 import pytest
-
+from agent_ros.adapters import hospital as hospital_adapter
 from agent_ros.adapters.base import AdapterError
 from agent_ros.adapters.factory import RclpyAdapterFactory
-from agent_ros.adapters import hospital as hospital_adapter
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.profiles.models import RobotProfile
 from mcp_server import ros2_mcp_server
@@ -36,16 +34,22 @@ class FakeNode:
 
     def create_subscription(self, message_type, name, callback, _depth):
         if name == "/hospital_mission/status":
-            callback(message_type(data=json.dumps({
-                "state": "SUCCEEDED",
-                "elapsed": 30.0,
-                "stage_results": [
-                    {"elapsed": 10.0},
-                    {"elapsed": 20.0},
-                    {"elapsed": 30.0},
-                ],
-                "pose": {"x": 0.0, "y": 0.0, "yaw": 0.0},
-            })))
+            callback(
+                message_type(
+                    data=json.dumps(
+                        {
+                            "state": "SUCCEEDED",
+                            "elapsed": 30.0,
+                            "stage_results": [
+                                {"elapsed": 10.0},
+                                {"elapsed": 20.0},
+                                {"elapsed": 30.0},
+                            ],
+                            "pose": {"x": 0.0, "y": 0.0, "yaw": 0.0},
+                        }
+                    )
+                )
+            )
         return callback
 
     def create_client(self, _service_type, name):
@@ -235,104 +239,106 @@ def _graph_cli(argv, **kwargs):
             "services": {},
             "actions": {},
             "topic_endpoints": {
-                "/cmd_vel": [{
-                    "node_name": "base_controller",
-                    "node_namespace": "/",
-                    "gid": "01",
-                    "endpoint_type": "publisher",
-                }]
+                "/cmd_vel": [
+                    {
+                        "node_name": "base_controller",
+                        "node_namespace": "/",
+                        "gid": "01",
+                        "endpoint_type": "publisher",
+                    }
+                ]
             },
         }
         return subprocess.CompletedProcess(argv, 0, json.dumps(payload), "")
     values = {
         ("ros2", "node", "list", "--no-daemon", "--spin-time", "0.5"): "/base_controller\n",
         ("ros2", "topic", "list", "-t", "--no-daemon", "--spin-time", "0.5"): (
-            "/cmd_vel [geometry_msgs/msg/Twist]\n"
-            "/odom [nav_msgs/msg/Odometry]\n"
+            "/cmd_vel [geometry_msgs/msg/Twist]\n/odom [nav_msgs/msg/Odometry]\n"
         ),
         ("ros2", "action", "list", "-t"): "",
         ("ros2", "service", "list", "-t", "--no-daemon", "--spin-time", "0.5"): "",
         ("ros2", "topic", "info", "/cmd_vel", "--verbose", "--no-daemon", "--spin-time", "0.5"): (
-            "Node name: base_controller\n"
-            "Node namespace: /\n"
-            "Endpoint type: PUBLISHER\n"
-            "GID: 01\n"
+            "Node name: base_controller\nNode namespace: /\nEndpoint type: PUBLISHER\nGID: 01\n"
         ),
     }
     return subprocess.CompletedProcess(argv, 0, values[command], "")
 
 
 def _trajectory_profile() -> RobotProfile:
-    return RobotProfile.from_mapping({
-        "name": "arm",
-        "mode": "simulation",
-        "namespace": "/arm",
-        "frames": {"base": "base_link"},
-        "adapter": {"kind": "follow_joint_trajectory"},
-        "interfaces": {
-            "trajectory": {
-                "action": "/joint_trajectory_controller/follow_joint_trajectory",
-                "type": "control_msgs/action/FollowJointTrajectory",
-            }
-        },
-        "limits": {
-            "max_linear_velocity": 0.5,
-            "max_angular_velocity": 1.0,
-            "max_linear_acceleration": 0.5,
-            "max_angular_acceleration": 1.0,
-        },
-        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
-        "observation_sources": [],
-    })
+    return RobotProfile.from_mapping(
+        {
+            "name": "arm",
+            "mode": "simulation",
+            "namespace": "/arm",
+            "frames": {"base": "base_link"},
+            "adapter": {"kind": "follow_joint_trajectory"},
+            "interfaces": {
+                "trajectory": {
+                    "action": "/joint_trajectory_controller/follow_joint_trajectory",
+                    "type": "control_msgs/action/FollowJointTrajectory",
+                }
+            },
+            "limits": {
+                "max_linear_velocity": 0.5,
+                "max_angular_velocity": 1.0,
+                "max_linear_acceleration": 0.5,
+                "max_angular_acceleration": 1.0,
+            },
+            "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
+            "observation_sources": [],
+        }
+    )
 
 
 def _twist_profile() -> RobotProfile:
-    return RobotProfile.from_mapping({
-        "name": "base",
-        "mode": "simulation",
-        "namespace": "/base",
-        "frames": {"base": "base_link", "odom": "odom"},
-        "adapter": {"kind": "twist"},
-        "interfaces": {
-            "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
-            "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
-        },
-        "limits": {
-            "max_linear_velocity": 0.5,
-            "max_angular_velocity": 1.0,
-            "max_linear_acceleration": 0.5,
-            "max_angular_acceleration": 1.0,
-        },
-        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
-        "observation_sources": ["odometry"],
-    })
+    return RobotProfile.from_mapping(
+        {
+            "name": "base",
+            "mode": "simulation",
+            "namespace": "/base",
+            "frames": {"base": "base_link", "odom": "odom"},
+            "adapter": {"kind": "twist"},
+            "interfaces": {
+                "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
+                "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
+            },
+            "limits": {
+                "max_linear_velocity": 0.5,
+                "max_angular_velocity": 1.0,
+                "max_linear_acceleration": 0.5,
+                "max_angular_acceleration": 1.0,
+            },
+            "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
+            "observation_sources": ["odometry"],
+        }
+    )
 
 
 def _hospital_profile() -> RobotProfile:
-    return RobotProfile.from_mapping({
-        "name": "hospital-amr",
-        "mode": "simulation",
-        "namespace": "/hospital_amr",
-        "frames": {"base": "base_link", "odom": "odom"},
-        "adapter": {"kind": "hospital_delivery"},
-        "interfaces": {
-            "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
-            "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
-        },
-        "limits": {
-            "max_linear_velocity": 0.5,
-            "max_angular_velocity": 1.0,
-            "max_linear_acceleration": 0.5,
-            "max_angular_acceleration": 1.0,
-        },
-        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
-        "observation_sources": ["odometry", "camera", "scan"],
-    })
+    return RobotProfile.from_mapping(
+        {
+            "name": "hospital-amr",
+            "mode": "simulation",
+            "namespace": "/hospital_amr",
+            "frames": {"base": "base_link", "odom": "odom"},
+            "adapter": {"kind": "hospital_delivery"},
+            "interfaces": {
+                "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
+                "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
+            },
+            "limits": {
+                "max_linear_velocity": 0.5,
+                "max_angular_velocity": 1.0,
+                "max_linear_acceleration": 0.5,
+                "max_angular_acceleration": 1.0,
+            },
+            "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
+            "observation_sources": ["odometry", "camera", "scan"],
+        }
+    )
 
 
-def test_production_singleton_discovers_with_repository_owned_hospital_factory(
-    monkeypatch, tmp_path
-):
+def test_production_singleton_discovers_with_repository_owned_hospital_factory(monkeypatch, tmp_path):
     _install_fake_ros(monkeypatch)
     monkeypatch.setattr(subprocess, "run", _graph_cli)
     monkeypatch.setattr(ros2_mcp_server, "_RUNTIME_ROOT", tmp_path / "runtime")
@@ -349,9 +355,7 @@ def test_production_singleton_discovers_with_repository_owned_hospital_factory(
     assert ros2_mcp_server.close_runtime_controller() is True
 
 
-def test_production_singleton_runs_only_the_fixed_hospital_lifecycle(
-    monkeypatch, tmp_path
-):
+def test_production_singleton_runs_only_the_fixed_hospital_lifecycle(monkeypatch, tmp_path):
     _install_fake_ros(monkeypatch)
     monkeypatch.setattr(subprocess, "run", _graph_cli)
     monkeypatch.setattr(ros2_mcp_server, "_RUNTIME_ROOT", tmp_path / "runtime")
@@ -614,9 +618,7 @@ def test_failed_startup_cleanup_is_retried_before_any_new_runtime_is_created(
         factory.close(0.2)
 
 
-def test_singleton_keeps_partial_startup_poisoned_until_factory_cleanup_succeeds(
-    monkeypatch, tmp_path
-):
+def test_singleton_keeps_partial_startup_poisoned_until_factory_cleanup_succeeds(monkeypatch, tmp_path):
     _install_fake_ros(monkeypatch)
     from agent_ros.adapters import factory as factory_module
 
@@ -663,9 +665,7 @@ def test_singleton_keeps_partial_startup_poisoned_until_factory_cleanup_succeeds
             ros2_mcp_server._controller_condition.notify_all()
 
 
-def test_singleton_retry_clears_poison_only_after_owned_executor_is_reaped(
-    monkeypatch, tmp_path
-):
+def test_singleton_retry_clears_poison_only_after_owned_executor_is_reaped(monkeypatch, tmp_path):
     _install_fake_ros(monkeypatch)
     from agent_ros.adapters import factory as factory_module
 

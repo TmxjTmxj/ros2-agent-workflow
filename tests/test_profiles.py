@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from agent_ros.errors import ProfileValidationError
 from agent_ros.profiles.defaults import default_profiles_root
 from agent_ros.profiles.loader import load_robot_profile, load_task_profile
@@ -68,12 +67,16 @@ def write_profile(root: Path, **overrides) -> None:
 
 
 def test_hardware_profile_requires_positive_limits(tmp_path):
-    write_profile(tmp_path, mode="hardware", limits={
-        "max_linear_velocity": 0,
-        "max_angular_velocity": 1.0,
-        "max_linear_acceleration": 0.5,
-        "max_angular_acceleration": 1.0,
-    })
+    write_profile(
+        tmp_path,
+        mode="hardware",
+        limits={
+            "max_linear_velocity": 0,
+            "max_angular_velocity": 1.0,
+            "max_linear_acceleration": 0.5,
+            "max_angular_acceleration": 1.0,
+        },
+    )
     with pytest.raises(ProfileValidationError, match="positive"):
         load_robot_profile("robot", tmp_path)
 
@@ -95,12 +98,15 @@ def test_robot_profile_is_immutable_and_parses_standard_twist_interfaces(tmp_pat
 
 @pytest.mark.parametrize("invalid_value", [math.inf, math.nan, -0.1, 0])
 def test_robot_profile_rejects_non_finite_or_non_positive_limits(tmp_path, invalid_value):
-    write_profile(tmp_path, limits={
-        "max_linear_velocity": invalid_value,
-        "max_angular_velocity": 1.0,
-        "max_linear_acceleration": 0.5,
-        "max_angular_acceleration": 1.0,
-    })
+    write_profile(
+        tmp_path,
+        limits={
+            "max_linear_velocity": invalid_value,
+            "max_angular_velocity": 1.0,
+            "max_linear_acceleration": 0.5,
+            "max_angular_acceleration": 1.0,
+        },
+    )
     with pytest.raises(ProfileValidationError, match="finite and positive"):
         load_robot_profile("robot", tmp_path)
 
@@ -140,17 +146,24 @@ def test_task_profile_rejects_schema_required_fields_when_omitted(tmp_path, fiel
 
 
 def test_twist_profile_requires_odometry(tmp_path):
-    write_profile(tmp_path, interfaces={
-        "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
-    })
+    write_profile(
+        tmp_path,
+        interfaces={
+            "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
+        },
+    )
     with pytest.raises(ProfileValidationError, match="odometry"):
         load_robot_profile("robot", tmp_path)
 
 
 def test_nav2_profile_requires_navigate_to_pose_action_type(tmp_path):
-    write_profile(tmp_path, adapter={"kind": "nav2"}, interfaces={
-        "navigation": {"action": "/navigate_to_pose", "type": "wrong/action/Type"},
-    })
+    write_profile(
+        tmp_path,
+        adapter={"kind": "nav2"},
+        interfaces={
+            "navigation": {"action": "/navigate_to_pose", "type": "wrong/action/Type"},
+        },
+    )
     with pytest.raises(ProfileValidationError, match="NavigateToPose"):
         load_robot_profile("robot", tmp_path)
 
@@ -166,10 +179,19 @@ def test_task_profile_requires_non_empty_ordered_stages_and_finite_goal_values(t
     with pytest.raises(ProfileValidationError, match="non-empty"):
         load_task_profile("task", tmp_path)
 
-    _write_yaml(tmp_path / "tasks" / "task.yaml", _task_document(stages=[{
-        "name": "delivery", "goal": {"frame": "map", "x": math.inf, "y": 2.0, "yaw": 0.0},
-        "tolerance": 0.25, "timeout": 30.0,
-    }]))
+    _write_yaml(
+        tmp_path / "tasks" / "task.yaml",
+        _task_document(
+            stages=[
+                {
+                    "name": "delivery",
+                    "goal": {"frame": "map", "x": math.inf, "y": 2.0, "yaw": 0.0},
+                    "tolerance": 0.25,
+                    "timeout": 30.0,
+                }
+            ]
+        ),
+    )
     with pytest.raises(ProfileValidationError, match="finite"):
         load_task_profile("task", tmp_path)
 

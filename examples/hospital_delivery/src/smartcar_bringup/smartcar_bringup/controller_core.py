@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from enum import Enum
 import json
 import math
+from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
@@ -194,8 +194,7 @@ def load_route(path: str | Path) -> MissionRoute:
         if not isinstance(waypoint_raw, list) or not waypoint_raw:
             raise RouteValidationError(f"stage[{index}] must contain waypoints")
         waypoints = tuple(
-            _point(value, f"stage[{index}].waypoints[{wp_index}]")
-            for wp_index, value in enumerate(waypoint_raw)
+            _point(value, f"stage[{index}].waypoints[{wp_index}]") for wp_index, value in enumerate(waypoint_raw)
         )
         endpoint = _point(item.get("endpoint"), f"stage[{index}].endpoint")
         if math.hypot(waypoints[-1].x - endpoint.x, waypoints[-1].y - endpoint.y) > 1e-6:
@@ -323,10 +322,7 @@ class MissionControllerCore:
             odom_reference = self.last_odom_at
             if odom_reference is None:
                 odom_reference = self.started_watchdog_at
-            if (
-                odom_reference is not None
-                and watchdog - odom_reference > self.config.odom_timeout
-            ):
+            if odom_reference is not None and watchdog - odom_reference > self.config.odom_timeout:
                 return self._fail("ODOM_STALE")
             return VelocityCommand()
 
@@ -385,16 +381,14 @@ class MissionControllerCore:
             self._progress_at = now
         elif (
             self._best_heading_error is not None
-            and absolute_heading_error
-            <= self._best_heading_error - self.config.progress_heading_epsilon
+            and absolute_heading_error <= self._best_heading_error - self.config.progress_heading_epsilon
         ):
             self._best_heading_error = absolute_heading_error
             self._progress_at = now
         elif self._progress_at is not None and now - self._progress_at > self.config.progress_timeout:
             return self._fail("WAYPOINT_NO_PROGRESS")
         remaining_path = tuple(
-            self.waypoint_in_odom(waypoint)
-            for waypoint in active_stage.waypoints[self.waypoint_index :]
+            self.waypoint_in_odom(waypoint) for waypoint in active_stage.waypoints[self.waypoint_index :]
         )
         carrot = interpolate_lookahead_carrot(
             pose,
@@ -421,10 +415,7 @@ class MissionControllerCore:
         linear = self.config.max_linear
         if abs(curvature) > 1e-12:
             linear = min(linear, self.config.max_angular / abs(curvature))
-        if (
-            self.stage_index == len(self.route.stages) - 1
-            and self.waypoint_index == len(active_stage.waypoints) - 1
-        ):
+        if self.stage_index == len(self.route.stages) - 1 and self.waypoint_index == len(active_stage.waypoints) - 1:
             linear *= min(1.0, distance / self.config.final_slow_distance)
         angular = max(
             -self.config.max_angular,

@@ -10,7 +10,6 @@ import stat
 from dataclasses import dataclass
 from pathlib import Path
 
-
 _REPORT_ID = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}\Z")
 _MEDIA_TYPES = {".json": "application/json", ".png": "image/png"}
 
@@ -128,7 +127,9 @@ class EvidenceStore:
         if not isinstance(value, (dict, list)):
             raise EvidenceError()
         try:
-            encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8") + b"\n"
+            encoded = (
+                json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8") + b"\n"
+            )
         except (TypeError, ValueError):
             raise EvidenceError() from None
         destination = f"{report_id}.json"

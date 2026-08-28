@@ -19,8 +19,7 @@ assets/                    # 图表与演示图片
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -e .
-.venv/bin/python -m pip install pytest
+.venv/bin/python -m pip install -e ".[dev]"
 ```
 
 ## 开发流程
@@ -31,6 +30,12 @@ python3 -m venv .venv
 
 ```bash
 .venv/bin/python -m pytest tests/ -q
+```
+
+Run the reproducible local quality gates before opening a pull request:
+
+```bash
+make check
 ```
 
 4. 运行医院 ROS 案例测试前，确保已经 source ROS2 环境：

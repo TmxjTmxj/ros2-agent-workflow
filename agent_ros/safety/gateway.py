@@ -41,11 +41,7 @@ class SafetyTransition:
     @property
     def safety_enqueue_accepted(self) -> bool:
         """Compatibility view of the structured emergency result."""
-        return (
-            True
-            if self.stop_result is None
-            else self.stop_result.safety_command_accepted
-        )
+        return True if self.stop_result is None else self.stop_result.safety_command_accepted
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,9 +251,7 @@ class SafetyGateway:
             )
         with self._lock:
             self._supervisor.stop()
-        return self._supervisor.join(
-            timeout=max(0.0, deadline - time.monotonic())
-        )
+        return self._supervisor.join(timeout=max(0.0, deadline - time.monotonic()))
 
     def _require(self, expected: SafetyState) -> None:
         if self._state is SafetyState.ESTOPPED:
@@ -267,7 +261,12 @@ class SafetyGateway:
 
     @staticmethod
     def _check_limit(value: float, maximum: float) -> None:
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or abs(value) > maximum:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or abs(value) > maximum
+        ):
             raise SafetyError("MOTION_LIMIT")
 
     def _stop_repeatedly(self, timeout: float) -> EmergencyStopResult:
@@ -275,9 +274,7 @@ class SafetyGateway:
         results: list[EmergencyStopResult] = []
         for _ in range(_STOP_BURST_COUNT):
             try:
-                result = self._stop_callback(
-                    max(0.0, deadline - time.monotonic())
-                )
+                result = self._stop_callback(max(0.0, deadline - time.monotonic()))
             except Exception:
                 result = EmergencyStopResult(
                     True,
@@ -314,9 +311,7 @@ class SafetyGateway:
     def _fault_heartbeat_expiry(self) -> None:
         with self._lock:
             expired = (
-                self._state is SafetyState.RUNNING
-                and self._deadline is not None
-                and self._clock() > self._deadline
+                self._state is SafetyState.RUNNING and self._deadline is not None and self._clock() > self._deadline
             )
         if expired:
             self._fault("HEARTBEAT_EXPIRED")

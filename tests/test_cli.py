@@ -41,7 +41,9 @@ def test_hardware_challenge_refuses_noninteractive_execution_without_creating_a_
     assert "secret" not in capsys.readouterr().out
 
 
-def test_hardware_challenge_requires_confirmation_and_writes_token_only_to_operator_terminal(tmp_path, monkeypatch, capsys):
+def test_hardware_challenge_requires_confirmation_and_writes_token_only_to_operator_terminal(
+    tmp_path, monkeypatch, capsys
+):
     class OperatorTerminal:
         def __init__(self):
             self.writes: list[str] = []

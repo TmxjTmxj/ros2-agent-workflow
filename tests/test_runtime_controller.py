@@ -7,25 +7,24 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from agent_ros.adapters._safety import _EmergencyStopChannel
 from agent_ros.adapters.base import (
     AdapterError,
     AdapterProbe,
     AdapterStatus,
+    HospitalAction,
     Observation,
     RobotAdapter,
     TwistCommand,
 )
-from agent_ros.adapters.twist import TwistAdapter
-from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.hospital import (
     HospitalCaseAdapter,
     HospitalDeliveryAdapter,
     HospitalLifecycleClient,
     HospitalSimulationRuntime,
 )
-from agent_ros.adapters.base import HospitalAction
+from agent_ros.adapters.nav2 import Nav2Adapter
+from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.discovery.models import Endpoint, GraphSnapshot
 from agent_ros.runtime.audit import AuditIntegrityError, AuditOperation, AuditWriter
 from agent_ros.runtime.controller import RuntimeController, RuntimeControllerError
@@ -33,7 +32,6 @@ from agent_ros.runtime.evidence import EvidenceError, EvidenceStore
 from agent_ros.safety.gateway import SafetyStopAttempt, SafetyTransition
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
-from tests.support.runtime_owners import runtime_owner
 
 
 class Probe:
@@ -167,12 +165,14 @@ def write_profiles(
     task = {
         "name": "delivery",
         "robot_profile": "robot",
-        "stages": [{
-            "name": "destination",
-            "goal": {"frame": "odom", "x": 1.0, "y": 2.0, "yaw": 0.0},
-            "tolerance": 0.25,
-            "timeout": stage_timeout,
-        }],
+        "stages": [
+            {
+                "name": "destination",
+                "goal": {"frame": "odom", "x": 1.0, "y": 2.0, "yaw": 0.0},
+                "tolerance": 0.25,
+                "timeout": stage_timeout,
+            }
+        ],
         "required_sensors": required_sensors if required_sensors is not None else ["odometry"],
         "evidence": {"sources": ["camera"]},
         "recovery_policy": "cancel_and_stop",
@@ -411,6 +411,7 @@ def test_adapter_fault_is_propagated_as_stable_code_and_latches_estop(tmp_path, 
         time.sleep(0.005)
 
     assert active.state is SafetyState.ESTOPPED
+    assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
     audit_path = tmp_path / "runtime" / "audit.jsonl"
     operations = []
@@ -460,11 +461,7 @@ def test_concurrent_api_emergency_calls_use_only_their_own_stop_result(
     prepare(active)
     active.run_task("delivery")
     gateway = active._gateway
-    gateway._stop_callback = lambda _timeout: (
-        degraded
-        if threading.current_thread().name == "attempt-a"
-        else successful
-    )
+    gateway._stop_callback = lambda _timeout: degraded if threading.current_thread().name == "attempt-a" else successful
     paused = "b" if winner == "a" else "a"
     paused_ready = threading.Event()
     release_paused = threading.Event()
@@ -550,9 +547,7 @@ def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path
     robot_path = profiles / "robots" / "robot.yaml"
     robot = yaml.safe_load(robot_path.read_text())
     robot["adapter"] = {"kind": "nav2"}
-    robot["interfaces"] = {
-        "navigation": {"action": "/navigate_to_pose", "type": "nav2_msgs/action/NavigateToPose"}
-    }
+    robot["interfaces"] = {"navigation": {"action": "/navigate_to_pose", "type": "nav2_msgs/action/NavigateToPose"}}
     robot_path.write_text(yaml.safe_dump(robot), encoding="utf-8")
 
     class NavProbe:
@@ -564,15 +559,33 @@ def test_real_nav2_adapter_executes_reviewed_task_stage_through_runtime(tmp_path
             self.requests = []
             self.stop_count = 0
             self.safety_channel = RecordingEmergencyChannel(self)
-        def preflight_activation(self): return True
-        def prepare_goal(self, request): return request
-        def send_goal(self, goal, token=None): self.requests.append(goal)
-        def track_goal(self, future, permit): return None
-        def goal_status(self): return {"state": "running"}
-        def cancel_goal(self): return None
-        def publish_zero(self): return None
-        def subscribe_estop(self, handler): self.estop = handler
-        def emergency_channel(self): return self.safety_channel
+
+        def preflight_activation(self):
+            return True
+
+        def prepare_goal(self, request):
+            return request
+
+        def send_goal(self, goal, token=None):
+            self.requests.append(goal)
+
+        def track_goal(self, future, permit):
+            return None
+
+        def goal_status(self):
+            return {"state": "running"}
+
+        def cancel_goal(self):
+            return None
+
+        def publish_zero(self):
+            return None
+
+        def subscribe_estop(self, handler):
+            self.estop = handler
+
+        def emergency_channel(self):
+            return self.safety_channel
 
     transport = Transport()
     runtime = tmp_path / "runtime"
@@ -750,12 +763,14 @@ def test_each_stage_activation_uses_a_fresh_internal_safety_reservation(tmp_path
     write_profiles(profiles)
     task_path = profiles / "tasks" / "delivery.yaml"
     task = yaml.safe_load(task_path.read_text(encoding="utf-8"))
-    task["stages"].append({
-        "name": "return",
-        "goal": {"frame": "odom", "x": 0.0, "y": 0.0, "yaw": 0.0},
-        "tolerance": 0.25,
-        "timeout": 30.0,
-    })
+    task["stages"].append(
+        {
+            "name": "return",
+            "goal": {"frame": "odom", "x": 0.0, "y": 0.0, "yaw": 0.0},
+            "tolerance": 0.25,
+            "timeout": 30.0,
+        }
+    )
     task_path.write_text(yaml.safe_dump(task), encoding="utf-8")
 
     class TwoStageAdapter(RecordingAdapter):
@@ -795,9 +810,7 @@ def test_terminal_evidence_is_frozen_before_success_cleanup_and_served_after_sto
 
         def status(self):
             self.status_calls += 1
-            return AdapterStatus(
-                "succeeded" if self.status_calls == 1 else "running"
-            )
+            return AdapterStatus("succeeded" if self.status_calls == 1 else "running")
 
         def observe(self, source):
             if self.observe_after_stop_fails and self.stop_count > 0:
@@ -903,7 +916,6 @@ def test_hospital_terminal_odometry_is_built_from_success_status_without_live_ob
     active.stop_runtime()
 
 
-
 def test_start_transition_is_audited_before_adapter_activation_and_failure_is_continuous(tmp_path, runtime_owner):
     class FailedStart(RecordingAdapter):
         def start(self, task, safety_token=None):
@@ -1007,11 +1019,7 @@ def test_stop_runtime_times_out_waiting_for_concurrent_audit_durability(tmp_path
         audit_writer=BlockedStartWriter(runtime / "audit.jsonl"),
         cleanup_timeout=0.02,
     )
-    audit_workers = [
-        thread
-        for thread in threading.enumerate()
-        if thread.name == "agent-ros-audit"
-    ]
+    audit_workers = [thread for thread in threading.enumerate() if thread.name == "agent-ros-audit"]
     assert len(audit_workers) == 1
     assert audit_workers[0].daemon is False
     prepare(active)
@@ -1034,9 +1042,7 @@ def test_stop_runtime_times_out_waiting_for_concurrent_audit_durability(tmp_path
     assert elapsed < 0.2
     assert not starter.is_alive()
     assert wait_until(lambda: not audit_workers[0].is_alive())
-    assert (runtime / "audit.quarantine").read_text(encoding="ascii") == (
-        "AUDIT_INTEGRITY_COMPROMISED\n"
-    )
+    assert (runtime / "audit.quarantine").read_text(encoding="ascii") == ("AUDIT_INTEGRITY_COMPROMISED\n")
 
 
 def test_higher_sequence_append_waits_for_delayed_lower_receipt(tmp_path, runtime_owner):
@@ -1073,10 +1079,7 @@ def test_higher_sequence_append_waits_for_delayed_lower_receipt(tmp_path, runtim
 
     assert not waiter.is_alive()
     assert errors == []
-    records = [
-        json.loads(line)
-        for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()
-    ]
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
     assert [record["operation"] for record in records[-2:]] == [
         "start_task",
         "heartbeat",
@@ -1106,9 +1109,7 @@ def test_stop_runtime_waits_to_entry_deadline_for_pending_sequence_gap(tmp_path)
     assert elapsed >= 0.015
     assert elapsed < 0.2
     assert higher.sequence in active._pending_audit
-    assert (tmp_path / "runtime" / "audit.quarantine").read_text(
-        encoding="ascii"
-    ) == "AUDIT_INTEGRITY_COMPROMISED\n"
+    assert (tmp_path / "runtime" / "audit.quarantine").read_text(encoding="ascii") == "AUDIT_INTEGRITY_COMPROMISED\n"
 
 
 def test_audit_coordinator_orders_cancel_before_concurrent_estop_by_transition_sequence(tmp_path, runtime_owner):
@@ -1233,9 +1234,7 @@ def test_physical_estop_attempt_keeps_degraded_result_when_watchdog_estop_wins(
     active.run_task("delivery")
     gateway = active._gateway
     gateway._stop_callback = lambda _timeout: (
-        degraded
-        if threading.current_thread().name == "physical-a"
-        else successful
+        degraded if threading.current_thread().name == "physical-a" else successful
     )
     physical_ready = threading.Event()
     release_physical = threading.Event()
@@ -1264,13 +1263,8 @@ def test_physical_estop_attempt_keeps_degraded_result_when_watchdog_estop_wins(
 
     assert not physical.is_alive()
     assert errors == []
-    assert (tmp_path / "runtime" / "audit.quarantine").read_text(
-        encoding="ascii"
-    ) == "AUDIT_INTEGRITY_COMPROMISED\n"
-    records = [
-        json.loads(line)
-        for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()
-    ]
+    assert (tmp_path / "runtime" / "audit.quarantine").read_text(encoding="ascii") == "AUDIT_INTEGRITY_COMPROMISED\n"
+    records = [json.loads(line) for line in (tmp_path / "runtime" / "audit.jsonl").read_text().splitlines()]
     assert [record["state"] for record in records[-2:]] == [
         {"from": "RUNNING", "to": "FAULTED"},
         {"from": "FAULTED", "to": "ESTOPPED"},
@@ -1315,10 +1309,7 @@ def test_monitor_never_mistakes_a_newer_estop_for_the_watchdog_fault(tmp_path, r
     adapter.estop_handler(True)
     release.set()
     assert wait_until(
-        lambda: (
-            json.loads((runtime / "audit.jsonl").read_text().splitlines()[-1])["operation"]
-            == "estop"
-        )
+        lambda: json.loads((runtime / "audit.jsonl").read_text().splitlines()[-1])["operation"] == "estop"
     )
 
     records = [json.loads(line) for line in (runtime / "audit.jsonl").read_text().splitlines()]
@@ -1421,9 +1412,7 @@ def test_shutdown_uses_its_own_degraded_attempt_when_repeated_estop_is_successfu
     active.run_task("delivery")
     gateway = active._gateway
     gateway._stop_callback = lambda _timeout: (
-        degraded
-        if threading.current_thread().name == "shutdown-a"
-        else successful
+        degraded if threading.current_thread().name == "shutdown-a" else successful
     )
     shutdown_ready = threading.Event()
     release_shutdown = threading.Event()
@@ -1590,9 +1579,14 @@ def test_physical_estop_returns_promptly_while_monitor_status_is_blocked(tmp_pat
 
 def test_monitor_thread_start_failure_latches_stop_and_never_leaks_running(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
+
     class FailedThread:
-        def start(self): raise RuntimeError("raw")
-        def join(self, timeout=None): raise AssertionError("unstarted monitor joined")
+        def start(self):
+            raise RuntimeError("raw")
+
+        def join(self, timeout=None):
+            raise AssertionError("unstarted monitor joined")
+
     active = controller(tmp_path, adapter, owner=runtime_owner, monitor_thread_factory=lambda **_kwargs: FailedThread())
     prepare(active)
 
@@ -1702,9 +1696,7 @@ def test_evidence_constructor_maps_filesystem_errors_without_leaking_paths(tmp_p
 
 
 @pytest.mark.parametrize("replacement", [b"different-size", b"XXXXXXXX"])
-def test_evidence_snapshot_rejects_replacement_after_reference_resolution(
-    tmp_path, replacement
-):
+def test_evidence_snapshot_rejects_replacement_after_reference_resolution(tmp_path, replacement):
     root = tmp_path / "evidence"
     root.mkdir()
     target = root / "report.json"
@@ -1745,9 +1737,7 @@ def test_evidence_snapshot_rejects_growth_while_reading(monkeypatch, tmp_path):
     assert len(calls) <= 3
 
 
-def test_evidence_snapshot_rejects_declared_size_above_bound_before_reading(
-    monkeypatch, tmp_path
-):
+def test_evidence_snapshot_rejects_declared_size_above_bound_before_reading(monkeypatch, tmp_path):
     root = tmp_path / "evidence"
     root.mkdir()
     target = root / "report.json"
@@ -1810,15 +1800,18 @@ def test_restart_quarantines_schema_invalid_but_parseable_audit_record(tmp_path,
     runtime = tmp_path / "runtime"
     runtime.mkdir()
     (runtime / "audit.jsonl").write_text(
-        json.dumps({
-            "operation": "start_task",
-            "state": {"from": "NEW", "to": "RUNNING"},
-            "outcome": "ok",
-            "wall_time": 1.0,
-            "monotonic_time": 1.0,
-            "operation_data": {"payload": "raw"},
-            "endpoint_gids": [],
-        }) + "\n",
+        json.dumps(
+            {
+                "operation": "start_task",
+                "state": {"from": "NEW", "to": "RUNNING"},
+                "outcome": "ok",
+                "wall_time": 1.0,
+                "monotonic_time": 1.0,
+                "operation_data": {"payload": "raw"},
+                "endpoint_gids": [],
+            }
+        )
+        + "\n",
         encoding="utf-8",
     )
     active = RuntimeController(
@@ -1843,6 +1836,7 @@ def test_restart_quarantines_bounded_but_impossible_audit_history(tmp_path, muta
     runtime.mkdir()
     writer = AuditWriter(runtime / "audit.jsonl", wall_clock=lambda: 1.0, monotonic_clock=lambda: 1.0)
     from agent_ros.runtime.audit import AuditEvent, AuditOperation, AuditOutcome
+
     writer.append(AuditEvent(AuditOperation.DISCOVER, SafetyState.NEW, SafetyState.DISCOVERED, AuditOutcome.OK))
     if mutation == "oversized":
         (runtime / "audit.jsonl").write_bytes(b"{" + b"x" * 5000 + b"}\n")
@@ -1858,8 +1852,11 @@ def test_restart_quarantines_bounded_but_impossible_audit_history(tmp_path, muta
             record["state"] = {"from": "DISCOVERED", "to": "ARMED"}
             (runtime / "audit.jsonl").write_text(json.dumps(record) + "\n")
     active = RuntimeController(
-        profiles_root=profiles, evidence_dir=tmp_path / "evidence", runtime_dir=runtime,
-        graph_probe=Probe(), adapter_factory=lambda _profile: RecordingAdapter(),
+        profiles_root=profiles,
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=runtime,
+        graph_probe=Probe(),
+        adapter_factory=lambda _profile: RecordingAdapter(),
     )
     runtime_owner(active)
 
@@ -1919,8 +1916,10 @@ def test_restart_quarantines_interleaved_or_replayed_audit_session(tmp_path, run
     path.write_text(records[0] + "\n" + records[1] + "\n" + records[0] + "\n", encoding="utf-8")
 
     restarted = RuntimeController(
-        profiles_root=tmp_path / "profiles", evidence_dir=tmp_path / "evidence",
-        runtime_dir=tmp_path / "runtime", graph_probe=Probe(),
+        profiles_root=tmp_path / "profiles",
+        evidence_dir=tmp_path / "evidence",
+        runtime_dir=tmp_path / "runtime",
+        graph_probe=Probe(),
         adapter_factory=lambda _profile: RecordingAdapter(),
     )
     runtime_owner(restarted)
@@ -1991,9 +1990,7 @@ def _running_hospital_controller(tmp_path, runtime_owner, now):
     return active, adapter
 
 
-def test_hospital_runtime_uses_adapter_sim_time_not_slow_wall_time_for_budget(
-    tmp_path, runtime_owner
-):
+def test_hospital_runtime_uses_adapter_sim_time_not_slow_wall_time_for_budget(tmp_path, runtime_owner):
     now = [0.0]
     active, adapter = _running_hospital_controller(tmp_path, runtime_owner, now)
     adapter.values = {
@@ -2011,9 +2008,7 @@ def test_hospital_runtime_uses_adapter_sim_time_not_slow_wall_time_for_budget(
     active.stop_runtime()
 
 
-def test_hospital_runtime_faults_when_current_sim_stage_exceeds_profile_budget(
-    tmp_path, runtime_owner
-):
+def test_hospital_runtime_faults_when_current_sim_stage_exceeds_profile_budget(tmp_path, runtime_owner):
     now = [0.0]
     active, adapter = _running_hospital_controller(tmp_path, runtime_owner, now)
     adapter.values = {
@@ -2029,9 +2024,7 @@ def test_hospital_runtime_faults_when_current_sim_stage_exceeds_profile_budget(
     active.stop_runtime()
 
 
-def test_hospital_runtime_keeps_separate_bounded_wall_liveness_deadline(
-    tmp_path, runtime_owner
-):
+def test_hospital_runtime_keeps_separate_bounded_wall_liveness_deadline(tmp_path, runtime_owner):
     now = [0.0]
     active, adapter = _running_hospital_controller(tmp_path, runtime_owner, now)
     adapter.values = {"elapsed": 90.0, "stage_results": []}
@@ -2044,9 +2037,7 @@ def test_hospital_runtime_keeps_separate_bounded_wall_liveness_deadline(
     active.stop_runtime()
 
 
-def test_sealed_hospital_discovery_validates_from_available_fixed_lifecycle_on_empty_graph(
-    tmp_path, runtime_owner
-):
+def test_sealed_hospital_discovery_validates_from_available_fixed_lifecycle_on_empty_graph(tmp_path, runtime_owner):
     profiles = tmp_path / "profiles"
     write_hospital_profiles(profiles)
     adapter = SimTimeHospitalAdapter()
@@ -2067,9 +2058,7 @@ def test_sealed_hospital_discovery_validates_from_available_fixed_lifecycle_on_e
     active.stop_runtime()
 
 
-def test_hospital_stop_runtime_reaps_inflight_start_with_one_cleanup_deadline(
-    tmp_path, monkeypatch
-):
+def test_hospital_stop_runtime_reaps_inflight_start_with_one_cleanup_deadline(tmp_path, monkeypatch):
     start_entered = threading.Event()
     release_start = threading.Event()
     stop_executed = threading.Event()
@@ -2123,9 +2112,7 @@ def test_hospital_stop_runtime_reaps_inflight_start_with_one_cleanup_deadline(
     assert not client._emergency_worker._thread.is_alive()
 
 
-def test_sealed_hospital_empty_graph_fallback_rejects_unavailable_fixed_lifecycle(
-    tmp_path, runtime_owner
-):
+def test_sealed_hospital_empty_graph_fallback_rejects_unavailable_fixed_lifecycle(tmp_path, runtime_owner):
     class UnavailableHospitalAdapter(SimTimeHospitalAdapter):
         close_calls = 0
 
@@ -2153,9 +2140,7 @@ def test_sealed_hospital_empty_graph_fallback_rejects_unavailable_fixed_lifecycl
     assert adapter.close_calls == 1
 
 
-def test_sealed_hospital_fallback_never_hides_live_command_publisher_conflict(
-    tmp_path, runtime_owner
-):
+def test_sealed_hospital_fallback_never_hides_live_command_publisher_conflict(tmp_path, runtime_owner):
     class CloseTrackingHospitalAdapter(SimTimeHospitalAdapter):
         close_calls = 0
 
@@ -2213,9 +2198,7 @@ def test_tentative_adapter_cleanup_failure_poison_overrides_discovery_error(
         active.stop_runtime()
 
 
-def test_empty_graph_never_grants_standard_adapter_profile_capabilities(
-    tmp_path, runtime_owner
-):
+def test_empty_graph_never_grants_standard_adapter_profile_capabilities(tmp_path, runtime_owner):
     adapter = RecordingAdapter()
     profiles = tmp_path / "profiles"
     write_profiles(profiles)

@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Mapping
 
 
 def _frozen_mapping(value: Mapping[str, tuple[str, ...]]) -> Mapping[str, tuple[str, ...]]:

@@ -7,14 +7,13 @@ import argparse
 import json
 import math
 import os
-from pathlib import Path
 import sys
 import tempfile
 import time
+from pathlib import Path
 from typing import Any
 
 import yaml
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_REPORT = PROJECT_ROOT / "logs" / "acceptance_report.json"
@@ -88,6 +87,7 @@ def _valid_png(camera: Any) -> bool:
 
 def load_strict_json(path: Path) -> dict[str, Any]:
     """Load one standards-compliant JSON object and reject NaN/Infinity."""
+
     def reject_constant(value: str) -> None:
         raise ValueError(f"non-finite JSON number: {value}")
 
@@ -126,7 +126,7 @@ def load_acceptance_route(path: Path = ROUTE_PATH) -> dict[str, Any]:
                 or any(_number(value) is None for value in waypoint)
             ):
                 raise ValueError("route waypoints must be finite coordinates")
-        if any(abs(float(a) - float(b)) > 1e-9 for a, b in zip(endpoint, waypoints[-1])):
+        if any(abs(float(a) - float(b)) > 1e-9 for a, b in zip(endpoint, waypoints[-1], strict=False)):
             raise ValueError("route final waypoint must match endpoint")
     return route
 
@@ -221,33 +221,24 @@ def derive_odom_metrics(
     if (
         not sim_times
         or any(value <= 0.0 for value in sim_times)
-        or any(second <= first for first, second in zip(sim_times, sim_times[1:]))
+        or any(second <= first for first, second in zip(sim_times, sim_times[1:], strict=False))
         or any(value < 0.0 for value in wall_times)
-        or any(second < first for first, second in zip(wall_times, wall_times[1:]))
+        or any(second < first for first, second in zip(wall_times, wall_times[1:], strict=False))
     ):
         raise ValueError("odometry sim time samples must be positive and monotonic")
-    ordered = [
-        sample
-        for sample in all_ordered
-        if sample["at_sim_time"] >= mission_started_sim_time
-    ]
+    ordered = [sample for sample in all_ordered if sample["at_sim_time"] >= mission_started_sim_time]
     if not ordered:
         raise ValueError("no odometry samples after mission start")
 
     stage_metrics: list[dict[str, Any]] = []
     cursor = 0
     terminal_limit = [
-        (index, sample)
-        for index, sample in enumerate(ordered)
-        if sample["at_sim_time"] <= terminal_sim_time
+        (index, sample) for index, sample in enumerate(ordered) if sample["at_sim_time"] <= terminal_sim_time
     ]
     for stage_id, name, endpoint_x, endpoint_y in stage_rows:
         odom_x, odom_y = _world_xy_to_odom(start, endpoint_x, endpoint_y)
         candidates = terminal_limit[cursor:]
-        distances = [
-            math.hypot(sample["x"] - odom_x, sample["y"] - odom_y)
-            for _, sample in candidates
-        ]
+        distances = [math.hypot(sample["x"] - odom_x, sample["y"] - odom_y) for _, sample in candidates]
         reached_offset = next(
             (offset for offset, distance in enumerate(distances) if distance <= tolerance),
             None,
@@ -267,15 +258,11 @@ def derive_odom_metrics(
                 "name": name,
                 "reached": reached,
                 "endpoint_error": endpoint_error,
-                "elapsed": (
-                    None if entered_at is None else entered_at - mission_started_sim_time
-                ),
+                "elapsed": (None if entered_at is None else entered_at - mission_started_sim_time),
             }
         )
 
-    terminal_samples = [
-        sample for sample in ordered if sample["at_sim_time"] <= terminal_sim_time
-    ]
+    terminal_samples = [sample for sample in ordered if sample["at_sim_time"] <= terminal_sim_time]
     terminal_pose = terminal_samples[-1] if terminal_samples else ordered[0]
     stopped_pose = all_ordered[-1]
     stopped_drift = math.hypot(
@@ -311,9 +298,7 @@ def derive_odom_metrics(
             "mission_started_wall_monotonic": mission_started_wall_monotonic,
             "terminal_wall_monotonic": terminal_wall_monotonic,
             "monitor_stopped_wall_monotonic": all_ordered[-1]["at_wall_monotonic"],
-            "post_terminal_sample_count": sum(
-                sample["at_sim_time"] > terminal_sim_time for sample in all_ordered
-            ),
+            "post_terminal_sample_count": sum(sample["at_sim_time"] > terminal_sim_time for sample in all_ordered),
             "initial_odom_pose": pose_fields(all_ordered[0]),
         },
     }
@@ -337,7 +322,10 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
 
     stages = report.get("stages")
     stage_elapsed_values: list[float] = []
-    if not isinstance(stages, list) or [item.get("id") for item in stages if isinstance(item, dict)] != EXPECTED_STAGE_IDS:
+    if (
+        not isinstance(stages, list)
+        or [item.get("id") for item in stages if isinstance(item, dict)] != EXPECTED_STAGE_IDS
+    ):
         errors.append("stage order must be pharmacy, ward2, laboratory exactly once")
     else:
         for stage in stages:
@@ -346,9 +334,7 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
             if stage.get("reached") is not True:
                 errors.append(f"stage {stage.get('id')} was not reached in odometry")
             if error is None or error < 0.0 or error > 0.50:
-                errors.append(
-                    f"stage {stage.get('id')} endpoint error {stage.get('endpoint_error')!r} exceeds 0.50 m"
-                )
+                errors.append(f"stage {stage.get('id')} endpoint error {stage.get('endpoint_error')!r} exceeds 0.50 m")
             if stage_elapsed is None or stage_elapsed <= 0.0:
                 errors.append(f"stage {stage.get('id')} elapsed time is not positive")
             else:
@@ -357,25 +343,17 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
     elapsed = _number(report.get("elapsed_seconds"))
     if elapsed is None or elapsed <= 0.0 or elapsed > 180.0:
         errors.append(f"elapsed time {report.get('elapsed_seconds')!r} exceeds 180 s")
-    if (
-        len(stage_elapsed_values) == len(EXPECTED_STAGE_IDS)
-        and (
-            stage_elapsed_values != sorted(stage_elapsed_values)
-            or len(set(stage_elapsed_values)) != len(stage_elapsed_values)
-            or elapsed is None
-            or stage_elapsed_values[-1] > elapsed
-        )
+    if len(stage_elapsed_values) == len(EXPECTED_STAGE_IDS) and (
+        stage_elapsed_values != sorted(stage_elapsed_values)
+        or len(set(stage_elapsed_values)) != len(stage_elapsed_values)
+        or elapsed is None
+        or stage_elapsed_values[-1] > elapsed
     ):
         errors.append("stage elapsed order is invalid or exceeds terminal elapsed time")
     if len(stage_elapsed_values) == len(EXPECTED_STAGE_IDS):
         stage_durations = [
             stage_elapsed_values[0],
-            *(
-                second - first
-                for first, second in zip(
-                    stage_elapsed_values, stage_elapsed_values[1:]
-                )
-            ),
+            *(second - first for first, second in zip(stage_elapsed_values, stage_elapsed_values[1:], strict=False)),
         ]
         if any(duration <= 0.0 or duration > 60.0 for duration in stage_durations):
             errors.append("stage duration exceeds its 60 s simulation-time budget")
@@ -404,16 +382,10 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
         mission_started = _number(odometry.get("mission_started_sim_time"))
         terminal_at = _number(odometry.get("terminal_sim_time"))
         monitor_stopped = _number(odometry.get("monitor_stopped_sim_time"))
-        wall_monitor_started = _number(
-            odometry.get("monitor_started_wall_monotonic")
-        )
-        wall_mission_started = _number(
-            odometry.get("mission_started_wall_monotonic")
-        )
+        wall_monitor_started = _number(odometry.get("monitor_started_wall_monotonic"))
+        wall_mission_started = _number(odometry.get("mission_started_wall_monotonic"))
         wall_terminal = _number(odometry.get("terminal_wall_monotonic"))
-        wall_monitor_stopped = _number(
-            odometry.get("monitor_stopped_wall_monotonic")
-        )
+        wall_monitor_stopped = _number(odometry.get("monitor_stopped_wall_monotonic"))
         sample_count = odometry.get("sample_count")
         post_terminal_count = odometry.get("post_terminal_sample_count")
         initial = odometry.get("initial_odom_pose")
@@ -430,21 +402,12 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
             or monitor_stopped - terminal_at < 2.5
         ):
             errors.append("odometry sim timestamps and sample summary are invalid")
-        if (
-            None
-            in {
-                wall_monitor_started,
-                wall_mission_started,
-                wall_terminal,
-                wall_monitor_stopped,
-            }
-            or not (
-                wall_monitor_started
-                <= wall_mission_started
-                < wall_terminal
-                <= wall_monitor_stopped
-            )
-        ):
+        if None in {
+            wall_monitor_started,
+            wall_mission_started,
+            wall_terminal,
+            wall_monitor_stopped,
+        } or not (wall_monitor_started <= wall_mission_started < wall_terminal <= wall_monitor_stopped):
             errors.append("odometry wall timestamps are invalid")
         if not isinstance(initial, dict):
             errors.append("initial odometry pose is missing")
@@ -481,10 +444,7 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
         else:
             started = _number(publisher_evidence.get("monitor_started_unix"))
             stopped = _number(publisher_evidence.get("monitor_stopped_unix"))
-            times = [
-                _number(sample.get("at_unix")) if isinstance(sample, dict) else None
-                for sample in samples
-            ]
+            times = [_number(sample.get("at_unix")) if isinstance(sample, dict) else None for sample in samples]
             if (
                 started is None
                 or stopped is None
@@ -495,10 +455,7 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
                 errors.append("publisher monitoring timestamps are not finite and ordered")
             else:
                 numeric_times = [float(value) for value in times]
-                gaps = [
-                    second - first
-                    for first, second in zip(numeric_times, numeric_times[1:])
-                ]
+                gaps = [second - first for first, second in zip(numeric_times, numeric_times[1:], strict=False)]
                 required_duration = (wall_elapsed or 0.0) + 2.5
                 if (
                     numeric_times[0] - started > 1.0
@@ -527,9 +484,7 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
                 if not isinstance(endpoints, list):
                     continue
                 gids.update(
-                    endpoint.get("gid")
-                    for endpoint in endpoints
-                    if isinstance(endpoint, dict) and endpoint.get("gid")
+                    endpoint.get("gid") for endpoint in endpoints if isinstance(endpoint, dict) and endpoint.get("gid")
                 )
             if len(gids) != 1:
                 errors.append("publisher GID changed during monitoring")
@@ -546,14 +501,10 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
         contact_started = _number(contact_evidence.get("monitor_started_unix"))
         contact_stopped = _number(contact_evidence.get("monitor_stopped_unix"))
         publisher_started = (
-            _number(publisher_evidence.get("monitor_started_unix"))
-            if isinstance(publisher_evidence, dict)
-            else None
+            _number(publisher_evidence.get("monitor_started_unix")) if isinstance(publisher_evidence, dict) else None
         )
         publisher_stopped = (
-            _number(publisher_evidence.get("monitor_stopped_unix"))
-            if isinstance(publisher_evidence, dict)
-            else None
+            _number(publisher_evidence.get("monitor_stopped_unix")) if isinstance(publisher_evidence, dict) else None
         )
         if (
             contact_started is None
@@ -569,11 +520,7 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
         if contact_evidence.get("topic_publishers_seen") is not True:
             errors.append("contact monitor topic was not active")
         contact_messages = contact_evidence.get("messages")
-        if (
-            isinstance(contact_messages, bool)
-            or not isinstance(contact_messages, int)
-            or contact_messages <= 0
-        ):
+        if isinstance(contact_messages, bool) or not isinstance(contact_messages, int) or contact_messages <= 0:
             errors.append("contact messages were not observed")
         contacts = contact_evidence.get("prohibited_contacts")
         if not isinstance(contacts, list) or contacts:
@@ -619,7 +566,7 @@ def validate_acceptance_report(report: dict[str, Any]) -> list[str]:
                     errors.append("contact publisher identities changed during monitoring")
                     break
             if contact_times:
-                gaps = [second - first for first, second in zip(contact_times, contact_times[1:])]
+                gaps = [second - first for first, second in zip(contact_times, contact_times[1:], strict=False)]
                 if (
                     contact_times != sorted(contact_times)
                     or contact_started is None
@@ -672,10 +619,10 @@ def _distance(first: dict[str, Any], second: dict[str, Any]) -> float:
 def generate_acceptance_report(timeout: float = 300.0, output: Path = DEFAULT_REPORT) -> dict[str, Any]:
     """Arm evidence first, start one mission, then save the complete run."""
     import rclpy
+    from nav_msgs.msg import Odometry
     from rclpy.context import Context
     from rclpy.executors import SingleThreadedExecutor
     from rclpy.node import Node
-    from nav_msgs.msg import Odometry
     from ros_gz_interfaces.msg import Contacts
     from std_msgs.msg import String
     from std_srvs.srv import Trigger
@@ -722,9 +669,7 @@ def generate_acceptance_report(timeout: float = 300.0, output: Path = DEFAULT_RE
             endpoints = graph_endpoints("/cmd_vel")
             publisher_samples.append({"at_unix": time.time(), "endpoints": endpoints})
             contact_endpoints = graph_endpoints("/hospital_amr/contacts")
-            contact_publisher_samples.append(
-                {"at_unix": time.time(), "endpoints": contact_endpoints}
-            )
+            contact_publisher_samples.append({"at_unix": time.time(), "endpoints": contact_endpoints})
             contact_topic_publishers_seen = contact_topic_publishers_seen or bool(contact_endpoints)
         except Exception as exc:
             publisher_inspection_errors.append(str(exc))
@@ -775,9 +720,7 @@ def generate_acceptance_report(timeout: float = 300.0, output: Path = DEFAULT_RE
 
     subscription = node.create_subscription(String, "/hospital_mission/status", on_status, 10)
     odom_subscription = node.create_subscription(Odometry, "/odom", on_odom, 50)
-    contact_subscription = node.create_subscription(
-        Contacts, "/hospital_amr/contacts", on_contacts, 10
-    )
+    contact_subscription = node.create_subscription(Contacts, "/hospital_amr/contacts", on_contacts, 10)
     started_waiting = time.monotonic()
     deadline = started_waiting + timeout
     terminal = None
@@ -794,13 +737,10 @@ def generate_acceptance_report(timeout: float = 300.0, output: Path = DEFAULT_RE
         sample_publishers()
         if not latest or latest[0].get("state") != "IDLE" or not odom_samples:
             terminal = dict(latest[0]) if latest else {"state": "NO_STATUS"}
-            terminal["failure_code"] = (
-                "ODOM_NOT_READY" if not odom_samples else "MISSION_NOT_IDLE"
-            )
+            terminal["failure_code"] = "ODOM_NOT_READY" if not odom_samples else "MISSION_NOT_IDLE"
         elif (
             len(publisher_samples[-1]["endpoints"]) != 1
-            or publisher_samples[-1]["endpoints"][0]["node"]
-            != "/hospital_mission_controller"
+            or publisher_samples[-1]["endpoints"][0]["node"] != "/hospital_mission_controller"
         ):
             terminal = dict(latest[0])
             terminal["failure_code"] = "CMD_VEL_NOT_EXCLUSIVE"
@@ -832,15 +772,11 @@ def generate_acceptance_report(timeout: float = 300.0, output: Path = DEFAULT_RE
             if state in {"SUCCEEDED", "FAILED", "CANCELLED", "ESTOPPED"}:
                 terminal = dict(latest[0])
                 terminal_wall_monotonic = time.monotonic()
-                terminal_sim_time = (
-                    odom_samples[-1]["at_sim_time"] if odom_samples else None
-                )
+                terminal_sim_time = odom_samples[-1]["at_sim_time"] if odom_samples else None
                 break
         if terminal is None:
             terminal = dict(latest[0]) if latest else {"state": "NO_STATUS"}
-            terminal["failure_code"] = (
-                terminal.get("failure_code") or "ACCEPTANCE_WALL_TIMEOUT"
-            )
+            terminal["failure_code"] = terminal.get("failure_code") or "ACCEPTANCE_WALL_TIMEOUT"
         if terminal_wall_monotonic is None:
             terminal_wall_monotonic = time.monotonic()
         if terminal_sim_time is None and odom_samples:

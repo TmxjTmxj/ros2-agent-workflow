@@ -3,20 +3,18 @@ import math
 from pathlib import Path
 
 import pytest
-
 from smartcar_bringup.controller_core import (
     ControllerConfig,
     MissionControllerCore,
     MissionState,
     Pose2D,
     RouteValidationError,
-    load_route,
     interpolate_lookahead_carrot,
+    load_route,
     normalize_angle,
     pure_pursuit_curvature,
     world_pose_to_odom,
 )
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 

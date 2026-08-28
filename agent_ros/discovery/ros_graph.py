@@ -8,11 +8,9 @@ import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 
 from agent_ros.discovery.models import Endpoint, GraphSnapshot
 from agent_ros.errors import DiscoveryError
-
 
 Runner = Callable[[Sequence[str]], object]
 _TYPED_LINE = re.compile(r"^(?P<name>\S+)\s+\[(?P<types>[^\]]+)\]\s*$")
@@ -34,22 +32,15 @@ class RosGraphProbe:
     def _probe_cli(self) -> GraphSnapshot:
         commands = {
             "nodes": ("ros2", "node", "list", "--no-daemon", "--spin-time", "0.5"),
-            "topics": (
-                "ros2", "topic", "list", "-t", "--no-daemon", "--spin-time", "0.5"
-            ),
+            "topics": ("ros2", "topic", "list", "-t", "--no-daemon", "--spin-time", "0.5"),
             "actions": ("ros2", "action", "list", "-t"),
-            "services": (
-                "ros2", "service", "list", "-t", "--no-daemon", "--spin-time", "0.5"
-            ),
+            "services": ("ros2", "service", "list", "-t", "--no-daemon", "--spin-time", "0.5"),
         }
         with ThreadPoolExecutor(
             max_workers=_MAX_COMMAND_TOPICS,
             thread_name_prefix="agent-ros-graph",
         ) as pool:
-            initial = {
-                name: pool.submit(self._output, argv)
-                for name, argv in commands.items()
-            }
+            initial = {name: pool.submit(self._output, argv) for name, argv in commands.items()}
             output = {name: future.result() for name, future in initial.items()}
             nodes = tuple(line for line in output["nodes"].splitlines() if line)
             topics = _parse_typed_lines(output["topics"])
@@ -58,8 +49,7 @@ class RosGraphProbe:
             command_topics = tuple(
                 topic
                 for topic, types in topics.items()
-                if topic.rstrip("/").endswith("cmd_vel")
-                and "geometry_msgs/msg/Twist" in types
+                if topic.rstrip("/").endswith("cmd_vel") and "geometry_msgs/msg/Twist" in types
             )
             if len(command_topics) > _MAX_COMMAND_TOPICS:
                 raise DiscoveryError("too many command topics for bounded inspection")
@@ -67,16 +57,19 @@ class RosGraphProbe:
                 topic: pool.submit(
                     self._output,
                     (
-                        "ros2", "topic", "info", topic, "--verbose",
-                        "--no-daemon", "--spin-time", "0.5",
+                        "ros2",
+                        "topic",
+                        "info",
+                        topic,
+                        "--verbose",
+                        "--no-daemon",
+                        "--spin-time",
+                        "0.5",
                     ),
                 )
                 for topic in command_topics
             }
-            endpoints = {
-                topic: _parse_endpoints(future.result())
-                for topic, future in endpoint_futures.items()
-            }
+            endpoints = {topic: _parse_endpoints(future.result()) for topic, future in endpoint_futures.items()}
         return GraphSnapshot(
             nodes=nodes,
             topics=topics,
@@ -154,26 +147,19 @@ def _probe_native() -> GraphSnapshot:
         executor.add_node(node)
         node_added = True
         executor.spin_once(timeout_sec=0.5)
-        nodes = tuple(
-            _full_node_name(name, namespace)
-            for name, namespace in node.get_node_names_and_namespaces()
-        )
+        nodes = tuple(_full_node_name(name, namespace) for name, namespace in node.get_node_names_and_namespaces())
         topics = _typed_mapping(node.get_topic_names_and_types())
         services = _typed_mapping(node.get_service_names_and_types())
         actions = _typed_mapping(get_actions(node=node))
         command_topics = tuple(
             topic
             for topic, types in topics.items()
-            if topic.rstrip("/").endswith("cmd_vel")
-            and "geometry_msgs/msg/Twist" in types
+            if topic.rstrip("/").endswith("cmd_vel") and "geometry_msgs/msg/Twist" in types
         )
         if len(command_topics) > _MAX_COMMAND_TOPICS:
             raise DiscoveryError("too many command topics for bounded inspection")
         endpoints = {
-            topic: tuple(
-                _native_endpoint(info)
-                for info in node.get_publishers_info_by_topic(topic)
-            )
+            topic: tuple(_native_endpoint(info) for info in node.get_publishers_info_by_topic(topic))
             for topic in command_topics
         }
         snapshot = GraphSnapshot(
@@ -238,12 +224,7 @@ def _native_endpoint(info) -> Endpoint:
     namespace = getattr(info, "node_namespace", None)
     endpoint_type = getattr(getattr(info, "endpoint_type", None), "name", None)
     gid = getattr(info, "endpoint_gid", None)
-    if (
-        not isinstance(name, str)
-        or not name
-        or not isinstance(namespace, str)
-        or not isinstance(endpoint_type, str)
-    ):
+    if not isinstance(name, str) or not name or not isinstance(namespace, str) or not isinstance(endpoint_type, str):
         raise DiscoveryError("native endpoint identity is invalid")
     try:
         gid_text = bytes(gid).hex()
@@ -280,9 +261,7 @@ def _snapshot_from_document(document: object) -> GraphSnapshot:
     if not isinstance(document, Mapping) or set(document) != required:
         raise DiscoveryError("native graph document is not closed")
     nodes = document["nodes"]
-    if not isinstance(nodes, list) or not all(
-        isinstance(node, str) and node.startswith("/") for node in nodes
-    ):
+    if not isinstance(nodes, list) or not all(isinstance(node, str) and node.startswith("/") for node in nodes):
         raise DiscoveryError("native graph nodes are invalid")
 
     def types_map(value: object) -> dict[str, tuple[str, ...]]:
@@ -324,12 +303,14 @@ def _snapshot_from_document(document: object) -> GraphSnapshot:
                 or value["endpoint_type"] not in {"publisher", "subscription"}
             ):
                 raise DiscoveryError("native graph endpoints are invalid")
-            parsed.append(Endpoint(
-                value["node_name"],
-                value["gid"],
-                value["endpoint_type"],
-                value["node_namespace"],
-            ))
+            parsed.append(
+                Endpoint(
+                    value["node_name"],
+                    value["gid"],
+                    value["endpoint_type"],
+                    value["node_namespace"],
+                )
+            )
         endpoints[topic] = tuple(parsed)
     return GraphSnapshot(
         nodes=tuple(nodes),
@@ -358,9 +339,7 @@ def _parse_typed_lines(output: str) -> dict[str, tuple[str, ...]]:
         match = _TYPED_LINE.match(line.strip())
         if match is None:
             continue
-        entries[match.group("name")] = tuple(
-            item.strip() for item in match.group("types").split(",") if item.strip()
-        )
+        entries[match.group("name")] = tuple(item.strip() for item in match.group("types").split(",") if item.strip())
     return entries
 
 
@@ -388,9 +367,11 @@ def _append_endpoint(records: list[Endpoint], current: dict[str, str]) -> None:
     # The GID is an identity, not a display label. Keep records separate even
     # where a CLI implementation omits it, rather than deduplicating nodes.
     gid = current.get("GID", "")
-    records.append(Endpoint(
-        node_name=node_name,
-        node_namespace=current.get("Node namespace", ""),
-        gid=gid,
-        endpoint_type=endpoint_type.lower(),
-    ))
+    records.append(
+        Endpoint(
+            node_name=node_name,
+            node_namespace=current.get("Node namespace", ""),
+            gid=gid,
+            endpoint_type=endpoint_type.lower(),
+        )
+    )

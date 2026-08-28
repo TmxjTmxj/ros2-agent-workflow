@@ -9,9 +9,8 @@ from nav_msgs.msg import Odometry
 from rclpy.context import Context
 from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
-from std_srvs.srv import Trigger
-
 from smartcar_bringup.mission_controller import MissionControllerNode
+from std_srvs.srv import Trigger
 
 
 def write_route(tmp_path):

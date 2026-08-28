@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
 import math
 import os
-import time
 import threading
+import time
 from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Protocol
@@ -35,23 +34,24 @@ from agent_ros.safety.gateway import SafetyError, SafetyGateway, SafetyTransitio
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
 
-
 _QUARANTINE_TEXT = b"AUDIT_INTEGRITY_COMPROMISED\n"
 # ROS sim time is the competition budget; this wall bound only detects a stuck
 # sim host. Slow RTF must not fail an otherwise valid 180 s ROS-clock task.
 _HOSPITAL_WALL_LIVENESS_TIMEOUT = 600.0
-_PUBLIC_CODES = frozenset({
-    "UNSAFE_STATE",
-    "PROFILE_INVALID",
-    "CONTROLLER_CONFLICT",
-    "STALE_FEEDBACK",
-    "TIMEOUT",
-    "EVIDENCE_INVALID",
-    "AUDIT_INTEGRITY_COMPROMISED",
-    "ESTOP_LATCHED",
-    "OPERATOR_REQUIRED",
-    "CLEANUP_FAILED",
-})
+_PUBLIC_CODES = frozenset(
+    {
+        "UNSAFE_STATE",
+        "PROFILE_INVALID",
+        "CONTROLLER_CONFLICT",
+        "STALE_FEEDBACK",
+        "TIMEOUT",
+        "EVIDENCE_INVALID",
+        "AUDIT_INTEGRITY_COMPROMISED",
+        "ESTOP_LATCHED",
+        "OPERATOR_REQUIRED",
+        "CLEANUP_FAILED",
+    }
+)
 
 
 class RuntimeControllerError(RuntimeError):
@@ -262,11 +262,13 @@ class RuntimeController:
             topic_types.setdefault(interface.topic, (interface.type,))
         capabilities = list(graph_report.capabilities)
         if "mobile_base.twist" not in graph_report.capability_names:
-            capabilities.append(Capability(
-                "mobile_base.twist",
-                1.0,
-                ("sealed:hospital_delivery", command.topic, odometry.topic),
-            ))
+            capabilities.append(
+                Capability(
+                    "mobile_base.twist",
+                    1.0,
+                    ("sealed:hospital_delivery", command.topic, odometry.topic),
+                )
+            )
         return DiscoveryReport(
             tuple(capabilities),
             graph_report.blocking_warnings,
@@ -280,7 +282,6 @@ class RuntimeController:
         gateway, adapter, profile = self._active()
         if profile.name != profile_name:
             raise RuntimeControllerError("PROFILE_INVALID")
-        before = gateway.state
         try:
             adapter.validate()
             adapter._validate_runtime_safety(profile.mode)
@@ -393,9 +394,7 @@ class RuntimeController:
             self._cancel_requested = False
             self._stage_index = 0
             self._stage_deadline = self._clock() + (
-                _HOSPITAL_WALL_LIVENESS_TIMEOUT
-                if isinstance(adapter, HospitalCaseAdapter)
-                else task.stages[0].timeout
+                _HOSPITAL_WALL_LIVENESS_TIMEOUT if isinstance(adapter, HospitalCaseAdapter) else task.stages[0].timeout
             )
             self._observed_gateway_state = gateway.state
             self._task_cleanup_started = False
@@ -433,11 +432,7 @@ class RuntimeController:
                 ):
                     result["elapsed"] = float(elapsed)
                 stage_index = status.values.get("stage_index")
-                if (
-                    not isinstance(stage_index, bool)
-                    and isinstance(stage_index, int)
-                    and stage_index >= 0
-                ):
+                if not isinstance(stage_index, bool) and isinstance(stage_index, int) and stage_index >= 0:
                     result["stage_index"] = stage_index
             return result
 
@@ -537,9 +532,7 @@ class RuntimeController:
                 transition = attempt.transition
                 if transition is not None:
                     self._register_transition(AuditOperation.ESTOP, transition)
-                cleanup_failed = (
-                    require_successful_stop and not attempt.result.successful
-                )
+                cleanup_failed = require_successful_stop and not attempt.result.successful
                 if adapter is not None:
                     self._start_task_cleanup(adapter)
             cleanup_failed = not gateway.close(timeout=remaining()) or cleanup_failed
@@ -565,34 +558,19 @@ class RuntimeController:
         cleanup_failed = not self._audit_worker.close(remaining()) or cleanup_failed
         if adapter is not None:
             try:
-                cleanup_failed = (
-                    not adapter.close(remaining())
-                    or cleanup_failed
-                )
+                cleanup_failed = not adapter.close(remaining()) or cleanup_failed
             except Exception:
                 cleanup_failed = True
         else:
-            cleanup_failed = (
-                not self._activation_issuer.close(remaining())
-                or cleanup_failed
-            )
+            cleanup_failed = not self._activation_issuer.close(remaining()) or cleanup_failed
         try:
-            adapter_owner_close = None if adapter is None else getattr(
-                adapter, "_runtime_owner_close", None
-            )
-            adapter_owner = (
-                getattr(adapter_owner_close, "__self__", None)
-                if callable(adapter_owner_close)
-                else None
-            )
+            adapter_owner_close = None if adapter is None else getattr(adapter, "_runtime_owner_close", None)
+            adapter_owner = getattr(adapter_owner_close, "__self__", None) if callable(adapter_owner_close) else None
         except Exception:
             adapter_owner = None
         if self._adapter_factory_close is not None and adapter_owner is not self._adapter_factory:
             try:
-                cleanup_failed = (
-                    not self._adapter_factory_close(remaining())
-                    or cleanup_failed
-                )
+                cleanup_failed = not self._adapter_factory_close(remaining()) or cleanup_failed
             except Exception:
                 cleanup_failed = True
         if cleanup_failed:
@@ -676,8 +654,7 @@ class RuntimeController:
             (
                 item
                 for item in gateway.transitions_from(self._next_audit_sequence)
-                if item.state_before is SafetyState.RUNNING
-                and item.state_after is SafetyState.FAULTED
+                if item.state_before is SafetyState.RUNNING and item.state_after is SafetyState.FAULTED
             ),
             None,
         )
@@ -956,9 +933,7 @@ class RuntimeController:
         wait_for: int | None = None,
         timeout: float | None = None,
     ) -> None:
-        deadline = time.monotonic() + (
-            self._cleanup_timeout if timeout is None else max(0.0, timeout)
-        )
+        deadline = time.monotonic() + (self._cleanup_timeout if timeout is None else max(0.0, timeout))
         owns_drain = False
         timed_out = False
         try:
@@ -981,11 +956,7 @@ class RuntimeController:
                                 self._audit_draining = True
                                 owns_drain = True
                             break
-                        if (
-                            wait_for is None
-                            and not self._pending_audit
-                            and (owns_drain or not self._audit_draining)
-                        ):
+                        if wait_for is None and not self._pending_audit and (owns_drain or not self._audit_draining):
                             return
                         remaining = deadline - time.monotonic()
                         if remaining <= 0.0:
@@ -1032,14 +1003,9 @@ class RuntimeController:
         for transition in gateway.transitions_from(sequence):
             if transition.sequence != sequence:
                 return None
-            if (
-                transition.state_before is SafetyState.RUNNING
-                and transition.state_after is SafetyState.FAULTED
-            ):
+            if transition.state_before is SafetyState.RUNNING and transition.state_after is SafetyState.FAULTED:
                 operation_data = (
-                    None
-                    if transition.stop_result is None
-                    else self._stop_result_data(transition.stop_result)
+                    None if transition.stop_result is None else self._stop_result_data(transition.stop_result)
                 )
                 return (
                     AuditOperation.HEARTBEAT,
@@ -1069,9 +1035,7 @@ class RuntimeController:
         outcome: AuditOutcome = AuditOutcome.OK,
         timeout: float | None = None,
     ) -> None:
-        deadline = time.monotonic() + (
-            self._cleanup_timeout if timeout is None else max(0.0, timeout)
-        )
+        deadline = time.monotonic() + (self._cleanup_timeout if timeout is None else max(0.0, timeout))
         try:
             self._audit_worker.append(
                 AuditEvent(
@@ -1084,9 +1048,7 @@ class RuntimeController:
                 max(0.0, deadline - time.monotonic()),
             )
         except (AuditIntegrityError, AuditError, OSError):
-            self._record_audit_failure(
-                timeout=max(0.0, deadline - time.monotonic())
-            )
+            self._record_audit_failure(timeout=max(0.0, deadline - time.monotonic()))
             raise RuntimeControllerError("AUDIT_INTEGRITY_COMPROMISED") from None
 
     def _record_audit_failure(self, *, timeout: float) -> None:

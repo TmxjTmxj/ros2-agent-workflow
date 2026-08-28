@@ -9,7 +9,6 @@ from pathlib import Path
 
 import fastmcp
 import pytest
-
 from agent_ros.adapters.base import Observation
 from agent_ros.runtime import EvidenceReference, EvidenceStore, RuntimeControllerError
 from agent_ros.safety.state import SafetyState
@@ -117,7 +116,9 @@ def test_every_tool_has_closed_world_annotations_and_a_bounded_timeout():
         assert tool.timeout is not None and 0 < tool.timeout <= 30
         assert tool.annotations is not None
         assert tool.annotations.readOnlyHint is (name in READ_ONLY_TOOLS)
-        assert tool.annotations.destructiveHint is (name in {"arm_robot", "run_task", "cancel_task", "emergency_stop", "stop_runtime"})
+        assert tool.annotations.destructiveHint is (
+            name in {"arm_robot", "run_task", "cancel_task", "emergency_stop", "stop_runtime"}
+        )
         assert tool.annotations.openWorldHint is False
 
 
@@ -155,16 +156,16 @@ def test_every_tool_has_a_closed_operation_specific_success_schema():
         data = success["properties"]["data"]
         assert set(data["required"]) == expected_data_required[name]
         assert set(data["properties"]) >= expected_data_required[name]
-    status_schema = _tool_map()["connection_status"].output_schema["oneOf"][0]["properties"]["data"]["properties"]["state"]
+    status_schema = _tool_map()["connection_status"].output_schema["oneOf"][0]["properties"]["data"]["properties"][
+        "state"
+    ]
     assert set(status_schema["enum"]) == {state.value for state in SafetyState}
 
 
 def test_tool_schemas_use_repository_enums_and_never_grant_raw_authority():
     tools = _tool_map()
     all_argument_names = {
-        argument.lower()
-        for tool in tools.values()
-        for argument in tool.parameters.get("properties", {})
+        argument.lower() for tool in tools.values() for argument in tool.parameters.get("properties", {})
     }
     assert not any(fragment in argument for argument in all_argument_names for fragment in BANNED_INPUT_FRAGMENTS)
     assert tools["discover_robot"].parameters["properties"]["profile_hint"]["anyOf"][0]["enum"] == ["hospital-amr"]
@@ -296,7 +297,6 @@ def test_singleton_cleanup_failure_is_observable_and_poisoned_instance_is_not_re
 def test_concurrent_get_waits_for_close_and_creates_only_one_replacement(monkeypatch):
     close_entered = threading.Event()
     release_close = threading.Event()
-    old = object()
     created = []
 
     class BlockingController:
@@ -324,7 +324,9 @@ def test_concurrent_get_waits_for_close_and_creates_only_one_replacement(monkeyp
     close_results = []
     get_results = []
     closer = threading.Thread(target=lambda: close_results.append(ros2_mcp_server.close_runtime_controller()))
-    getters = [threading.Thread(target=lambda: get_results.append(ros2_mcp_server.get_runtime_controller())) for _ in range(2)]
+    getters = [
+        threading.Thread(target=lambda: get_results.append(ros2_mcp_server.get_runtime_controller())) for _ in range(2)
+    ]
     try:
         closer.start()
         assert close_entered.wait(0.2)
@@ -374,9 +376,7 @@ def test_png_evidence_is_returned_only_after_signature_and_pixel_decode(tmp_path
         def get_evidence(self, report_id=None):
             return store.get("camera")
 
-    server = ros2_mcp_server.create_server(
-        controller=PngController(), evidence_store=store
-    )
+    server = ros2_mcp_server.create_server(controller=PngController(), evidence_store=store)
     result = _call(server, "get_evidence", {"report_id": "camera"})
 
     assert result.is_error is False
@@ -397,9 +397,7 @@ def test_invalid_png_evidence_is_a_stable_error(tmp_path, payload):
             return store.get("camera")
 
     result = _call(
-        ros2_mcp_server.create_server(
-            controller=PngController(), evidence_store=store
-        ),
+        ros2_mcp_server.create_server(controller=PngController(), evidence_store=store),
         "get_evidence",
         {"report_id": "camera"},
     )
@@ -421,9 +419,7 @@ def test_oversized_png_is_rejected_before_evidence_store_reads_it():
             return PNG_1X1
 
     result = _call(
-        ros2_mcp_server.create_server(
-            controller=OversizedController(), evidence_store=ReadDetectingStore()
-        ),
+        ros2_mcp_server.create_server(controller=OversizedController(), evidence_store=ReadDetectingStore()),
         "get_evidence",
         {"report_id": "camera"},
     )

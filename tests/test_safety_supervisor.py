@@ -3,18 +3,18 @@ from __future__ import annotations
 import threading
 
 import pytest
-
 from agent_ros.safety.supervisor import SafetySupervisor
-from tests.support.runtime_owners import supervisor_owner
 
 
 def test_supervisor_owner_stops_and_joins_started_worker(supervisor_owner):
-    supervisor = supervisor_owner(SafetySupervisor(
-        clock=lambda: 0.0,
-        deadline=lambda: None,
-        on_expired=lambda: None,
-        poll_interval=0.001,
-    ))
+    supervisor = supervisor_owner(
+        SafetySupervisor(
+            clock=lambda: 0.0,
+            deadline=lambda: None,
+            on_expired=lambda: None,
+            poll_interval=0.001,
+        )
+    )
 
     supervisor.start()
 

@@ -11,12 +11,11 @@ from typing import Generic, TypeVar
 
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.sequencer import (
-    _ActivationIssuer,
-    _ActivationPermit,
+    _ActivationIssuer,  # noqa: F401 - compatibility re-export for the adapter boundary
+    _ActivationPermit,  # noqa: F401 - compatibility re-export for the adapter boundary
     _ActivationRejected,
     _SafetySequencer,
 )
-
 
 _T = TypeVar("_T")
 _HARDWARE_CHANNEL_GUARD = object()
@@ -40,7 +39,13 @@ class _BoundedCommandWorker:
     """A fixed-capacity, prestarted owner for calls into an unknown transport."""
 
     __slots__ = (
-        "_accepting", "_failed", "_lock", "_queue", "_stop", "_thread", "_thread_name",
+        "_accepting",
+        "_failed",
+        "_lock",
+        "_queue",
+        "_stop",
+        "_thread",
+        "_thread_name",
     )
 
     def __init__(self, thread_name: str) -> None:
@@ -90,9 +95,7 @@ class _BoundedCommandWorker:
             thread = self._thread
         if thread is not None and thread is not threading.current_thread():
             thread.join(timeout=max(0.0, timeout))
-        return thread is None or (
-            not thread.is_alive() and self._queue.empty() and not self._failed
-        )
+        return thread is None or (not thread.is_alive() and self._queue.empty() and not self._failed)
 
     def _run(self) -> None:
         while not self._stop.is_set() or not self._queue.empty():
@@ -115,13 +118,15 @@ class _EmergencyStopChannel(ABC):
     """A private bounded enqueue whose worker owns all transport calls."""
 
     __slots__ = (
-        "_hardware_verified", "_sequencer", "_verified", "_worker", "__weakref__",
+        "_hardware_verified",
+        "_sequencer",
+        "_verified",
+        "_worker",
+        "__weakref__",
     )
 
     def __init__(self, *, hardware_verified: bool, construction_guard: object = None) -> None:
-        self._hardware_verified = (
-            hardware_verified is True and construction_guard is _HARDWARE_CHANNEL_GUARD
-        )
+        self._hardware_verified = hardware_verified is True and construction_guard is _HARDWARE_CHANNEL_GUARD
         self._sequencer: _SafetySequencer | None = None
         self._verified = False
         self._worker = _BoundedCommandWorker("agent-ros-emergency")
@@ -141,11 +146,7 @@ class _EmergencyStopChannel(ABC):
             available = self._preflight()
         except Exception:
             raise _ActivationRejected("PROFILE_INVALID") from None
-        if (
-            available is not True
-            or (mode == "hardware" and not self._hardware_verified)
-            or not self._worker.start()
-        ):
+        if available is not True or (mode == "hardware" and not self._hardware_verified) or not self._worker.start():
             raise _ActivationRejected("PROFILE_INVALID")
         self._verified = True
 

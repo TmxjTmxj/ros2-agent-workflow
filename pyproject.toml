@@ -14,12 +14,64 @@ dependencies = [
     "jsonschema>=4.20",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    "mypy>=1.13",
+    "pip-audit>=2.8",
+    "pre-commit>=4.0",
+    "pytest>=8.3",
+    "pytest-cov>=6.0",
+    "ruff==0.8.4",
+    "types-jsonschema>=4.24",
+    "types-PyYAML>=6.0",
+]
+
 [project.scripts]
 agent-ros = "agent_ros.cli:main"
 agent-ros-mcp = "mcp_server.ros2_mcp_server:main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["agent_ros", "mcp_server"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+
+[tool.mypy]
+files = ["agent_ros/cli.py", "agent_ros/profiles/defaults.py", "mcp_server/ros2_mcp_server.py"]
+python_version = "3.11"
+follow_imports = "skip"
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = ["rclpy.*", "geometry_msgs.*", "nav2_msgs.*", "sensor_msgs.*"]
+ignore_missing_imports = true
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+src = ["agent_ros", "mcp_server", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+# Existing string-enum formatting is part of the public serialized surface;
+# migrate it deliberately rather than changing `str(Enum)` behavior in a lint pass.
+# UP038 is a readability-only syntax rewrite whose classification differs across
+# supported Ruff hook releases, so keeping it out preserves reproducible hooks.
+ignore = ["UP038", "UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+# FastMCP owns its validation exception hierarchy, so this boundary test asserts
+# rejection without coupling the test to an implementation exception class.
+"tests/test_mcp_server.py" = ["B017"]
 
 [tool.setuptools.packages.find]
 include = ["agent_ros*", "mcp_server*"]

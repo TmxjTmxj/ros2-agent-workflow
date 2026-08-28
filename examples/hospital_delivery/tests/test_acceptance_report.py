@@ -1,12 +1,11 @@
-from copy import deepcopy
 import ast
 import json
+from copy import deepcopy
 from pathlib import Path
 
 import cv2
 import numpy as np
 import pytest
-
 from scripts import verify_acceptance
 from scripts.verify_acceptance import is_prohibited_robot_contact, validate_acceptance_report
 
@@ -72,16 +71,12 @@ def valid_report(tmp_path, monkeypatch):
             "samples": [
                 {
                     "at_unix": 1.0 + index * 0.5,
-                    "endpoints": [
-                        {"node": "/hospital_mission_controller", "gid": "controller-gid"}
-                    ],
+                    "endpoints": [{"node": "/hospital_mission_controller", "gid": "controller-gid"}],
                 }
                 for index in range(387)
             ],
             "inspection_errors": [],
-            "observed_endpoints": [
-                {"node": "/hospital_mission_controller", "gid": "controller-gid"}
-            ],
+            "observed_endpoints": [{"node": "/hospital_mission_controller", "gid": "controller-gid"}],
         },
         "contact_evidence": {
             "topic": "/hospital_amr/contacts",
@@ -94,10 +89,7 @@ def valid_report(tmp_path, monkeypatch):
             "publisher_samples": [
                 {
                     "at_unix": 1.0 + index * 0.5,
-                    "endpoints": [
-                        {"node": "/hospital_ros_gz_bridge", "gid": f"contact-gid-{gid}"}
-                        for gid in range(5)
-                    ],
+                    "endpoints": [{"node": "/hospital_ros_gz_bridge", "gid": f"contact-gid-{gid}"} for gid in range(5)],
                 }
                 for index in range(387)
             ],
@@ -120,16 +112,12 @@ def test_valid_report_passes_and_sets_boolean(valid_report):
         (lambda report: report.update(wall_elapsed_seconds=-1.0), "wall elapsed"),
         (lambda report: report.update(real_time_factor=float("nan")), "real time factor"),
         (
-            lambda report: report["odometry_evidence"].update(
-                monitor_stopped_sim_time=137.0
-            ),
+            lambda report: report["odometry_evidence"].update(monitor_stopped_sim_time=137.0),
             "odometry sim timestamps",
         ),
     ],
 )
-def test_report_requires_sim_time_domain_and_post_terminal_coverage(
-    valid_report, mutation, expected
-):
+def test_report_requires_sim_time_domain_and_post_terminal_coverage(valid_report, mutation, expected):
     mutation(valid_report)
 
     errors = validate_acceptance_report(valid_report)
@@ -138,7 +126,7 @@ def test_report_requires_sim_time_domain_and_post_terminal_coverage(
 
 
 def test_each_stage_delta_must_fit_its_sixty_second_budget(valid_report):
-    for stage, elapsed in zip(valid_report["stages"], [30.0, 91.0, 126.0]):
+    for stage, elapsed in zip(valid_report["stages"], [30.0, 91.0, 126.0], strict=False):
         stage["elapsed"] = elapsed
 
     errors = validate_acceptance_report(valid_report)
@@ -189,11 +177,7 @@ def test_forged_success_status_cannot_replace_independent_odometry_metrics(valid
 
 def test_verifier_does_not_import_the_production_route_or_transform():
     source = Path(verify_acceptance.__file__).read_text(encoding="utf-8")
-    imported_modules = {
-        node.module
-        for node in ast.walk(ast.parse(source))
-        if isinstance(node, ast.ImportFrom)
-    }
+    imported_modules = {node.module for node in ast.walk(ast.parse(source)) if isinstance(node, ast.ImportFrom)}
 
     assert "smartcar_bringup.controller_core" not in imported_modules
 
@@ -234,9 +218,7 @@ def test_independent_transform_cross_checks_rotated_world_route():
     )
 
     assert [stage["reached"] for stage in metrics["stages"]] == [True, True, True]
-    assert [stage["endpoint_error"] for stage in metrics["stages"]] == pytest.approx(
-        [0.0, 0.0, 0.0]
-    )
+    assert [stage["endpoint_error"] for stage in metrics["stages"]] == pytest.approx([0.0, 0.0, 0.0])
 
 
 def test_odom_metrics_use_sim_stamps_and_report_wall_clock_rtf():
@@ -266,9 +248,7 @@ def test_odom_metrics_use_sim_stamps_and_report_wall_clock_rtf():
     )
 
     assert metrics["time_domain"] == "ros_sim_time"
-    assert [stage["elapsed"] for stage in metrics["stages"]] == pytest.approx(
-        [30.0, 70.0, 126.0]
-    )
+    assert [stage["elapsed"] for stage in metrics["stages"]] == pytest.approx([30.0, 70.0, 126.0])
     assert metrics["elapsed_seconds"] == pytest.approx(126.0)
     assert metrics["wall_elapsed_seconds"] == pytest.approx(189.0)
     assert metrics["real_time_factor"] == pytest.approx(2.0 / 3.0)
@@ -363,15 +343,11 @@ def test_contact_filter_covers_all_robot_parts(first, second, prohibited):
             "publisher sample",
         ),
         (
-            lambda report: report["publisher_evidence"]["samples"][4]["endpoints"][0].update(
-                gid="replacement-gid"
-            ),
+            lambda report: report["publisher_evidence"]["samples"][4]["endpoints"][0].update(gid="replacement-gid"),
             "publisher GID",
         ),
         (
-            lambda report: report["contact_evidence"]["prohibited_contacts"].append(
-                {"collision": "wall"}
-            ),
+            lambda report: report["contact_evidence"]["prohibited_contacts"].append({"collision": "wall"}),
             "prohibited contact",
         ),
         (
@@ -416,9 +392,7 @@ def test_stage_order_and_count_are_strict(valid_report):
             "coverage",
         ),
         (
-            lambda report: report["publisher_evidence"]["samples"][2].update(
-                at_unix=10.0
-            ),
+            lambda report: report["publisher_evidence"]["samples"][2].update(at_unix=10.0),
             "ordered",
         ),
         (
@@ -482,9 +456,7 @@ def test_validate_mode_rejects_report_whose_saved_passed_flag_lies(tmp_path, val
         ),
     ],
 )
-def test_acceptance_numbers_are_finite_nonnegative_and_forward_moving(
-    valid_report, mutation, expected
-):
+def test_acceptance_numbers_are_finite_nonnegative_and_forward_moving(valid_report, mutation, expected):
     mutation(valid_report)
     errors = validate_acceptance_report(valid_report)
     assert any(expected in error for error in errors)
@@ -520,10 +492,8 @@ def test_all_five_contact_bridge_publishers_must_remain_live(valid_report):
 
 
 @pytest.mark.parametrize("elapsed_values", ([70.0, 30.0, 126.0], [30.0, 70.0, 127.0]))
-def test_stage_entry_times_are_ordered_and_within_terminal_elapsed(
-    valid_report, elapsed_values
-):
-    for stage, elapsed in zip(valid_report["stages"], elapsed_values):
+def test_stage_entry_times_are_ordered_and_within_terminal_elapsed(valid_report, elapsed_values):
+    for stage, elapsed in zip(valid_report["stages"], elapsed_values, strict=False):
         stage["elapsed"] = elapsed
 
     errors = validate_acceptance_report(valid_report)
@@ -561,9 +531,7 @@ def test_unobserved_later_stage_serializes_as_standard_json_null(tmp_path):
     "mutation",
     [
         lambda report: report["publisher_evidence"]["samples"].__setitem__(0, None),
-        lambda report: report["publisher_evidence"]["samples"][0].update(
-            endpoints=[None]
-        ),
+        lambda report: report["publisher_evidence"]["samples"][0].update(endpoints=[None]),
         lambda report: report["contact_evidence"]["publisher_samples"][0].update(
             endpoints=[None, None, None, None, None]
         ),
@@ -585,9 +553,7 @@ def test_validate_cli_converts_malformed_nested_json_to_failure_without_tracebac
     assert saved.get("failure_code") in {None, "REPORT_MALFORMED"}
 
 
-def test_generation_failure_atomically_replaces_stale_pass_report(
-    tmp_path, valid_report, monkeypatch, capsys
-):
+def test_generation_failure_atomically_replaces_stale_pass_report(tmp_path, valid_report, monkeypatch, capsys):
     path = tmp_path / "acceptance.json"
     path.write_text(json.dumps(valid_report), encoding="utf-8")
     monkeypatch.setattr(

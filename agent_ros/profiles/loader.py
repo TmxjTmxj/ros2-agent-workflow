@@ -8,10 +8,8 @@ from pathlib import Path
 from typing import TypeVar
 
 import yaml
-
 from agent_ros.errors import ProfileValidationError
 from agent_ros.profiles.models import RobotProfile, TaskProfile
-
 
 _PROFILE_NAME = re.compile(r"[a-z0-9][a-z0-9-]*")
 _Profile = TypeVar("_Profile", RobotProfile, TaskProfile)

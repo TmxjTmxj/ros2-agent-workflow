@@ -8,11 +8,10 @@ import asyncio
 import json
 import math
 import os
-from collections.abc import Mapping
-from pathlib import Path
 import tempfile
 import time
-
+from collections.abc import Mapping
+from pathlib import Path
 
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = EXAMPLE_ROOT.parents[1]
@@ -37,18 +36,23 @@ _ROS_ENVIRONMENT_KEYS = (
 
 class ToolSequenceError(RuntimeError):
     def __init__(self, code: str) -> None:
-        self.code = code if code in {
-            "UNSAFE_STATE",
-            "PROFILE_INVALID",
-            "CONTROLLER_CONFLICT",
-            "STALE_FEEDBACK",
-            "TIMEOUT",
-            "EVIDENCE_INVALID",
-            "AUDIT_INTEGRITY_COMPROMISED",
-            "ESTOP_LATCHED",
-            "OPERATOR_REQUIRED",
-            "CLEANUP_FAILED",
-        } else "UNSAFE_STATE"
+        self.code = (
+            code
+            if code
+            in {
+                "UNSAFE_STATE",
+                "PROFILE_INVALID",
+                "CONTROLLER_CONFLICT",
+                "STALE_FEEDBACK",
+                "TIMEOUT",
+                "EVIDENCE_INVALID",
+                "AUDIT_INTEGRITY_COMPROMISED",
+                "ESTOP_LATCHED",
+                "OPERATOR_REQUIRED",
+                "CLEANUP_FAILED",
+            }
+            else "UNSAFE_STATE"
+        )
         super().__init__(self.code)
 
 
@@ -71,11 +75,7 @@ def _tool_record(name: str, ok: bool, data: Mapping[str, object] | None = None):
                 record[key] = value
         for key in ("elapsed", "stage_index"):
             value = data.get(key)
-            if (
-                not isinstance(value, bool)
-                and isinstance(value, (int, float))
-                and math.isfinite(float(value))
-            ):
+            if not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(float(value)):
                 record[key] = value if isinstance(value, int) else float(value)
     return record
 
@@ -167,11 +167,7 @@ async def execute_tool_sequence(
         projected: dict[str, float] = {}
         for key in ("x", "y", "yaw"):
             value = values.get(key)
-            if (
-                isinstance(value, bool)
-                or not isinstance(value, (int, float))
-                or not math.isfinite(float(value))
-            ):
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(float(value)):
                 raise ToolSequenceError("UNSAFE_STATE")
             projected[key] = float(value)
         observation = {"source": "odometry", "values": projected}
@@ -220,13 +216,16 @@ def write_trace_atomic(path: Path, trace: Mapping[str, object]) -> None:
     """Persist a privacy-safe standard-JSON trace without exposing a stale PASS."""
     destination = Path(path)
     destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    encoded = json.dumps(
-        dict(trace),
-        ensure_ascii=False,
-        sort_keys=True,
-        indent=2,
-        allow_nan=False,
-    ) + "\n"
+    encoded = (
+        json.dumps(
+            dict(trace),
+            ensure_ascii=False,
+            sort_keys=True,
+            indent=2,
+            allow_nan=False,
+        )
+        + "\n"
+    )
     temporary: Path | None = None
     try:
         with tempfile.NamedTemporaryFile(

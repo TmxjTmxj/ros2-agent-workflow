@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Launch the hospital world, explicit bridges, and one mission controller."""
 
-from pathlib import Path
 import os
+from pathlib import Path
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription

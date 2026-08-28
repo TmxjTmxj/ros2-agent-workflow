@@ -3,15 +3,13 @@ from __future__ import annotations
 import ast
 import json
 import os
-from pathlib import Path
 import subprocess
+from pathlib import Path
 
 import yaml
-
 from agent_ros.adapters.base import HospitalAction
 from agent_ros.adapters.hospital import HospitalDeliveryAdapter, HospitalSimulationRuntime
 from agent_ros.profiles.loader import load_robot_profile, load_task_profile
-
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLE = ROOT / "examples" / "hospital_delivery"
@@ -57,14 +55,8 @@ def test_task_profile_stage_endpoints_match_the_verified_route():
 
 
 def test_bridge_has_exactly_five_scoped_hospital_contact_sources():
-    bridges = yaml.safe_load(
-        (EXAMPLE / "config" / "ros_gz_bridge.yaml").read_text(encoding="utf-8")
-    )
-    contacts = [
-        bridge
-        for bridge in bridges
-        if bridge.get("ros_topic_name") == "/hospital_amr/contacts"
-    ]
+    bridges = yaml.safe_load((EXAMPLE / "config" / "ros_gz_bridge.yaml").read_text(encoding="utf-8"))
+    contacts = [bridge for bridge in bridges if bridge.get("ros_topic_name") == "/hospital_amr/contacts"]
 
     assert len(contacts) == 5
     assert len({bridge["gz_topic_name"] for bridge in contacts}) == 5
@@ -154,13 +146,16 @@ def _run_demo_with_fake_python(tmp_path, *, verify_status: int, stop_status: int
     fake_bin = tmp_path / "bin"
     fake_bin.mkdir()
     fake_python = fake_bin / "python3"
-    fake_python.write_text("""#!/usr/bin/env bash
+    fake_python.write_text(
+        """#!/usr/bin/env bash
       case "$1" in
         *verify_acceptance.py) exit "$DEMO_VERIFY_STATUS" ;;
       esac
       if [[ "$2" == stop ]]; then exit "$DEMO_STOP_STATUS"; fi
       exit 0
-    """, encoding="utf-8")
+    """,
+        encoding="utf-8",
+    )
     fake_python.chmod(0o755)
     env["PATH"] = f"{fake_bin}:{env['PATH']}"
     return subprocess.run(

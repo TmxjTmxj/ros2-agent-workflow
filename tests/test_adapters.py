@@ -9,10 +9,10 @@ import time
 from contextlib import contextmanager
 from types import ModuleType, SimpleNamespace
 
-import pytest
-
 import agent_ros.adapters as adapters_package
+import pytest
 from agent_ros.adapters._safety import _ActivationIssuer, _EmergencyStopChannel
+from agent_ros.adapters._safety import _ActivationPermit as ReExportedActivationPermit
 from agent_ros.adapters.base import (
     AdapterError,
     AdapterStatus,
@@ -31,11 +31,9 @@ from agent_ros.adapters.hospital import (
 )
 from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.twist import TwistAdapter
-from agent_ros.profiles.models import RobotProfile
-from agent_ros.profiles.models import PoseGoal, TaskStage
+from agent_ros.profiles.models import PoseGoal, RobotProfile, TaskStage
 from agent_ros.safety.outcome import EmergencyStopResult
-from agent_ros.safety.sequencer import _ActivationRejected, _SafetySequencer
-from tests.support.runtime_owners import adapter_owner
+from agent_ros.safety.sequencer import _ActivationPermit, _ActivationRejected, _SafetySequencer
 
 
 def robot_profile(kind: str = "twist", *, mode: str = "simulation") -> RobotProfile:
@@ -52,22 +50,24 @@ def robot_profile(kind: str = "twist", *, mode: str = "simulation") -> RobotProf
             "command": {"topic": "/cmd_vel", "type": "geometry_msgs/msg/Twist"},
             "odometry": {"topic": "/odom", "type": "nav_msgs/msg/Odometry"},
         }
-    return RobotProfile.from_mapping({
-        "name": "robot",
-        "mode": mode,
-        "namespace": "/robot",
-        "frames": {"base": "base_link", "odom": "odom"},
-        "adapter": {"kind": kind},
-        "interfaces": interfaces,
-        "limits": {
-            "max_linear_velocity": 0.5,
-            "max_angular_velocity": 1.0,
-            "max_linear_acceleration": 0.5,
-            "max_angular_acceleration": 1.0,
-        },
-        "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
-        "observation_sources": ["odometry"],
-    })
+    return RobotProfile.from_mapping(
+        {
+            "name": "robot",
+            "mode": mode,
+            "namespace": "/robot",
+            "frames": {"base": "base_link", "odom": "odom"},
+            "adapter": {"kind": kind},
+            "interfaces": interfaces,
+            "limits": {
+                "max_linear_velocity": 0.5,
+                "max_angular_velocity": 1.0,
+                "max_linear_acceleration": 0.5,
+                "max_angular_acceleration": 1.0,
+            },
+            "safety": {"heartbeat_timeout": 1.0, "estop_topic": "/emergency_stop"},
+            "observation_sources": ["odometry"],
+        }
+    )
 
 
 class RecordingEmergencyChannel(_EmergencyStopChannel):
@@ -173,9 +173,7 @@ def test_adapter_context_manager_exposes_close_failure():
             return False
 
     with pytest.raises(AdapterError, match="CLEANUP_FAILED"):
-        with FailingCloseAdapter(
-            robot_profile(), TwistTransport(), clock=lambda: 0.0
-        ):
+        with FailingCloseAdapter(robot_profile(), TwistTransport(), clock=lambda: 0.0):
             pass
 
 
@@ -465,21 +463,33 @@ def test_ready_subprocess_reaps_then_propagates_unexpected_wait_error(monkeypatc
         (
             "kill",
             [
-                "poll", "terminate", ("wait", 0.5), "kill", ("wait", 0.5),
+                "poll",
+                "terminate",
+                ("wait", 0.5),
+                "kill",
+                ("wait", 0.5),
             ],
             "controlled kill failure",
         ),
         (
             "timed_wait",
             [
-                "poll", "terminate", ("wait", 0.5), "kill", ("wait", 0.5),
+                "poll",
+                "terminate",
+                ("wait", 0.5),
+                "kill",
+                ("wait", 0.5),
             ],
             "controlled timed wait failure",
         ),
         (
             "final_wait",
             [
-                "poll", "terminate", ("wait", 0.5), "kill", ("wait", 0.5),
+                "poll",
+                "terminate",
+                ("wait", 0.5),
+                "kill",
+                ("wait", 0.5),
                 ("wait", None),
             ],
             "subprocess cleanup failed",
@@ -591,10 +601,8 @@ def test_ready_subprocess_cleanup_never_short_circuits_after_step_error(
     if failure_step == "final_wait":
         assert str(captured.value.__cause__) == "controlled final wait failure"
         assert captured.value.__notes__ == [
-            "earlier process cleanup error: TimeoutExpired: "
-            "Command 'controlled-child' timed out after 0.5 seconds",
-            "earlier process cleanup error: TimeoutExpired: "
-            "Command 'controlled-child' timed out after 0.5 seconds",
+            "earlier process cleanup error: TimeoutExpired: Command 'controlled-child' timed out after 0.5 seconds",
+            "earlier process cleanup error: TimeoutExpired: Command 'controlled-child' timed out after 0.5 seconds",
             "suppressed body error: ValueError: controlled body failure",
             "suppressed stdout close error: RuntimeError: controlled stdout close failure",
             "suppressed stderr close error: RuntimeError: controlled stderr close failure",
@@ -925,9 +933,7 @@ def test_twist_runtime_timer_limits_first_command_acceleration_from_zero(monkeyp
 
 
 @pytest.mark.parametrize("permit_kind", ["missing", "invalid", "foreign"])
-def test_twist_timer_without_exact_owned_permit_fails_closed(
-    monkeypatch, permit_kind, adapter_owner
-):
+def test_twist_timer_without_exact_owned_permit_fails_closed(monkeypatch, permit_kind, adapter_owner):
     transport = real_twist_transport(monkeypatch)
     transport._sample = OdometrySample(0.0, 1.0, 2.0, 0.0)
     adapter = TwistAdapter(robot_profile(), transport, clock=lambda: 0.0)
@@ -947,9 +953,7 @@ def test_twist_timer_without_exact_owned_permit_fails_closed(
         transport._control_step()
 
         assert commands == []
-        assert transport.waypoint_status() == AdapterStatus(
-            "faulted", "UNSAFE_STATE"
-        )
+        assert transport.waypoint_status() == AdapterStatus("faulted", "UNSAFE_STATE")
     finally:
         assert adapter.close(0.2)
         if foreign is not None:
@@ -1086,9 +1090,7 @@ def test_twist_estop_success_waits_for_blocked_nonzero_publish(monkeypatch, adap
     try:
         assert entered.wait(0.2)
         results = []
-        stop = threading.Thread(
-            target=lambda: results.append(adapter._emergency_stop(0.2))
-        )
+        stop = threading.Thread(target=lambda: results.append(adapter._emergency_stop(0.2)))
         stop.start()
         assert stop.is_alive()
         release.set()
@@ -1128,9 +1130,7 @@ def test_twist_estop_degrades_when_publish_does_not_quiesce(monkeypatch, adapter
         result = adapter._emergency_stop(0.02)
 
         assert time.monotonic() - began < 0.2
-        assert result == EmergencyStopResult(
-            True, False, True, "TRANSPORT_UNQUIESCED"
-        )
+        assert result == EmergencyStopResult(True, False, True, "TRANSPORT_UNQUIESCED")
     finally:
         release.set()
         timer.join(0.2)
@@ -1225,16 +1225,12 @@ def test_nav2_estop_success_waits_for_send_goal_boundary(adapter_owner):
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
     permit = valid_permit(adapter, adapter_owner)
     errors = []
-    starter = threading.Thread(
-        target=lambda: _capture(errors, adapter.start, stage(), permit)
-    )
+    starter = threading.Thread(target=lambda: _capture(errors, adapter.start, stage(), permit))
     starter.start()
     try:
         assert entered.wait(0.2)
         results = []
-        stop = threading.Thread(
-            target=lambda: results.append(adapter._emergency_stop(0.2))
-        )
+        stop = threading.Thread(target=lambda: results.append(adapter._emergency_stop(0.2)))
         stop.start()
         assert stop.is_alive()
         release.set()
@@ -1265,9 +1261,7 @@ def test_nav2_estop_degrades_when_send_goal_does_not_quiesce(adapter_owner):
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
     permit = valid_permit(adapter, adapter_owner)
     errors = []
-    starter = threading.Thread(
-        target=lambda: _capture(errors, adapter.start, stage(), permit)
-    )
+    starter = threading.Thread(target=lambda: _capture(errors, adapter.start, stage(), permit))
     starter.start()
     try:
         assert entered.wait(0.2)
@@ -1276,9 +1270,7 @@ def test_nav2_estop_degrades_when_send_goal_does_not_quiesce(adapter_owner):
         result = adapter._emergency_stop(0.02)
 
         assert time.monotonic() - began < 0.2
-        assert result == EmergencyStopResult(
-            True, False, True, "TRANSPORT_UNQUIESCED"
-        )
+        assert result == EmergencyStopResult(True, False, True, "TRANSPORT_UNQUIESCED")
     finally:
         release.set()
         starter.join(0.2)
@@ -1500,9 +1492,7 @@ def test_hospital_start_never_waits_then_dispatches_late_behind_runtime_lock(ada
     assert any(isinstance(error, AdapterError) and error.code == "INTERNAL_ERROR" for error in errors)
 
 
-def test_hospital_case_emergency_stop_uses_independent_fixed_worker_while_start_blocks(
-    monkeypatch, adapter_owner
-):
+def test_hospital_case_emergency_stop_uses_independent_fixed_worker_while_start_blocks(monkeypatch, adapter_owner):
     start_entered = threading.Event()
     release_start = threading.Event()
     stop_executed = threading.Event()
@@ -1730,9 +1720,7 @@ def test_hospital_emergency_stop_interrupts_and_reaps_exact_inflight_start_proce
     monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
     monkeypatch.setattr(
         "agent_ros.adapters.hospital.os.killpg",
-        lambda pid, sig: next(
-            process for process in processes if process.pid == pid
-        ).terminate(),
+        lambda pid, sig: next(process for process in processes if process.pid == pid).terminate(),
     )
     client = HospitalLifecycleClient()
     try:
@@ -1757,9 +1745,7 @@ def test_hospital_emergency_stop_interrupts_and_reaps_exact_inflight_start_proce
 
 
 @pytest.mark.parametrize("startup_phase", ["build_reserved", "launch_recorded"])
-def test_hospital_initial_start_timeout_coordinates_inner_cleanup_before_outer_kill(
-    monkeypatch, startup_phase
-):
+def test_hospital_initial_start_timeout_coordinates_inner_cleanup_before_outer_kill(monkeypatch, startup_phase):
     events = []
     inner_owned = [startup_phase == "launch_recorded"]
     reservation = [startup_phase == "build_reserved"]
@@ -1852,9 +1838,7 @@ def test_hospital_initial_start_timeout_surfaces_coordinated_cleanup_failure(
         def kill(self):
             self.returncode = -9
 
-    monkeypatch.setattr(
-        subprocess, "Popen", lambda argv, **kwargs: FixedProcess(tuple(argv[2:]))
-    )
+    monkeypatch.setattr(subprocess, "Popen", lambda argv, **kwargs: FixedProcess(tuple(argv[2:])))
     monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
     monkeypatch.setattr(
         "agent_ros.adapters.hospital.os.killpg",
@@ -1875,9 +1859,7 @@ def test_hospital_initial_start_timeout_surfaces_coordinated_cleanup_failure(
     assert not client._emergency_worker._thread.is_alive()
 
 
-def test_hospital_case_never_starts_mission_after_estop_wins_post_start_race(
-    monkeypatch, adapter_owner
-):
+def test_hospital_case_never_starts_mission_after_estop_wins_post_start_race(monkeypatch, adapter_owner):
     cancellation_checked = threading.Event()
     release_checked_start = threading.Event()
     spawned_suffixes = []
@@ -1912,9 +1894,7 @@ def test_hospital_case_never_starts_mission_after_estop_wins_post_start_race(
     assert cancellation_checked.wait(0.2)
 
     results = []
-    stopper = threading.Thread(
-        target=lambda: results.append(adapter._emergency_stop(timeout=0.5))
-    )
+    stopper = threading.Thread(target=lambda: results.append(adapter._emergency_stop(timeout=0.5)))
     stopper.start()
     assert not release_checked_start.wait(0.05)
     release_checked_start.set()
@@ -2014,15 +1994,25 @@ def test_nav2_late_goal_acceptance_is_cancelled_without_returning_to_running(mon
 @pytest.mark.parametrize("mode", ["rejected", "exception"])
 def test_nav2_cancel_rejection_or_exception_faults_instead_of_claiming_stopped(mode, monkeypatch, adapter_owner):
     class Future:
-        def add_done_callback(self, callback): self.callback = callback
+        def add_done_callback(self, callback):
+            self.callback = callback
+
         def result(self):
-            if mode == "exception": raise RuntimeError("raw")
+            if mode == "exception":
+                raise RuntimeError("raw")
             return type("Response", (), {"goals_canceling": []})()
+
     class Handle:
         accepted = True
-        def __init__(self): self.future = Future()
-        def cancel_goal_async(self): return self.future
-        def get_result_async(self): return type("ResultFuture", (), {"add_done_callback": lambda self, cb: None})()
+
+        def __init__(self):
+            self.future = Future()
+
+        def cancel_goal_async(self):
+            return self.future
+
+        def get_result_async(self):
+            return type("ResultFuture", (), {"add_done_callback": lambda self, cb: None})()
 
     transport = real_nav2_transport(monkeypatch)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
@@ -2051,10 +2041,15 @@ def test_nav2_cancel_timeout_remains_active_after_cancel_acceptance_until_termin
 
     class Handle:
         accepted = True
+
         def __init__(self):
             self.cancel_future = CallbackFuture()
-        def cancel_goal_async(self): return self.cancel_future
-        def get_result_async(self): return CallbackFuture()
+
+        def cancel_goal_async(self):
+            return self.cancel_future
+
+        def get_result_async(self):
+            return CallbackFuture()
 
     transport = real_nav2_transport(monkeypatch, clock=lambda: now[0], cancel_timeout=0.1)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
@@ -2084,11 +2079,16 @@ def test_nav2_status_exception_is_stable_and_does_not_recurse_through_normal_sto
 def test_nav2_cancelled_goal_result_exception_is_faulted_not_cancelled(monkeypatch, adapter_owner):
     class Handle:
         accepted = True
+
         def __init__(self):
             self.cancel_future = CallbackFuture()
             self.result_future = CallbackFuture()
-        def cancel_goal_async(self): return self.cancel_future
-        def get_result_async(self): return self.result_future
+
+        def cancel_goal_async(self):
+            return self.cancel_future
+
+        def get_result_async(self):
+            return self.result_future
 
     transport = real_nav2_transport(monkeypatch)
     adapter = Nav2Adapter(robot_profile("nav2"), transport)
@@ -2130,3 +2130,7 @@ def test_nav2_emergency_enqueue_never_waits_for_blocked_action_cancel(monkeypatc
 
     assert not blocked
     assert not errors
+
+
+def test_safety_module_preserves_activation_reexports():
+    assert ReExportedActivationPermit is _ActivationPermit

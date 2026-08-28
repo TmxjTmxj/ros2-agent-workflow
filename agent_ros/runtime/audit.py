@@ -18,25 +18,37 @@ from pathlib import Path
 
 from agent_ros.safety.state import SafetyState
 
-
 _GID = re.compile(r"[A-Za-z0-9:_-]{1,128}\Z")
 _TASK_NAME = re.compile(r"[a-z0-9][a-z0-9-]{0,63}\Z")
-_ERROR_CODES = frozenset({
-    "DISCOVERY_UNSAFE", "ESTOP_LATCHED", "HEARTBEAT_EXPIRED", "HEARTBEAT_UNCONFIGURED",
-    "HARDWARE_CHALLENGE", "INTERNAL_ERROR", "MOTION_LIMIT", "OPERATOR_REQUIRED",
-    "PROFILE_UNSUPPORTED", "UNSAFE_STATE",
-})
-_STOP_RESULT_CODES = frozenset({
-    "ESTOP_LATCHED",
-    "SAFETY_COMMAND_REJECTED",
-    "TRANSPORT_UNQUIESCED",
-})
-_STOP_RESULT_KEYS = frozenset({
-    "latched",
-    "activation_quiesced",
-    "safety_command_accepted",
-    "code",
-})
+_ERROR_CODES = frozenset(
+    {
+        "DISCOVERY_UNSAFE",
+        "ESTOP_LATCHED",
+        "HEARTBEAT_EXPIRED",
+        "HEARTBEAT_UNCONFIGURED",
+        "HARDWARE_CHALLENGE",
+        "INTERNAL_ERROR",
+        "MOTION_LIMIT",
+        "OPERATOR_REQUIRED",
+        "PROFILE_UNSUPPORTED",
+        "UNSAFE_STATE",
+    }
+)
+_STOP_RESULT_CODES = frozenset(
+    {
+        "ESTOP_LATCHED",
+        "SAFETY_COMMAND_REJECTED",
+        "TRANSPORT_UNQUIESCED",
+    }
+)
+_STOP_RESULT_KEYS = frozenset(
+    {
+        "latched",
+        "activation_quiesced",
+        "safety_command_accepted",
+        "code",
+    }
+)
 _MAX_RECORD_BYTES = 4096
 _AUDIT_QUEUE_CAPACITY = 256
 
@@ -86,7 +98,10 @@ class AuditEvent:
 
 _SUCCESS_TRANSITIONS = {
     AuditOperation.DISCOVER: {(SafetyState.NEW, SafetyState.DISCOVERED)},
-    AuditOperation.VALIDATE: {(SafetyState.DISCOVERED, SafetyState.VALIDATED), (SafetyState.DISCOVERED, SafetyState.ARMED)},
+    AuditOperation.VALIDATE: {
+        (SafetyState.DISCOVERED, SafetyState.VALIDATED),
+        (SafetyState.DISCOVERED, SafetyState.ARMED),
+    },
     AuditOperation.ARM: {(SafetyState.VALIDATED, SafetyState.ARMED)},
     AuditOperation.START_TASK: {(SafetyState.ARMED, SafetyState.RUNNING)},
     AuditOperation.HEARTBEAT: {(SafetyState.RUNNING, SafetyState.RUNNING)},
@@ -157,8 +172,14 @@ class AuditWriter:
         if not isinstance(value, Mapping):
             raise AuditError("invalid audit record")
         allowed = {
-            "wall_time", "monotonic_time", "operation", "state", "outcome",
-            "operation_data", "endpoint_gids", "error_code",
+            "wall_time",
+            "monotonic_time",
+            "operation",
+            "state",
+            "outcome",
+            "operation_data",
+            "endpoint_gids",
+            "error_code",
             "session_id",
         }
         if set(value) - allowed or allowed - {"error_code"} - set(value):
@@ -234,7 +255,12 @@ class AuditWriter:
                 continue
             except OSError as exc:
                 raise AuditError("audit write failed") from exc
-            if isinstance(written, bool) or not isinstance(written, int) or written <= 0 or written > len(data) - offset:
+            if (
+                isinstance(written, bool)
+                or not isinstance(written, int)
+                or written <= 0
+                or written > len(data) - offset
+            ):
                 raise AuditError("audit write failed")
             offset += written
 
@@ -334,32 +360,16 @@ class _AuditAppendWorker:
         with self._lock:
             self._accepting = False
             thread = self._thread
-            if (
-                thread is not None
-                and not thread.is_alive()
-                and self._queue.empty()
-                and self._in_flight is None
-            ):
+            if thread is not None and not thread.is_alive() and self._queue.empty() and self._in_flight is None:
                 return True
             self._request_stop_locked()
-            live_at_zero = (
-                no_wait
-                and thread is not None
-                and thread.is_alive()
-            )
+            live_at_zero = no_wait and thread is not None and thread.is_alive()
         if live_at_zero:
             return False
         if thread is not None and thread is not threading.current_thread():
             thread.join(max(0.0, deadline - time.monotonic()))
         with self._lock:
-            return (
-                thread is None
-                or (
-                    not thread.is_alive()
-                    and self._queue.empty()
-                    and self._in_flight is None
-                )
-            )
+            return thread is None or (not thread.is_alive() and self._queue.empty() and self._in_flight is None)
 
     @property
     def worker_alive(self) -> bool:
@@ -394,12 +404,7 @@ class _AuditAppendWorker:
 
     def _healthy_locked(self) -> bool:
         thread = self._thread
-        return (
-            self._accepting
-            and not self._failed
-            and thread is not None
-            and thread.is_alive()
-        )
+        return self._accepting and not self._failed and thread is not None and thread.is_alive()
 
     def _fail_locked(self) -> None:
         self._failed = True
@@ -431,7 +436,7 @@ def validate_audit_history(raw: bytes, *, require_terminal: bool = False) -> Non
     previous_after: SafetyState | None = None
     current_session: str | None = None
     completed_sessions: set[str] = set()
-    for index, line in enumerate(raw.splitlines()):
+    for _index, line in enumerate(raw.splitlines()):
         if not line or len(line) + 1 > _MAX_RECORD_BYTES:
             raise AuditError("invalid audit history")
         try:
@@ -507,12 +512,8 @@ def _validate_operation_data(event: AuditEvent, value: object) -> dict[str, obje
         raise AuditError("invalid audit data")
     data = dict(value)
     operation = event.operation
-    stop_result_required = (
-        operation in {AuditOperation.CANCEL, AuditOperation.ESTOP}
-        or (
-            operation is AuditOperation.HEARTBEAT
-            and event.outcome is AuditOutcome.FAULTED
-        )
+    stop_result_required = operation in {AuditOperation.CANCEL, AuditOperation.ESTOP} or (
+        operation is AuditOperation.HEARTBEAT and event.outcome is AuditOutcome.FAULTED
     )
     if stop_result_required:
         if set(data) != _STOP_RESULT_KEYS:
@@ -560,10 +561,6 @@ def _validate_operation_data(event: AuditEvent, value: object) -> dict[str, obje
 
 
 def _deadline(timeout: float) -> float:
-    if (
-        isinstance(timeout, bool)
-        or not isinstance(timeout, (int, float))
-        or not math.isfinite(timeout)
-    ):
+    if isinstance(timeout, bool) or not isinstance(timeout, (int, float)) or not math.isfinite(timeout):
         raise AuditError("invalid audit timeout")
     return time.monotonic() + max(0.0, timeout)
