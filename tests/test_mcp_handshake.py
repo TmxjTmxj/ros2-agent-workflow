@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
 import time
 from pathlib import Path
 
@@ -10,7 +11,7 @@ from fastmcp.client.transports import StdioTransport
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PYTHON = ROOT / ".venv" / "bin" / "python"
+PYTHON = Path(sys.executable)
 TOOL_NAMES = {
     "discover_robot",
     "validate_profile",
@@ -44,6 +45,7 @@ def _wait_reaped(pid: int, timeout: float = 3.0) -> bool:
 
 
 def test_real_stdio_handshake_lists_tools_calls_status_and_reaps_server(tmp_path):
+    assert PYTHON == Path(sys.executable)
     before = _direct_children()
     observed_child: set[int] = set()
 
@@ -52,7 +54,7 @@ def test_real_stdio_handshake_lists_tools_calls_status_and_reaps_server(tmp_path
             command=str(PYTHON),
             args=["-m", "mcp_server.ros2_mcp_server"],
             cwd=str(ROOT),
-            env={"PYTHONUNBUFFERED": "1"},
+            env={**os.environ, "PYTHONUNBUFFERED": "1"},
             keep_alive=False,
             log_file=tmp_path / "mcp-stderr.log",
         )
