@@ -7,6 +7,7 @@ import pytest
 import yaml
 
 from agent_ros.errors import ProfileValidationError
+from agent_ros.profiles.defaults import default_profiles_root
 from agent_ros.profiles.loader import load_robot_profile, load_task_profile
 from agent_ros.profiles.models import RobotProfile
 
@@ -194,6 +195,12 @@ def test_reviewed_hospital_profiles_load_from_repository_profiles_root():
         "pharmacy-to-ward-2",
         "ward-2-to-laboratory",
     )
+
+
+def test_default_profiles_root_contains_reviewed_robot_and_task():
+    root = default_profiles_root()
+    assert (root / "robots" / "hospital-amr.yaml").is_file()
+    assert (root / "tasks" / "hospital-delivery.yaml").is_file()
 
 
 def test_hospital_delivery_adapter_kind_is_confined_to_the_reviewed_simulation_case():

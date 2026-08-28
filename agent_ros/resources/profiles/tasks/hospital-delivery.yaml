@@ -1,0 +1,34 @@
+name: hospital-delivery
+robot_profile: hospital-amr
+stages:
+  - name: corridor-to-pharmacy
+    goal:
+      frame: world
+      x: 18.5
+      y: 3.5
+      yaw: 0.0
+    tolerance: 0.50
+    timeout: 60.0
+  - name: pharmacy-to-ward-2
+    goal:
+      frame: world
+      x: 20.0
+      y: 8.5
+      yaw: 1.57
+    tolerance: 0.50
+    timeout: 60.0
+  - name: ward-2-to-laboratory
+    goal:
+      frame: world
+      x: 12.0
+      y: 14.5
+      yaw: -1.57
+    tolerance: 0.50
+    timeout: 60.0
+required_sensors:
+  - odometry
+  - camera
+evidence:
+  sources:
+    - odometry
+recovery_policy: cancel_and_stop

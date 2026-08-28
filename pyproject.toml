@@ -19,3 +19,6 @@ testpaths = ["tests"]
 
 [tool.setuptools.packages.find]
 include = ["agent_ros*", "mcp_server*"]
+
+[tool.setuptools.package-data]
+"agent_ros.resources" = ["profiles/**/*"]
