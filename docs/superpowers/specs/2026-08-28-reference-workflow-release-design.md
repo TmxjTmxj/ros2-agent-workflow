@@ -3,29 +3,30 @@
 ## Purpose
 
 Make `ros2-agent-workflow` easy to install, verify, maintain, and present
-without changing the semantics of its validated hospital-delivery reference
+without changing the semantics of its validated standard Agent-to-ROS 2
 workflow. The project remains a complete ROS 2 Agent workflow reference
 implementation, not a general-purpose robot SDK.
 
 ## Scope and Positioning
 
-The hospital-delivery workflow is the only supported golden path:
+The standard workflow is the product boundary:
 
 ```text
-MCP Agent -> SafetyGateway -> Hospital Adapter -> ROS 2/Gazebo
-          -> independent acceptance evidence
+MCP Agent -> declarative Profile -> SafetyGateway -> reviewed Adapter
+          -> ROS 2 runtime -> independent acceptance evidence
 ```
 
-`TwistAdapter` and `Nav2Adapter` remain documented extension points. They do
-not gain a promise of full automatic hardware integration in this release.
-The project supports Ubuntu 24.04 with ROS 2 Lyrical and Gazebo Sim 10 as the
-reproducible reference environment. Other platforms are explanatory guidance,
-not release compatibility claims.
+The hospital-delivery workflow is the complete, reproducible golden example of
+that standard workflow. `TwistAdapter` and `Nav2Adapter` remain supported
+reference adapter paths, but do not gain a promise of full automatic hardware
+integration in this release. The project supports Ubuntu 24.04 with ROS 2
+Lyrical and Gazebo Sim 10 as the reproducible example environment. Other
+platforms are explanatory guidance, not release compatibility claims.
 
 ## M1: Installable Control Plane
 
-- Keep the full Gazebo world, model, evidence, and demo scripts source-owned in
-  the repository; they are not PyPI package data.
+- Keep the hospital Gazebo world, model, evidence, and demo scripts
+  source-owned in the repository; they are not PyPI package data.
 - Package the control-plane-owned profiles and JSON schemas with the wheel.
 - Expose `agent-ros` for the local operator CLI and `agent-ros-mcp` for the
   stdio MCP server.
@@ -70,17 +71,18 @@ not release compatibility claims.
 
 - Packaging failures must fail CI before release creation.
 - Runtime smoke tests must never arm hardware or publish motion.
-- Container and nightly jobs run headless simulation only.
+- Container and nightly jobs run the hospital demonstration in headless
+  simulation only.
 - New generalization documentation must not claim that hardware adapters are
   production-certified.
-- The current fail-closed controller and independent acceptance workflow are
+- The current fail-closed workflow and independent acceptance workflow are
   preserved as release invariants.
 
 ## Verification
 
 - Python 3.11/3.12 fast CI verifies source and installed-wheel flows.
 - Container build verifies the declared reference environment.
-- Nightly/manual CI verifies the full headless hospital workflow and publishes
+- Nightly/manual CI verifies the full headless hospital demonstration and publishes
   immutable evidence artifacts.
 - Release workflow builds sdist/wheel, validates metadata, and uploads checked
   artifacts only from an explicit version tag.
