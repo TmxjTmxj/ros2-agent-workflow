@@ -32,6 +32,14 @@ def test_project_declares_dev_quality_tools():
     }
 
 
+def test_ci_runs_installed_wheel_smoke_and_quality_gates():
+    workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+
+    assert "make smoke-wheel" in workflow
+    assert "make check" in workflow
+    assert 'install -e ".[dev]"' in workflow
+
+
 def test_built_wheel_installs_and_runs_cli_outside_repository(tmp_path):
     dist = tmp_path / "dist"
     builder = tmp_path / "builder"

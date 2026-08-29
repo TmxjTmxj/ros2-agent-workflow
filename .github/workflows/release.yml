@@ -1,0 +1,62 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  verify-distributions:
+    name: Build and verify release artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create project virtualenv
+        run: |
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+
+      - name: Install reproducible development toolchain
+        run: .venv/bin/python -m pip install -e ".[dev]"
+
+      - name: Verify source, quality gates, and installed wheel
+        run: make check
+
+      - name: Build release distributions
+        run: .venv/bin/python -m build --outdir dist
+
+      - name: Write SHA-256 verification manifest
+        run: |
+          cd dist
+          sha256sum agent_ros-*.tar.gz agent_ros-*.whl > SHA256SUMS.txt
+
+      - name: Upload verified release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-distributions
+          path: dist/
+
+  publish-release:
+    name: Publish verified GitHub Release
+    needs: verify-distributions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download verified release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-distributions
+          path: dist
+
+      - name: Publish tag artifacts and verification manifest
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: dist/*

@@ -1,4 +1,4 @@
-name: tests
+name: quality
 
 on:
   push:
@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  root-python-tests:
-    name: Python ${{ matrix.python }} · root tests
+  quality:
+    name: Python ${{ matrix.python }} · quality gates
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -27,16 +27,27 @@ jobs:
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
 
-      - name: Install project and test dependencies
-        run: |
-          .venv/bin/python -m pip install -e .
-          .venv/bin/python -m pip install pytest
+      - name: Install reproducible development toolchain
+        run: .venv/bin/python -m pip install -e ".[dev]"
 
-      - name: Run root Python test suite
-        run: .venv/bin/python -m pytest tests/ -q
+      - name: Run quality gates and installed-wheel smoke test
+        run: |
+          make check
+          make smoke-wheel
+
+      - name: Export coverage report
+        if: matrix.python == '3.11'
+        run: .venv/bin/python -m pytest --cov --cov-report=xml tests -q
+
+      - name: Upload coverage report
+        if: matrix.python == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python-${{ matrix.python }}
+          path: coverage.xml
 
   hospital-case-static-tests:
-    name: Hospital case static tests
+    name: Python ${{ matrix.python }} · hospital static tests
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -54,10 +65,15 @@ jobs:
           python -m venv .venv
           .venv/bin/python -m pip install --upgrade pip
 
-      - name: Install project and test dependencies
+      - name: Install static hospital-test dependencies
         run: |
-          .venv/bin/python -m pip install -e .
-          .venv/bin/python -m pip install pytest opencv-python-headless
+          .venv/bin/python -m pip install -e ".[dev]"
+          .venv/bin/python -m pip install opencv-python-headless
 
-      - name: Run hospital tests that do not need ROS2
-        run: .venv/bin/python -m pytest examples/hospital_delivery/tests/test_run_via_mcp.py examples/hospital_delivery/tests/test_model_geometry.py examples/hospital_delivery/tests/test_acceptance_report.py -q
+      - name: Run hospital tests that do not need ROS 2
+        run: >-
+          .venv/bin/python -m pytest
+          examples/hospital_delivery/tests/test_run_via_mcp.py
+          examples/hospital_delivery/tests/test_model_geometry.py
+          examples/hospital_delivery/tests/test_acceptance_report.py
+          -q
