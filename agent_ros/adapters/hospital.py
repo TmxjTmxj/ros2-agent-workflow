@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import json
 import math
-import os
-import signal
 import subprocess
 import threading
 import time
@@ -23,6 +21,7 @@ from agent_ros.adapters.base import (
     Observation,
     RobotAdapter,
 )
+from agent_ros.adapters.hospital_process import ManagedHospitalProcess
 from agent_ros.safety.outcome import EmergencyStopResult
 
 
@@ -365,7 +364,7 @@ class HospitalLifecycleClient:
         self._lock = threading.Lock()
         self._actions: deque[HospitalAction] = deque(maxlen=64)
         self._start_receipt: _CommandResult[object] | None = None
-        self._start_process: subprocess.Popen[str] | None = None
+        self._start_process: ManagedHospitalProcess | None = None
         self._started = False
         self._cancellation_generation = 0
         self._stop_latched = False
@@ -606,8 +605,7 @@ class HospitalLifecycleClient:
             receipt = self._start_receipt
         if process is not None:
             try:
-                if process.poll() is None:
-                    self._signal_exact_start_group(process, signal.SIGTERM)
+                process.terminate()
             except ProcessLookupError:
                 pass
             except AdapterError:
@@ -616,13 +614,6 @@ class HospitalLifecycleClient:
                 raise AdapterError("UNSAFE_STATE") from None
         if receipt is not None and not receipt.done.wait(max(0.0, deadline - time.monotonic())):
             raise AdapterError("TIMEOUT")
-
-    @staticmethod
-    def _signal_exact_start_group(process: subprocess.Popen[str], sig: signal.Signals) -> None:
-        pgid = os.getpgid(process.pid)
-        if pgid != process.pid:
-            raise AdapterError("UNSAFE_STATE")
-        os.killpg(pgid, sig)
 
     def _run_fixed(
         self,
@@ -633,17 +624,13 @@ class HospitalLifecycleClient:
     ) -> dict[str, object] | None:
         argv = [self._PYTHON, str(self._SCRIPT), *suffix]
         is_initial_start = suffix[:1] == ("start",)
-        process: subprocess.Popen[str] | None = None
+        process = ManagedHospitalProcess(
+            cwd=self._EXAMPLE_ROOT,
+            owns_process_group=is_initial_start,
+        )
         try:
             if generation is None:
-                process = subprocess.Popen(
-                    argv,
-                    cwd=self._EXAMPLE_ROOT,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                    shell=False,
-                )
+                process.start(argv)
             else:
                 # The latch check and exact START/mission-start spawn share one
                 # linearization point. An initial START is also registered as
@@ -651,18 +638,10 @@ class HospitalLifecycleClient:
                 with self._lock:
                     if self._stop_latched or generation != self._cancellation_generation:
                         return None
-                    process = subprocess.Popen(
-                        argv,
-                        cwd=self._EXAMPLE_ROOT,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        text=True,
-                        shell=False,
-                        start_new_session=is_initial_start,
-                    )
+                    process.start(argv)
                     if is_initial_start:
                         self._start_process = process
-            stdout, _stderr = process.communicate(timeout=timeout)
+            stdout, _stderr = process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             cleanup_failed = False
             if is_initial_start:
@@ -674,20 +653,7 @@ class HospitalLifecycleClient:
                     self._run_fixed(("stop",), timeout=self._TIMEOUTS[HospitalAction.STOP])
                 except Exception:
                     cleanup_failed = True
-                try:
-                    self._signal_exact_start_group(process, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                except Exception:
-                    cleanup_failed = True
-            else:
-                try:
-                    process.kill()
-                except Exception:
-                    cleanup_failed = True
-            try:
-                process.communicate(timeout=2.0)
-            except Exception:
+            if not process.close(timeout=2.0):
                 cleanup_failed = True
             if cleanup_failed:
                 raise AdapterError("CLEANUP_FAILED") from None
@@ -695,7 +661,7 @@ class HospitalLifecycleClient:
         except OSError:
             raise AdapterError("TIMEOUT") from None
         finally:
-            if is_initial_start and process is not None:
+            if is_initial_start:
                 with self._lock:
                     if self._start_process is process:
                         self._start_process = None

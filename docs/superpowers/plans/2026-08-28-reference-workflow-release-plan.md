@@ -373,15 +373,17 @@ git commit -m "refactor: isolate terminal evidence capture"
 - Test: `tests/test_adapters.py`
 
 **Interfaces:**
-- Produces `ManagedHospitalProcess` with `start(argv, timeout)`, `terminate(timeout)`, and `close(timeout) -> bool`.
+- Produces `ManagedHospitalProcess` with `start(argv)`, `wait(timeout)`, `terminate()`, and `close(timeout) -> bool`.
+- The split between `start` and `wait` is deliberate: the lifecycle client must register the exact `START` process group before it can wait, so an emergency stop can safely interrupt that owned process.
 - Hospital adapter’s public classes and `RobotAdapter` contract remain unchanged.
 
 - [ ] **Step 1: Add a failing lifecycle test**
 
 ```python
 def test_managed_hospital_process_reaps_child_after_ready_process_stops(tmp_path):
-    process = ManagedHospitalProcess()
-    process.start([sys.executable, "-c", "print('ready')"], timeout=1.0)
+    process = ManagedHospitalProcess(cwd=tmp_path)
+    process.start([sys.executable, "-c", "print('ready')"])
+    process.wait(timeout=1.0)
     assert process.close(timeout=1.0)
 ```
 

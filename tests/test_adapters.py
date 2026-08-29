@@ -29,6 +29,7 @@ from agent_ros.adapters.hospital import (
     HospitalSimulationRuntime,
     RclpyHospitalTransport,
 )
+from agent_ros.adapters.hospital_process import ManagedHospitalProcess
 from agent_ros.adapters.nav2 import Nav2Adapter
 from agent_ros.adapters.twist import TwistAdapter
 from agent_ros.profiles.models import PoseGoal, RobotProfile, TaskStage
@@ -175,6 +176,15 @@ def test_adapter_context_manager_exposes_close_failure():
     with pytest.raises(AdapterError, match="CLEANUP_FAILED"):
         with FailingCloseAdapter(robot_profile(), TwistTransport(), clock=lambda: 0.0):
             pass
+
+
+def test_managed_hospital_process_reaps_owned_child_on_close(tmp_path):
+    process = ManagedHospitalProcess(cwd=tmp_path)
+
+    process.start([sys.executable, "-c", "import time; time.sleep(60)"])
+
+    assert process.close(timeout=1.0)
+    assert process.poll() is not None
 
 
 @contextmanager
@@ -1717,9 +1727,9 @@ def test_hospital_emergency_stop_interrupts_and_reaps_exact_inflight_start_proce
         return FixedProcess(tuple(argv[2:]))
 
     monkeypatch.setattr(subprocess, "Popen", fixed_popen)
-    monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
+    monkeypatch.setattr("agent_ros.adapters.hospital_process.os.getpgid", lambda pid: pid)
     monkeypatch.setattr(
-        "agent_ros.adapters.hospital.os.killpg",
+        "agent_ros.adapters.hospital_process.os.killpg",
         lambda pid, sig: next(process for process in processes if process.pid == pid).terminate(),
     )
     client = HospitalLifecycleClient()
@@ -1788,8 +1798,8 @@ def test_hospital_initial_start_timeout_coordinates_inner_cleanup_before_outer_k
         next(process for process in processes if process.pid == pid).returncode = -9
 
     monkeypatch.setattr(subprocess, "Popen", fixed_popen)
-    monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
-    monkeypatch.setattr("agent_ros.adapters.hospital.os.killpg", fixed_killpg)
+    monkeypatch.setattr("agent_ros.adapters.hospital_process.os.getpgid", lambda pid: pid)
+    monkeypatch.setattr("agent_ros.adapters.hospital_process.os.killpg", fixed_killpg)
     client = HospitalLifecycleClient()
     client.dispatch(HospitalAction.START)
     assert client._start_receipt.done.wait(0.5)
@@ -1839,9 +1849,9 @@ def test_hospital_initial_start_timeout_surfaces_coordinated_cleanup_failure(
             self.returncode = -9
 
     monkeypatch.setattr(subprocess, "Popen", lambda argv, **kwargs: FixedProcess(tuple(argv[2:])))
-    monkeypatch.setattr("agent_ros.adapters.hospital.os.getpgid", lambda pid: pid)
+    monkeypatch.setattr("agent_ros.adapters.hospital_process.os.getpgid", lambda pid: pid)
     monkeypatch.setattr(
-        "agent_ros.adapters.hospital.os.killpg",
+        "agent_ros.adapters.hospital_process.os.killpg",
         lambda pid, sig: (
             events.append("outer_group_kill"),
             setattr(next(p for p in processes if p.pid == pid), "returncode", -9),
