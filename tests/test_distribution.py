@@ -40,6 +40,46 @@ def test_ci_runs_installed_wheel_smoke_and_quality_gates():
     assert 'install -e ".[dev]"' in workflow
 
 
+def test_container_declares_reference_ros_environment():
+    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+    compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+    devcontainer = (ROOT / ".devcontainer" / "devcontainer.json").read_text(encoding="utf-8")
+
+    assert "ubuntu:26.04" in dockerfile
+    assert "ros-lyrical" in dockerfile
+    assert "ros-lyrical-gz-sim-vendor" in dockerfile
+    assert "docker-build" in makefile
+    assert "docker-smoke" in makefile
+    assert "docker-hospital" in makefile
+    assert "AGENT_ROS_UID" in compose
+    assert "AGENT_ROS_UID" in makefile
+    assert "Dockerfile" in devcontainer
+
+
+def test_nightly_hospital_workflow_preserves_validated_evidence():
+    workflow = (ROOT / ".github" / "workflows" / "nightly-hospital.yml").read_text(encoding="utf-8")
+
+    assert "workflow_dispatch" in workflow
+    assert "cron:" in workflow
+    assert "make docker-hospital" in workflow
+    assert "make docker-mcp-trace" in workflow
+    assert "verify_release_artifacts.py" in workflow
+    assert "retention-days: 30" in workflow
+    assert "self-hosted" in workflow
+    assert "ros-gazebo" in workflow
+
+
+def test_readmes_link_to_each_other_and_release_docs():
+    chinese_readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    english_readme = (ROOT / "README.en.md").read_text(encoding="utf-8")
+
+    assert "README.en.md" in chinese_readme
+    assert "README.md" in english_readme
+    assert (ROOT / "docs" / "RELEASE.md").is_file()
+    assert (ROOT / "docs" / "ADAPTER-MIGRATION.md").is_file()
+
+
 def test_built_wheel_installs_and_runs_cli_outside_repository(tmp_path):
     dist = tmp_path / "dist"
     builder = tmp_path / "builder"

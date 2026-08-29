@@ -1,8 +1,10 @@
 PYTHON ?= python3
 VENV ?= .venv
 ROS_SETUP ?= /opt/ros/lyrical/setup.bash
+AGENT_ROS_UID ?= $(shell id -u)
+AGENT_ROS_GID ?= $(shell id -g)
 
-.PHONY: venv install test smoke-wheel lint typecheck coverage audit check test-hospital verify clean
+.PHONY: venv install test smoke-wheel lint typecheck coverage audit check test-hospital verify docker-build docker-smoke docker-hospital docker-mcp-trace clean
 
 venv:
 	$(PYTHON) -m venv $(VENV)
@@ -38,6 +40,18 @@ test-hospital:
 
 verify: test
 	@echo "Root test suite passed. Hospital ROS case should be run locally with 'make test-hospital'."
+
+docker-build:
+	AGENT_ROS_UID=$(AGENT_ROS_UID) AGENT_ROS_GID=$(AGENT_ROS_GID) docker compose build agent-ros
+
+docker-smoke:
+	AGENT_ROS_UID=$(AGENT_ROS_UID) AGENT_ROS_GID=$(AGENT_ROS_GID) docker compose run --rm agent-ros make VENV=/opt/agent-ros-venv smoke-wheel
+
+docker-hospital:
+	AGENT_ROS_UID=$(AGENT_ROS_UID) AGENT_ROS_GID=$(AGENT_ROS_GID) docker compose run --rm agent-ros bash scripts/demo_hospital.sh --headless --verify
+
+docker-mcp-trace:
+	AGENT_ROS_UID=$(AGENT_ROS_UID) AGENT_ROS_GID=$(AGENT_ROS_GID) docker compose run --rm agent-ros /opt/agent-ros-venv/bin/python examples/hospital_delivery/scripts/run_via_mcp.py
 
 clean:
 	rm -rf $(VENV) .pytest_cache

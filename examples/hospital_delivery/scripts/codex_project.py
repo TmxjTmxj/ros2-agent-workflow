@@ -349,7 +349,7 @@ def _native_graph_snapshot(timeout: float, *, environment: dict[str, str] | None
     """Collect one closed native ROS graph document through a killable helper."""
     helper_timeout = min(6.0, max(0.001, float(timeout)))
     argv = [
-        str(REPOSITORY_ROOT / ".venv" / "bin" / "python"),
+        sys.executable,
         "-m",
         "agent_ros.discovery.native_probe",
     ]

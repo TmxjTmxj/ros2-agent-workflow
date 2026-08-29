@@ -19,8 +19,9 @@ MCP Agent -> declarative Profile -> SafetyGateway -> reviewed Adapter
 The hospital-delivery workflow is the complete, reproducible golden example of
 that standard workflow. `TwistAdapter` and `Nav2Adapter` remain supported
 reference adapter paths, but do not gain a promise of full automatic hardware
-integration in this release. The project supports Ubuntu 24.04 with ROS 2
-Lyrical and Gazebo Sim 10 as the reproducible example environment. Other
+integration in this release. The project supports the locally verified Ubuntu
+26.04 (Resolute) environment with ROS 2 Lyrical and Gazebo Sim 10.x as the
+reproducible example environment. Other
 platforms are explanatory guidance, not release compatibility claims.
 
 ## M1: Installable Control Plane

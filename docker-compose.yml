@@ -1,0 +1,12 @@
+services:
+  agent-ros:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ros2-agent-workflow:dev
+    working_dir: /workspace
+    user: "${AGENT_ROS_UID:-1000}:${AGENT_ROS_GID:-1000}"
+    environment:
+      PYTHONNOUSERSITE: "1"
+    volumes:
+      - .:/workspace

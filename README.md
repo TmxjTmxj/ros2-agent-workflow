@@ -4,6 +4,8 @@
 
 **让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"中国机器人大赛暨RoboCup·送药巡诊机器人赛项"为完整验证案例**
 
+English entry point: [README.en.md](README.en.md) · 发布核对：[docs/RELEASE.md](docs/RELEASE.md)
+
 > **English Abstract**: A safe, reproducible Agent-to-ROS2 automation framework.
 > Codex or any MCP client issues bounded task-level commands through FastMCP;
 > a fail-closed SafetyGateway authorizes motion; a single-writer ROS2 controller
@@ -277,8 +279,8 @@ Agent 控制 ROS2 出现区别，以及后人如何少走弯路。
 
 ### 环境要求
 
-- Ubuntu 24.04+ / 26.04,ROS2 **lyrical**(`ros-lyrical-desktop-full` + `ros-lyrical-ros-gz`)
-- Gazebo gz sim ≥ 10.0
+- Ubuntu 26.04 (Resolute),ROS2 **lyrical**(`ros-lyrical-desktop-full` + `ros-lyrical-ros-gz`)
+- Gazebo gz sim 10.x（本机参考环境实测为 10.4.0）
 - Python 3.11+(推荐 3.14)
 - 无显示器环境自动 headless
 
@@ -317,6 +319,27 @@ Gazebo，也不会 arm 适配器或发布运动命令。
 
 `agent-ros-mcp` 是已安装的 stdio MCP server 入口，应由 MCP client 启动和管理，
 而不是作为交互式 shell 命令直接使用。
+
+### 容器化复现（参考演示环境）
+
+仓库提供与本机验证环境一致的 Ubuntu 26.04 + ROS 2 Lyrical + Gazebo Sim 10.x 参考容器，以及同一镜像
+驱动的 Dev Container。Docker 命令进入容器时会自动加载 ROS 环境：
+
+```bash
+make docker-build       # 构建参考镜像
+make docker-smoke       # 仅运行 wheel 控制面冒烟，不启动 ROS/Gazebo
+make docker-hospital    # headless 完整医院演示，输出独立验收报告
+make docker-mcp-trace   # 通过生产 MCP stdio 运行固定案例并输出工具轨迹
+```
+
+`docker-hospital` 运行的是送药案例的完整验证，不改变标准工作流的产品边界；其日志与
+验收证据写入当前工作区的 `examples/hospital_delivery/logs/`。`docker-mcp-trace` 生成的是
+独立的 MCP 控制面轨迹，不能替代验收报告。在 VS Code/Codex 等支持 Dev Container 的工具中，
+直接选择仓库内的 `.devcontainer/devcontainer.json` 即可使用同一环境。
+
+完整验收保持原有的 300 秒壁钟上限，要求运行主机实测能满足该预算。`nightly-hospital`
+因此要求带 `ros-gazebo` 标签的 Linux 自托管 runner；不要把该任务改到默认 GitHub 托管 CPU
+runner 后通过放宽验收阈值来“修复”失败。
 
 真机部署请从 [`docs/REAL-ROBOT.md`](docs/REAL-ROBOT.md) 开始，选择
 `twist` 或 `nav2` 适配器。

@@ -136,7 +136,7 @@ def test_native_graph_helper_is_fixed_bounded_and_rejects_malformed_output(monke
 
     argv, kwargs = calls[0]
     assert argv == [
-        str(PROJECT_ROOT.parents[1] / ".venv" / "bin" / "python"),
+        sys.executable,
         "-m",
         "agent_ros.discovery.native_probe",
     ]

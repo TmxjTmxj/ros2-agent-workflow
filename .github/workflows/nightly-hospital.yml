@@ -1,0 +1,54 @@
+name: nightly-hospital
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 18 * * 0"
+
+permissions:
+  contents: read
+
+jobs:
+  hospital-evidence:
+    name: Headless hospital demonstration evidence
+    runs-on: [self-hosted, linux, ros-gazebo]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the local reference image
+        run: make docker-build
+
+      - name: Run independent headless acceptance demonstration
+        run: make docker-hospital
+
+      - name: Run the reviewed production MCP trace
+        run: make docker-mcp-trace
+
+      - name: Stage generated evidence bundle
+        run: |
+          set -euo pipefail
+          artifact_dir=artifacts/hospital
+          camera_dir=examples/hospital_delivery/logs/camera
+          mkdir --parents "$artifact_dir"
+          cp examples/hospital_delivery/logs/acceptance_report.json "$artifact_dir/acceptance_report.json"
+          cp examples/hospital_delivery/evidence/mcp_agent_trace.json "$artifact_dir/mcp_agent_trace.json"
+          initial=$(find "$camera_dir" -maxdepth 1 -type f -name 'acceptance-initial-*.png' -print -quit)
+          final=$(find "$camera_dir" -maxdepth 1 -type f -name 'acceptance-final-*.png' -print -quit)
+          test -n "$initial" && test -n "$final"
+          cp "$initial" "$artifact_dir/acceptance-initial.png"
+          cp "$final" "$artifact_dir/acceptance-final.png"
+
+      - name: Validate staged evidence without rewriting it
+        run: python3 scripts/verify_release_artifacts.py artifacts/hospital
+
+      - name: Upload hospital evidence and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-hospital-evidence
+          path: |
+            artifacts/hospital/
+            examples/hospital_delivery/logs/
+          retention-days: 30
+          if-no-files-found: warn

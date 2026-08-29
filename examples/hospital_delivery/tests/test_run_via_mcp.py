@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import shutil
+import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,6 +14,28 @@ from scripts.run_via_mcp import (
     server_environment,
     write_trace_atomic,
 )
+from scripts.verify_release_artifacts import verify_release_artifacts
+
+
+def test_release_artifact_verifier_rejects_missing_acceptance_report(tmp_path):
+    assert verify_release_artifacts(tmp_path) == 2
+
+
+def test_release_artifact_verifier_accepts_complete_success_bundle(tmp_path):
+    evidence = Path(__file__).resolve().parents[1] / "evidence"
+    for name in (
+        "acceptance_report.json",
+        "mcp_agent_trace.json",
+        "acceptance-initial.png",
+        "acceptance-final.png",
+    ):
+        shutil.copy2(evidence / name, tmp_path / name)
+
+    assert verify_release_artifacts(tmp_path) == 0
+
+
+def test_mcp_runner_uses_the_active_interpreter():
+    assert run_via_mcp.SERVER_PYTHON == Path(sys.executable)
 
 
 class ReplayMcpClient:

@@ -8,6 +8,7 @@ import asyncio
 import json
 import math
 import os
+import sys
 import tempfile
 import time
 from collections.abc import Mapping
@@ -16,7 +17,7 @@ from pathlib import Path
 EXAMPLE_ROOT = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = EXAMPLE_ROOT.parents[1]
 TRACE_PATH = EXAMPLE_ROOT / "evidence" / "mcp_agent_trace.json"
-SERVER_PYTHON = REPOSITORY_ROOT / ".venv" / "bin" / "python"
+SERVER_PYTHON = Path(sys.executable)
 WALL_TIMEOUT = 600.0
 POLL_INTERVAL = 0.5
 _ROS_ENVIRONMENT_KEYS = (

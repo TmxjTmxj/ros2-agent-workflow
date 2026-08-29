@@ -1,0 +1,18 @@
+{
+  "name": "ROS 2 Agent Workflow",
+  "build": {
+    "dockerfile": "../Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspace",
+  "overrideCommand": false,
+  "postCreateCommand": "source /opt/ros/lyrical/setup.bash && /opt/agent-ros-venv/bin/python -m pip install -e '.[dev]'",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-iot.vscode-ros"
+      ]
+    }
+  }
+}

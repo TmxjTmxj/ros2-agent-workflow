@@ -14,7 +14,7 @@
 
 - Preserve task-level MCP authority; never expose shell, arbitrary ROS topics, payloads, paths, or PIDs.
 - Preserve fail-closed authorization, heartbeats, E-stop behavior, and independent evidence semantics.
-- Treat Ubuntu 24.04 + ROS 2 Lyrical + Gazebo Sim 10 as the reference demonstration environment.
+- Treat the locally verified Ubuntu 26.04 (Resolute) + ROS 2 Lyrical + Gazebo Sim 10.x environment as the reference demonstration environment.
 - Keep hospital delivery as a complete demonstration; do not claim it is the only standard workflow.
 - Fast PR checks must not arm hardware, publish motion, or require a graphical display.
 - Do not modify hospital route, acceptance thresholds, or mission semantics.
@@ -506,7 +506,7 @@ git commit -m "ci: gate releases on installed workflow verification"
 - Modify: `README.md`
 
 **Interfaces:**
-- `make docker-build` builds the official Ubuntu 24.04/ROS Lyrical image.
+- `make docker-build` builds the official Ubuntu 26.04/ROS Lyrical image.
 - `make docker-smoke` executes non-motion wheel smoke tests inside the image.
 - `make docker-hospital` runs the existing headless hospital demonstration and writes evidence to a bind-mounted output directory.
 
@@ -515,9 +515,9 @@ git commit -m "ci: gate releases on installed workflow verification"
 ```python
 def test_container_declares_reference_ros_environment():
     dockerfile = Path("Dockerfile").read_text()
-    assert "ubuntu:24.04" in dockerfile
+    assert "ubuntu:26.04" in dockerfile
     assert "ros-lyrical" in dockerfile
-    assert "gz-sim10" in dockerfile
+    assert "ros-lyrical-gz-sim-vendor" in dockerfile
 ```
 
 - [ ] **Step 2: Run focused test and verify failure**

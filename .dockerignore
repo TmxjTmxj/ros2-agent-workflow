@@ -1,0 +1,17 @@
+.git
+.github
+.superpowers
+.venv
+.worktrees
+__pycache__/
+*.py[cod]
+.coverage
+.mypy_cache
+.pytest_cache
+.ruff_cache
+build/
+dist/
+examples/hospital_delivery/build/
+examples/hospital_delivery/install/
+examples/hospital_delivery/logs/
+examples/hospital_delivery/state/
