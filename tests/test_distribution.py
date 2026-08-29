@@ -14,6 +14,15 @@ from fastmcp.client.transports import StdioTransport
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_readme_documents_the_installed_control_plane():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+
+    assert "Profile → SafetyGateway → Adapter → evidence" in readme
+    assert "agent-ros --json status hospital-amr" in readme
+    assert "agent-ros-mcp" in readme
+    assert "make check" in readme
+
+
 def test_project_declares_dev_quality_tools():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
     tools = set(project["project"]["optional-dependencies"]["dev"])

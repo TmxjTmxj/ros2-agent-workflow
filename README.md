@@ -43,6 +43,16 @@
 
 这是一个 **基于 Codex（OpenAI）的 ROS2 自动化控制框架**：AI Agent 通过 **MCP 协议** 连接 ROS2 + Gazebo 仿真环境，以**任务级意图**（"把药从药房送到病房2"）驱动机器人完成复杂任务，而不是逐条下发底层指令。
 
+项目的标准工作流边界是：
+
+```text
+Profile → SafetyGateway → Adapter → evidence
+```
+
+其中 Profile 描述经过审查的机器人与任务，SafetyGateway 保持 fail-closed
+授权，Adapter 只执行白名单动作，evidence 由独立验收链路保存。医院送药是这套
+标准工作流的**完整验证示例**，不是项目唯一的产品边界。
+
 **项目的核心价值：**
 
 | 特点 | 说明 |
@@ -291,6 +301,23 @@ make install
 make test
 ```
 
+### 已安装控制面的安全验证
+
+开发、测试或贡献时，安装开发依赖并验证 wheel 所拥有的控制面：
+
+```bash
+.venv/bin/python -m pip install -e ".[dev]"
+agent-ros --json status hospital-amr
+make check
+```
+
+第一条 CLI 命令只加载随 wheel 打包的已审查 Profile，输出初始状态；`make check`
+运行 lint、类型检查、根测试、依赖审计和 wheel smoke。两者都**不会**启动 ROS 或
+Gazebo，也不会 arm 适配器或发布运动命令。
+
+`agent-ros-mcp` 是已安装的 stdio MCP server 入口，应由 MCP client 启动和管理，
+而不是作为交互式 shell 命令直接使用。
+
 真机部署请从 [`docs/REAL-ROBOT.md`](docs/REAL-ROBOT.md) 开始，选择
 `twist` 或 `nav2` 适配器。
 
@@ -319,8 +346,8 @@ MCP trace 只证明 Agent 控制面调用顺序、终态取证与清理；它不
 # 配置 MCP Server(复制 .codex/config.toml.example 到你的 Agent 配置)
 # 对 Codex:
 #   mcp_servers.agent_ros = {
-#     command = "<仓库路径>/.venv/bin/python",
-#     args = ["-m", "mcp_server.ros2_mcp_server"],
+#     command = "<仓库路径>/.venv/bin/agent-ros-mcp",
+#     args = [],
 #     cwd = "<仓库路径>",
 #   }
 ```
