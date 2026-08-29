@@ -10,14 +10,14 @@ English entry point: [README.en.md](README.en.md) · 发布核对：[docs/RELEAS
 > Codex or any MCP client issues bounded task-level commands through FastMCP;
 > a fail-closed SafetyGateway authorizes motion; a single-writer ROS2 controller
 > drives a Gazebo TurtleBot3 Burger through a hospital delivery mission;
-> independent acceptance evidence, terminal snapshots, and 505 unique tests make
+> independent acceptance evidence, terminal snapshots, and reproducible quality gates make
 > the result verifiable.
 
 [![ROS2](https://img.shields.io/badge/ROS2-lyrical-orange)](https://docs.ros.org)
 [![Gazebo](https://img.shields.io/badge/Gazebo-gz_sim_10-blue)](https://gazebosim.org)
 [![Python](https://img.shields.io/badge/Python-3.11%2B-green)](https://www.python.org)
 [![MCP](https://img.shields.io/badge/MCP-FastMCP-important)](https://modelcontextprotocol.io)
-[![Tests](https://img.shields.io/badge/tests-505%20passed-brightgreen)](#-跑测试505-个)
+[![Root tests](https://img.shields.io/badge/root%20tests-388%20passed-brightgreen)](#-质量门禁与验证)
 [![Mission](https://img.shields.io/badge/mission-137.8s%20sim-58a6ff)](examples/hospital_delivery/evidence/acceptance_report.json)
 [![Safety](https://img.shields.io/badge/safety-0%20prohibited%20contacts-brightgreen)](#-参考案例医院配送送药巡诊机器人赛项)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
@@ -54,6 +54,25 @@ Profile → SafetyGateway → Adapter → evidence
 其中 Profile 描述经过审查的机器人与任务，SafetyGateway 保持 fail-closed
 授权，Adapter 只执行白名单动作，evidence 由独立验收链路保存。医院送药是这套
 标准工作流的**完整验证示例**，不是项目唯一的产品边界。
+
+### 一眼看懂：控制与证据分离
+
+<table>
+  <tr>
+    <td width="50%"><img src="examples/hospital_delivery/evidence/acceptance-initial.png" alt="医院配送任务开始的独立相机证据" width="100%"></td>
+    <td width="50%"><img src="examples/hospital_delivery/evidence/acceptance-final.png" alt="医院配送任务完成的独立相机证据" width="100%"></td>
+  </tr>
+  <tr>
+    <td align="center">任务开始：独立相机证据</td>
+    <td align="center">任务完成：独立相机证据</td>
+  </tr>
+</table>
+
+| 你看到的 | 它证明的不是 |
+|---|---|
+| Profile → SafetyGateway → Adapter | Agent 不直接取得 shell 或任意 topic 权限 |
+| 独立相机、里程计、接触与发布者监控 | 控制器不能单方面宣布“成功” |
+| JSON 报告 + PNG + MCP trace | 控制链与验收链分别留存、可复查 |
 
 **项目的核心价值：**
 
@@ -199,7 +218,7 @@ watchdog。因此低于实时速率的 Gazebo 不会重复消耗任务预算。�
 
 | 任务开始(相机视角) | 任务完成(相机视角) |
 |---|---|
-| ![初始](assets/hospital-camera-initial.png) | ![最终](assets/hospital-camera-final.png) |
+| ![初始独立相机证据](examples/hospital_delivery/evidence/acceptance-initial.png) | ![最终独立相机证据](examples/hospital_delivery/evidence/acceptance-final.png) |
 
 俯视视角四帧采样（t=0/9/18/27 s）：
 
@@ -392,7 +411,7 @@ Agent: 紧急停止!
 Agent: 当前任务状态是什么?
 ```
 
-### 4. 跑测试(505 个唯一用例)
+### 4. 运行验证套件
 
 ```bash
 # 根框架测试(干净 venv,避免 ROS launch_testing 插件污染)
@@ -433,28 +452,24 @@ ros2-agent-workflow/
 │   └── tests/                  #   案例测试
 ├── scripts/                    # 一键演示脚本
 ├── skills/                     # Agent 技能文档
-├── tests/                      # 框架与案例测试(505 个唯一用例)
+├── tests/                      # 控制面、发布与安全契约测试
 └── assets/                     # 架构图、路线图、运行截图
 ```
 
 ---
 
-## 🧪 测试与质量
+## 🧪 质量门禁与验证
 
-- **505 个唯一测试**覆盖:Profile 校验、安全序列器、网关、审计、适配器、MCP 工具、验收报告解析
-  (根测试 365 项与医院 ROS 案例 147 项分层执行,去重后 505 项)
+下列数字是 v0.1.0 本地验证的**可复现命令结果**，不再混用历史阶段的测试计数：
 
-  测试数量口径历史：
+| 范围 | 命令 | 已验证结果 |
+|---|---|---|
+| Python 控制面 | `make check` | **388 个根测试通过**；Ruff、mypy、依赖审计、wheel smoke 均通过，覆盖率 81% |
+| 轻量容器控制面 | `make docker-smoke` | 已安装 wheel 的 CLI/MCP smoke：8 通过（不启动 ROS/Gazebo） |
+| 医院 ROS 参考案例 | `make test-hospital` | 150 通过；使用系统 ROS Python，和根控制面刻意分离 |
+| 完整医院验收 | `make docker-hospital` | 由独立 acceptance report 与两张 PNG 判定；需满足 300 秒预算的 Runner |
 
-  | 阶段 | README/徽章数字 | 实际口径 |
-  |------|-----------------|----------|
-  | 早期 `main` | 322 | 只计根框架测试 |
-  | 官方 Burger 开发中间版 | 509 | 合并计数,未按隔离环境严格去重,不作为最终口径 |
-  | 终态证据屏障完成后的最终门禁 | **505** | 根 365 + 医院 ROS 案例 147 − 7 个重叠用例；两个 Python 环境分层执行,可复现 |
-
-  简历引用请使用 **505 个唯一测试**，不要使用中间版 509。
-- 每个 Task 都经过 **5 轮代码审查循环**(Critical/Important/Minor 分级),修复后独立复审
-- 真实验收通过:三段误差、停止漂移、禁止接触、相机证据全部达标
+不要将不同 Python/ROS 环境的测试简单相加为单一“唯一用例”数字。对外展示应同时给出命令、运行环境与证据路径；真实送药案例的成功证据见上方 JSON、PNG 和 MCP trace。
 
 ## 🦾 真机适配与贡献
 

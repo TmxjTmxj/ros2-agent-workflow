@@ -102,6 +102,11 @@ def test_readmes_link_to_each_other_and_release_docs():
     assert "docker-hospital-preflight" in english_readme
     assert "release-verify" in chinese_readme
     assert "release-verify" in english_readme
+    assert "505" not in chinese_readme
+    assert "388 root tests passed" in english_readme
+    assert "388 个根测试通过" in chinese_readme
+    assert '<img src="examples/hospital_delivery/evidence/acceptance-initial.png"' in chinese_readme
+    assert '<img src="examples/hospital_delivery/evidence/acceptance-final.png"' in english_readme
 
 
 def test_built_wheel_installs_and_runs_cli_outside_repository(tmp_path):

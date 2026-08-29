@@ -14,6 +14,22 @@ The hospital delivery project is the complete validation demonstration of that w
 It is not the project's only product boundary, and it does not imply universal robot SDK
 coverage or production hardware certification.
 
+## See the workflow
+
+![Standard Agent-to-ROS 2 workflow](assets/architecture.png)
+
+The agent can request only reviewed task-level operations. The controller and independent
+evidence chain are deliberately separate: a controller cannot declare its own success.
+
+| Mission start | Mission completion |
+| --- | --- |
+| <img src="examples/hospital_delivery/evidence/acceptance-initial.png" alt="Independent camera evidence at hospital mission start" width="100%"> | <img src="examples/hospital_delivery/evidence/acceptance-final.png" alt="Independent camera evidence at hospital mission completion" width="100%"> |
+
+These are the canonical PNGs referenced by the schema-2 acceptance report, not decorative
+copies. The [JSON report](examples/hospital_delivery/evidence/acceptance_report.json),
+[MCP trace](examples/hospital_delivery/evidence/mcp_agent_trace.json), and the two frames
+form separate, reviewable evidence surfaces.
+
 ## What is included
 
 - Packaged robot/task profiles and schemas in the Python wheel.
@@ -67,6 +83,11 @@ new robot, keep the same profile-to-evidence workflow and implement a new review
 see [the migration guide](docs/ADAPTER-MIGRATION.md).
 
 ## Evidence and automation
+
+The latest local v0.1.0 control-plane verification recorded **388 root tests passed** at
+81% coverage, and the ROS-free container wheel/CLI/MCP smoke recorded 8 passed. The ROS
+hospital suite is intentionally separate because it requires the system ROS Python; the
+full hospital acceptance run remains the authority for mission success and runner RTF.
 
 Fast CI checks source quality and an installed wheel. A scheduled/manual GitHub workflow
 runs the headless hospital case on a Linux self-hosted runner labelled `ros-gazebo`, stages

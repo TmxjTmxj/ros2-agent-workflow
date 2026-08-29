@@ -57,14 +57,17 @@ class RosHarness:
         while time.monotonic() < deadline:
             self.executor.spin_once(timeout_sec=0.01)
 
-    def publish_pose(self, x=0.0, y=0.0, yaw=0.0):
+    def publish_pose(self, x=0.0, y=0.0, yaw=0.0, *, synchronous=False):
         msg = Odometry()
         msg.pose.pose.position.x = x
         msg.pose.pose.position.y = y
         msg.pose.pose.orientation.z = math.sin(yaw / 2.0)
         msg.pose.pose.orientation.w = math.cos(yaw / 2.0)
         for _ in range(3):
-            self.odom_pub.publish(msg)
+            if synchronous:
+                self.controller._on_odom(msg)
+            else:
+                self.odom_pub.publish(msg)
             self.spin_for(0.03)
 
     def trigger(self, service_name):
@@ -216,7 +219,7 @@ def test_node_separates_ros_mission_time_from_wall_feedback_watchdog(tmp_path):
 
         sim_time[0] = 90.0
         wall_time[0] = 180.0
-        value.publish_pose()
+        value.publish_pose(synchronous=True)
         value.controller._control_tick()
         assert value.controller.core.state.value == "RUNNING"
 
