@@ -277,6 +277,51 @@ git add .pre-commit-config.yaml pyproject.toml Makefile CONTRIBUTING.md tests/te
 git commit -m "chore: add reproducible quality gates"
 ```
 
+### Task 5.5: Update the Chinese README for the installed standard workflow
+
+**Files:**
+- Modify: `README.md`
+- Modify: `tests/test_distribution.py`
+
+**Interfaces:**
+- Documents the standard boundary as `Profile -> SafetyGateway -> reviewed Adapter -> evidence`.
+- Documents hospital delivery as the complete validation demonstration, not the product boundary.
+- Documents `pip install ".[dev]"`, `agent-ros`, `agent-ros-mcp`, and `make check` without claiming that either command starts ROS or motion.
+
+- [ ] **Step 1: Add a failing README contract test**
+
+```python
+def test_readme_documents_the_installed_control_plane():
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Profile → SafetyGateway → Adapter → evidence" in readme
+    assert "agent-ros --json status hospital-amr" in readme
+    assert "agent-ros-mcp" in readme
+    assert "make check" in readme
+```
+
+- [ ] **Step 2: Run the focused test and verify failure**
+
+Run: `python -m pytest tests/test_distribution.py -k readme_documents -q`
+
+Expected: assertion failure because the README lacks the installed CLI and quality-gate contract.
+
+- [ ] **Step 3: Update positioning and safe quick verification**
+
+Add a concise standard-workflow positioning paragraph near `项目是什么`; retain the hospital case and evidence sections unchanged. Add a quick verification block that installs `.[dev]`, invokes `agent-ros --json status hospital-amr`, identifies `agent-ros-mcp` as a stdio server, and runs `make check`. State explicitly that these commands do not start Gazebo or arm an adapter.
+
+- [ ] **Step 4: Verify documentation contract and root tests**
+
+Run: `python -m pytest tests/test_distribution.py -k readme_documents -q && make check`
+
+Expected: PASS; the normal quality command still validates all root checks.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add README.md tests/test_distribution.py
+git commit -m "docs: clarify installed standard workflow"
+```
+
 ### Task 6: Extract controller evidence boundary
 
 **Files:**
