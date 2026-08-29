@@ -7,12 +7,23 @@ from contextlib import ExitStack, contextmanager
 from typing import TypeVar
 
 import pytest
+from agent_ros.adapters._safety import _ActivationIssuer
 from agent_ros.adapters.base import RobotAdapter
 from agent_ros.runtime.controller import RuntimeController
 from agent_ros.safety.gateway import SafetyGateway
 from agent_ros.safety.supervisor import SafetySupervisor
 
 _T = TypeVar("_T")
+
+
+def bind_simulation_activation(adapter: RobotAdapter) -> object:
+    """Bind a deterministic simulation-only activation issuer for contract tests."""
+    if not isinstance(adapter, RobotAdapter):
+        raise TypeError("adapter must implement RobotAdapter")
+    issuer = _ActivationIssuer()
+    adapter._bind_runtime_safety(issuer)
+    adapter._validate_runtime_safety("simulation")
+    return issuer._issue()
 
 
 @contextmanager
