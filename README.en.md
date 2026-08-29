@@ -1,6 +1,6 @@
 # ROS 2 Agent Workflow
 
-[中文 README](README.md) · [Release checklist](docs/RELEASE.md) · [Adapter migration](docs/ADAPTER-MIGRATION.md)
+[中文 README](README.md) · [Release checklist](docs/RELEASE.md) · [Runner guide](docs/RUNNER.md) · [Adapter migration](docs/ADAPTER-MIGRATION.md)
 
 `ros2-agent-workflow` is a safe, reproducible Agent-to-ROS 2 control-plane reference.
 It turns reviewed task intent into bounded ROS actions through a profile, a fail-closed
@@ -41,12 +41,17 @@ Lyrical, and Gazebo Sim 10.x:
 
 ```bash
 make docker-build
+make docker-control-build
 make docker-smoke
+make docker-hospital-preflight
 make docker-hospital
 make docker-mcp-trace
 ```
 
-`docker-hospital` writes the independent acceptance evidence under
+`docker-control-build` creates the ROS-free image used by `docker-smoke`.
+`docker-build` retains the full ROS/Gazebo hospital runtime.  The preflight
+records host/container facts but cannot prove real-time factor; `docker-hospital`
+writes the independent acceptance evidence under
 `examples/hospital_delivery/logs/`. `docker-mcp-trace` writes a separate control-plane
 trace and never replaces the acceptance report.
 
@@ -71,6 +76,8 @@ budget; the workflow does not weaken that budget for CPU-only hosted runners.
 
 Before publishing a tag, follow [the release checklist](docs/RELEASE.md). It produces a
 GitHub Release only after source checks and installed-wheel verification have passed.
+Use `make release-verify RELEASE_DIST=/tmp/agent-ros-release-candidate` to validate the
+wheel, sdist, package metadata, and SHA-256 manifest before tagging.
 
 ## Demonstration
 

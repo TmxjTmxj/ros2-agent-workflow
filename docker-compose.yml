@@ -1,9 +1,23 @@
 services:
+  control-plane:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: control-plane
+    image: ros2-agent-workflow:control-plane
+    working_dir: /workspace
+    user: "${AGENT_ROS_UID:-1000}:${AGENT_ROS_GID:-1000}"
+    environment:
+      PYTHONNOUSERSITE: "1"
+    volumes:
+      - .:/workspace
+
   agent-ros:
     build:
       context: .
       dockerfile: Dockerfile
-    image: ros2-agent-workflow:dev
+      target: hospital-runtime
+    image: ros2-agent-workflow:hospital-runtime
     working_dir: /workspace
     user: "${AGENT_ROS_UID:-1000}:${AGENT_ROS_GID:-1000}"
     environment:

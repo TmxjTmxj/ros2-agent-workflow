@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+.coverage
 .venv/
 .worktrees/
 *.egg-info/

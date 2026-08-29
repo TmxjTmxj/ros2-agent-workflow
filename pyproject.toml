@@ -6,6 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "agent-ros"
 version = "0.1.0"
 description = "Safe declarative control-plane primitives for ROS 2 robots"
+readme = {file = "README.en.md", content-type = "text/markdown"}
 requires-python = ">=3.11"
 dependencies = [
     "FastMCP==3.4.7",
@@ -23,6 +24,7 @@ dev = [
     "pytest>=8.3",
     "pytest-cov>=6.0",
     "ruff==0.8.4",
+    "twine>=6.1",
     "types-jsonschema>=4.24",
     "types-PyYAML>=6.0",
 ]

@@ -33,10 +33,16 @@ jobs:
       - name: Build release distributions
         run: .venv/bin/python -m build --outdir dist
 
+      - name: Validate distribution metadata
+        run: .venv/bin/python -m twine check dist/*
+
       - name: Write SHA-256 verification manifest
         run: |
           cd dist
           sha256sum agent_ros-*.tar.gz agent_ros-*.whl > SHA256SUMS.txt
+
+      - name: Verify release candidate artifact set
+        run: .venv/bin/python scripts/verify_release_candidate.py --dist-dir dist
 
       - name: Upload verified release artifacts
         uses: actions/upload-artifact@v4

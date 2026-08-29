@@ -1,4 +1,4 @@
-FROM ubuntu:26.04
+FROM ubuntu:26.04 AS python-base
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -24,6 +24,28 @@ RUN apt-get update \
     && add-apt-repository universe \
     && rm -rf /var/lib/apt/lists/*
 
+RUN useradd --create-home --shell /bin/bash ros \
+    && mkdir --parents "$VIRTUAL_ENV" /workspace \
+    && chown --recursive ros:ros "$VIRTUAL_ENV" /workspace
+
+COPY docker/ros-entrypoint.sh /usr/local/bin/ros-entrypoint
+RUN chmod 0755 /usr/local/bin/ros-entrypoint
+
+WORKDIR /workspace
+ENTRYPOINT ["/usr/local/bin/ros-entrypoint"]
+CMD ["bash"]
+
+FROM python-base AS control-plane
+
+COPY --chown=ros:ros . /workspace
+
+USER ros
+RUN python3 -m venv "$VIRTUAL_ENV" \
+    && "$VIRTUAL_ENV/bin/python" -m pip install --upgrade pip \
+    && "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir ".[dev]"
+
+FROM python-base AS hospital-runtime
+
 RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
         -o /usr/share/keyrings/ros-archive-keyring.gpg \
     && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo ${UBUNTU_CODENAME}) main" \
@@ -37,11 +59,6 @@ RUN curl -fsSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
         python3-colcon-common-extensions \
     && rm -rf /var/lib/apt/lists/*
 
-RUN useradd --create-home --shell /bin/bash ros \
-    && mkdir --parents "$VIRTUAL_ENV" /workspace \
-    && chown --recursive ros:ros "$VIRTUAL_ENV" /workspace
-
-WORKDIR /workspace
 COPY --chown=ros:ros . /workspace
 
 USER ros
@@ -49,9 +66,3 @@ RUN source /opt/ros/lyrical/setup.bash \
     && python3 -m venv --system-site-packages "$VIRTUAL_ENV" \
     && "$VIRTUAL_ENV/bin/python" -m pip install --upgrade pip \
     && "$VIRTUAL_ENV/bin/python" -m pip install --no-cache-dir ".[dev]"
-
-COPY --chown=ros:ros docker/ros-entrypoint.sh /usr/local/bin/ros-entrypoint
-RUN chmod 0755 /usr/local/bin/ros-entrypoint
-
-ENTRYPOINT ["/usr/local/bin/ros-entrypoint"]
-CMD ["bash"]

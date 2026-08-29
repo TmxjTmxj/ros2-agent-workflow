@@ -2,7 +2,8 @@
   "name": "ROS 2 Agent Workflow",
   "build": {
     "dockerfile": "../Dockerfile",
-    "context": ".."
+    "context": "..",
+    "target": "hospital-runtime"
   },
   "workspaceFolder": "/workspace",
   "overrideCommand": false,

@@ -19,6 +19,9 @@ jobs:
       - name: Build the local reference image
         run: make docker-build
 
+      - name: Preflight the ROS/Gazebo runner environment
+        run: make docker-hospital-preflight
+
       - name: Run independent headless acceptance demonstration
         run: make docker-hospital
 

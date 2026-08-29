@@ -1608,6 +1608,7 @@ def test_monitor_thread_start_failure_latches_stop_and_never_leaks_running(tmp_p
         active.run_task("delivery")
 
     assert active.state is SafetyState.ESTOPPED
+    assert wait_until(lambda: adapter.stop_count >= 3)
     assert adapter.stop_count >= 3
 
     assert active.stop_runtime() == {"state": "ESTOPPED"}
