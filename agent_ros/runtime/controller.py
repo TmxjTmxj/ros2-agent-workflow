@@ -29,7 +29,9 @@ from agent_ros.runtime.audit import (
     _AuditAppendWorker,
     validate_audit_history,
 )
+from agent_ros.runtime.errors import RuntimeControllerError
 from agent_ros.runtime.evidence import EvidenceError, EvidenceReference, EvidenceStore
+from agent_ros.runtime.terminal_evidence import capture_terminal_evidence
 from agent_ros.safety.gateway import SafetyError, SafetyGateway, SafetyTransition
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
@@ -38,30 +40,6 @@ _QUARANTINE_TEXT = b"AUDIT_INTEGRITY_COMPROMISED\n"
 # ROS sim time is the competition budget; this wall bound only detects a stuck
 # sim host. Slow RTF must not fail an otherwise valid 180 s ROS-clock task.
 _HOSPITAL_WALL_LIVENESS_TIMEOUT = 600.0
-_PUBLIC_CODES = frozenset(
-    {
-        "UNSAFE_STATE",
-        "PROFILE_INVALID",
-        "CONTROLLER_CONFLICT",
-        "STALE_FEEDBACK",
-        "TIMEOUT",
-        "EVIDENCE_INVALID",
-        "AUDIT_INTEGRITY_COMPROMISED",
-        "ESTOP_LATCHED",
-        "OPERATOR_REQUIRED",
-        "CLEANUP_FAILED",
-    }
-)
-
-
-class RuntimeControllerError(RuntimeError):
-    """A stable public code with no underlying ROS, process, or path details."""
-
-    def __init__(self, code: str) -> None:
-        self.code = code if code in _PUBLIC_CODES else "UNSAFE_STATE"
-        super().__init__(self.code)
-
-
 AdapterFactory = Callable[[RobotProfile], RobotAdapter]
 
 
@@ -676,24 +654,7 @@ class RuntimeController:
         if task is None or not task.evidence_sources:
             return
         sources = task.evidence_sources
-        try:
-            frozen = adapter.freeze_terminal_evidence(sources, status)
-        except AdapterError as exc:
-            raise self._adapter_error(exc) from None
-        except Exception:
-            raise RuntimeControllerError("EVIDENCE_INVALID") from None
-        if not isinstance(frozen, Mapping):
-            raise RuntimeControllerError("EVIDENCE_INVALID")
-        snapshot: dict[str, Observation] = {}
-        for source in sources:
-            observation = frozen.get(source)
-            if (
-                not isinstance(observation, Observation)
-                or observation.source != source
-                or not isinstance(observation.values, Mapping)
-            ):
-                raise RuntimeControllerError("EVIDENCE_INVALID")
-            snapshot[source] = observation
+        snapshot = capture_terminal_evidence(adapter, sources, status)
         with self._lock:
             self._terminal_evidence = snapshot
             self._terminal_evidence_frozen = True

@@ -29,6 +29,7 @@ from agent_ros.discovery.models import Endpoint, GraphSnapshot
 from agent_ros.runtime.audit import AuditIntegrityError, AuditOperation, AuditWriter
 from agent_ros.runtime.controller import RuntimeController, RuntimeControllerError
 from agent_ros.runtime.evidence import EvidenceError, EvidenceStore
+from agent_ros.runtime.terminal_evidence import capture_terminal_evidence
 from agent_ros.safety.gateway import SafetyStopAttempt, SafetyTransition
 from agent_ros.safety.outcome import EmergencyStopResult
 from agent_ros.safety.state import SafetyState
@@ -840,6 +841,19 @@ def test_terminal_evidence_is_frozen_before_success_cleanup_and_served_after_sto
     assert dict(frozen.values) == {"frozen": True}
     assert events.count(("observe", "camera", 0)) == 1
     active.stop_runtime()
+
+
+def test_terminal_evidence_capture_translates_adapter_failure():
+    class FailingAdapter(RecordingAdapter):
+        def freeze_terminal_evidence(self, sources, terminal_status=None):
+            raise AdapterError("STALE_FEEDBACK")
+
+    with pytest.raises(RuntimeControllerError, match="STALE_FEEDBACK"):
+        capture_terminal_evidence(
+            FailingAdapter(),
+            ("odometry",),
+            AdapterStatus("succeeded"),
+        )
 
 
 def test_terminal_evidence_freeze_failure_latches_estop_and_still_cleans(tmp_path, runtime_owner):
