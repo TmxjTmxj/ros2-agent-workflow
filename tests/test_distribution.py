@@ -108,7 +108,11 @@ def test_readmes_link_to_each_other_and_release_docs():
     assert "505 个唯一测试" not in chinese_readme
     assert "388 root tests passed" in english_readme
     assert "388 个根测试通过" in chinese_readme
-    assert "为什么不再使用 500+ 测试" in chinese_readme
+    assert "### 数字为何会变化" in chinese_readme
+    assert "| 历史表述 | 当前可引用口径 | 变化原因 |" in chinese_readme
+    assert "137.76 s ROS 仿真时钟" in chinese_readme
+    assert "历史数字手工汇总了不同时期、不同 Python 解释器和不同 ROS 依赖环境" in chinese_readme
+    assert "官方Burger医院送药_俯视演示.mp4" in chinese_readme
     assert "Why there is no 500+ test total" in english_readme
     assert '<img src="examples/hospital_delivery/evidence/acceptance-initial.png"' in chinese_readme
     assert '<img src="examples/hospital_delivery/evidence/acceptance-final.png"' in english_readme
