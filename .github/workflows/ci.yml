@@ -26,7 +26,7 @@ jobs:
       - name: Create project virtualenv
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install --upgrade pip "setuptools>=83.0.0"
 
       - name: Install reproducible development toolchain
         run: .venv/bin/python -m pip install -e ".[dev]"
@@ -65,7 +65,7 @@ jobs:
       - name: Create project virtualenv
         run: |
           python -m venv .venv
-          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/python -m pip install --upgrade pip "setuptools>=83.0.0"
 
       - name: Install static hospital-test dependencies
         run: |

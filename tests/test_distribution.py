@@ -50,10 +50,14 @@ def test_release_workflow_validates_metadata_and_artifact_manifest():
 
 def test_patch_release_declares_bounded_ci_verification():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
     ci_workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
 
     assert project["project"]["version"] == "0.1.1"
+    assert '"setuptools>=83.0.0"' in makefile
+    assert '"setuptools>=83.0.0"' in ci_workflow
+    assert '"setuptools>=83.0.0"' in release_workflow
     assert "timeout-minutes: 15" in ci_workflow
     assert "timeout-minutes: 20" in release_workflow
 

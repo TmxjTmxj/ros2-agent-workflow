@@ -13,7 +13,7 @@ venv:
 	$(PYTHON) -m venv $(VENV)
 
 install: venv
-	$(VENV)/bin/python -m pip install --upgrade pip setuptools
+	$(VENV)/bin/python -m pip install --upgrade pip "setuptools>=83.0.0"
 	$(VENV)/bin/python -m pip install -e ".[dev]"
 
 test:
