@@ -3,14 +3,19 @@ from __future__ import annotations
 import hashlib
 from pathlib import Path
 
-from scripts.verify_release_candidate import verify_release_candidate
+from scripts.verify_release_candidate import (
+    _expected_artifacts,
+    _project_version,
+    verify_release_candidate,
+)
+
+ARTIFACTS = _expected_artifacts(_project_version())
+WHEEL = next(name for name in ARTIFACTS if name.endswith(".whl"))
+SDIST = next(name for name in ARTIFACTS if name.endswith(".tar.gz"))
 
 
 def _write_candidate(directory: Path, *, corrupt_manifest: bool = False) -> None:
-    artifacts = {
-        "agent_ros-0.1.0-py3-none-any.whl": b"wheel bytes",
-        "agent_ros-0.1.0.tar.gz": b"source bytes",
-    }
+    artifacts = {WHEEL: b"wheel bytes", SDIST: b"source bytes"}
     for name, contents in artifacts.items():
         (directory / name).write_bytes(contents)
     lines = [f"{hashlib.sha256(contents).hexdigest()}  {name}" for name, contents in sorted(artifacts.items())]
@@ -35,7 +40,7 @@ def test_release_candidate_verifier_rejects_manifest_hash_mismatch(tmp_path, cap
 
 def test_release_candidate_verifier_rejects_missing_expected_artifact(tmp_path, capsys):
     _write_candidate(tmp_path)
-    (tmp_path / "agent_ros-0.1.0.tar.gz").unlink()
+    (tmp_path / SDIST).unlink()
 
     assert verify_release_candidate(tmp_path) == 2
     assert "missing expected distribution artifact" in capsys.readouterr().out
@@ -43,7 +48,7 @@ def test_release_candidate_verifier_rejects_missing_expected_artifact(tmp_path, 
 
 def test_release_candidate_verifier_rejects_unexpected_distribution_artifact(tmp_path, capsys):
     _write_candidate(tmp_path)
-    (tmp_path / "agent_ros-0.1.1-py3-none-any.whl").write_bytes(b"unexpected")
+    (tmp_path / "agent_ros-unexpected-py3-none-any.whl").write_bytes(b"unexpected")
 
     assert verify_release_candidate(tmp_path) == 2
     assert "unexpected distribution artifact" in capsys.readouterr().out

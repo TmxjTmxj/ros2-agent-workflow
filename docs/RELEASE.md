@@ -1,4 +1,4 @@
-# v0.1.0 Release Checklist
+# Release Checklist
 
 This checklist publishes a reproducible reference workflow release. It does not certify a
 robot or expand the reviewed MCP authority boundary.
@@ -35,7 +35,7 @@ historical count/evidence corrections, and identifies the claims this release do
 
 ## Tag and artifacts
 
-Create and push `v0.1.0`. The `release` GitHub workflow then runs `make check`, builds the
+Create and push the next immutable version tag (for example, `v0.1.1`). The `release` GitHub workflow then runs `make check`, builds the
 wheel and source distribution, runs `twine check`, writes and verifies `SHA256SUMS.txt`,
 uploads the verified distributions, and publishes the GitHub Release only after that
 verification job completes.
