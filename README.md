@@ -473,7 +473,18 @@ ros2-agent-workflow/
 | 医院 ROS 参考案例 | `make test-hospital` | 150 通过；使用系统 ROS Python，和根控制面刻意分离 |
 | 完整医院验收 | `make docker-hospital` | 由独立 acceptance report 与两张 PNG 判定；需满足 300 秒预算的 Runner |
 
-不要将不同 Python/ROS 环境的测试简单相加为单一“唯一用例”数字。对外展示应同时给出命令、运行环境与证据路径；真实送药案例的成功证据见上方 JSON、PNG 和 MCP trace。
+### 为什么不再使用 500+ 测试
+
+历史上的 500+/505/509 并不是一条命令的实际输出，而是把不同时期、不同 Python
+解释器和不同 ROS 依赖环境中的测试手工相加、再尝试去重得到的宣传数字。随着控制面和
+医院案例分别演进，这个总数既不能由一个命令复现，也容易把“需要 ROS 的仿真案例”误写成
+“普通 Python 单测”。
+
+因此现在不再使用一个合并后的“唯一测试”总数，而是按可复现边界分别报告：`make check`
+的 388 个根测试、`make test-hospital` 的 150 个 ROS 医院案例测试、以及
+`make docker-smoke` 的 8 个已安装控制面 smoke。这样简历、答辩和 README 引用都能附带
+确切命令、运行环境和证据路径，不需要日后重新订正。真实送药案例的成功证据见上方 JSON、
+PNG 和 MCP trace。
 
 ## 🦾 真机适配与贡献
 

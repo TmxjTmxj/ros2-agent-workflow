@@ -105,9 +105,11 @@ def test_readmes_link_to_each_other_and_release_docs():
     assert "release-verify" in english_readme
     assert "VERIFICATION-BASELINE.md" in chinese_readme
     assert "VERIFICATION-BASELINE.md" in english_readme
-    assert "505" not in chinese_readme
+    assert "505 个唯一测试" not in chinese_readme
     assert "388 root tests passed" in english_readme
     assert "388 个根测试通过" in chinese_readme
+    assert "为什么不再使用 500+ 测试" in chinese_readme
+    assert "Why there is no 500+ test total" in english_readme
     assert '<img src="examples/hospital_delivery/evidence/acceptance-initial.png"' in chinese_readme
     assert '<img src="examples/hospital_delivery/evidence/acceptance-final.png"' in english_readme
 

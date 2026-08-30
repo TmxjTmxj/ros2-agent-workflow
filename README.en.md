@@ -91,6 +91,18 @@ full hospital acceptance run remains the authority for mission success and runne
 Use [the verification baseline](docs/VERIFICATION-BASELINE.md) for citation-safe résumé
 or presentation wording, correction rationale, and non-claims.
 
+### Why there is no 500+ test total
+
+The historical 500+/505/509 figures were not the output of one command. They manually
+combined changing suites from different points in time, Python interpreters, and ROS
+dependency environments, then attempted to deduplicate them. That total was neither
+directly reproducible nor clear about which tests required a ROS simulation environment.
+
+The project now reports rerunnable boundaries instead: 388 root tests from `make check`,
+150 ROS hospital-reference tests from `make test-hospital`, and 8 installed control-plane
+smoke checks from `make docker-smoke`. This makes résumé and presentation claims verifiable
+without later numerical corrections.
+
 Fast CI checks source quality and an installed wheel. A scheduled/manual GitHub workflow
 runs the headless hospital case on a Linux self-hosted runner labelled `ros-gazebo`, stages
 its report, screenshots, logs, and MCP trace, validates the exported bundle read-only, and
