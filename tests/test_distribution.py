@@ -97,11 +97,14 @@ def test_readmes_link_to_each_other_and_release_docs():
     assert "README.md" in english_readme
     assert (ROOT / "docs" / "RELEASE.md").is_file()
     assert (ROOT / "docs" / "RUNNER.md").is_file()
+    assert (ROOT / "docs" / "VERIFICATION-BASELINE.md").is_file()
     assert (ROOT / "docs" / "ADAPTER-MIGRATION.md").is_file()
     assert "docker-hospital-preflight" in chinese_readme
     assert "docker-hospital-preflight" in english_readme
     assert "release-verify" in chinese_readme
     assert "release-verify" in english_readme
+    assert "VERIFICATION-BASELINE.md" in chinese_readme
+    assert "VERIFICATION-BASELINE.md" in english_readme
     assert "505" not in chinese_readme
     assert "388 root tests passed" in english_readme
     assert "388 个根测试通过" in chinese_readme

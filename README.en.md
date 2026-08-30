@@ -1,6 +1,6 @@
 # ROS 2 Agent Workflow
 
-[中文 README](README.md) · [Release checklist](docs/RELEASE.md) · [Runner guide](docs/RUNNER.md) · [Adapter migration](docs/ADAPTER-MIGRATION.md)
+[中文 README](README.md) · [Release checklist](docs/RELEASE.md) · [Runner guide](docs/RUNNER.md) · [Verification baseline](docs/VERIFICATION-BASELINE.md) · [Adapter migration](docs/ADAPTER-MIGRATION.md)
 
 `ros2-agent-workflow` is a safe, reproducible Agent-to-ROS 2 control-plane reference.
 It turns reviewed task intent into bounded ROS actions through a profile, a fail-closed
@@ -88,6 +88,8 @@ The latest local v0.1.0 control-plane verification recorded **388 root tests pas
 81% coverage, and the ROS-free container wheel/CLI/MCP smoke recorded 8 passed. The ROS
 hospital suite is intentionally separate because it requires the system ROS Python; the
 full hospital acceptance run remains the authority for mission success and runner RTF.
+Use [the verification baseline](docs/VERIFICATION-BASELINE.md) for citation-safe résumé
+or presentation wording, correction rationale, and non-claims.
 
 Fast CI checks source quality and an installed wheel. A scheduled/manual GitHub workflow
 runs the headless hospital case on a Linux self-hosted runner labelled `ros-gazebo`, stages

@@ -3,6 +3,10 @@
 This checklist publishes a reproducible reference workflow release. It does not certify a
 robot or expand the reviewed MCP authority boundary.
 
+Use [the verification baseline](VERIFICATION-BASELINE.md) when updating a résumé,
+presentation, or README: it records the current reproducible result wording, explains the
+historical count/evidence corrections, and identifies the claims this release does not make.
+
 ## Before tagging
 
 1. Start from a clean, reviewed commit and update the version in `pyproject.toml`.
@@ -58,8 +62,8 @@ Python versions, and image digest observed for that release candidate.
 
 ### Local baseline — 2026-08-29 (not a release qualification)
 
-- `make check` passed with Ruff, mypy, 380 root tests at 81% coverage, a clean `pip-audit`,
-  and 7 installed-wheel checks.
+- `make check` passed with Ruff, mypy, 388 root tests at 81% coverage, a clean `pip-audit`,
+  and 8 installed-wheel checks.
 - The Ubuntu 26.04 / ROS Lyrical / Gazebo Sim 10.x image built successfully; its installed
   wheel smoke passed all 7 checks in 102.57 seconds.
 - The local Docker host is CPU-only for containers (GeForce MX350 host driver, no NVIDIA

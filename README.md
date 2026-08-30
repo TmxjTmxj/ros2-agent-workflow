@@ -4,7 +4,7 @@
 
 **让 AI Agent 安全、可复现地自动控制 ROS2 机器人的开源框架 —— 以"中国机器人大赛暨RoboCup·送药巡诊机器人赛项"为完整验证案例**
 
-English entry point: [README.en.md](README.en.md) · 发布核对：[docs/RELEASE.md](docs/RELEASE.md) · Runner 资格认定：[docs/RUNNER.md](docs/RUNNER.md)
+English entry point: [README.en.md](README.en.md) · 发布核对：[docs/RELEASE.md](docs/RELEASE.md) · Runner 资格认定：[docs/RUNNER.md](docs/RUNNER.md) · 简历/展示引用口径：[docs/VERIFICATION-BASELINE.md](docs/VERIFICATION-BASELINE.md)
 
 > **English Abstract**: A safe, reproducible Agent-to-ROS2 automation framework.
 > Codex or any MCP client issues bounded task-level commands through FastMCP;
@@ -461,6 +461,10 @@ ros2-agent-workflow/
 ## 🧪 质量门禁与验证
 
 下列数字是 v0.1.0 本地验证的**可复现命令结果**，不再混用历史阶段的测试计数：
+
+> 需要在简历、答辩或项目介绍中引用本项目时，请直接使用
+> [`docs/VERIFICATION-BASELINE.md`](docs/VERIFICATION-BASELINE.md) 中的“安全表述”。该文档
+> 说明了这次订正了什么、为什么订正，以及哪些安全与任务语义没有变化。
 
 | 范围 | 命令 | 已验证结果 |
 |---|---|---|
