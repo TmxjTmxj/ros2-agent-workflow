@@ -104,20 +104,19 @@ def test_latch_rejects_every_queued_command_without_invoking_it():
         lambda: sequencer.submit(
             sequencer.issue(),
             lambda: (entered.set(), release.wait())[0],
-            timeout=0.5,
+            timeout=5.0,
         )
-    )
-    queued_started = threading.Event()
-    queued = ThreadCall(
-        lambda: (
-            queued_started.set(),
-            sequencer.submit(sequencer.issue(), lambda: invoked.append("stale"), timeout=2.0),
-        )[1]
     )
     try:
         assert entered.wait(1.0)
-        assert queued_started.wait(1.0)
-        deadline = time.monotonic() + 2.0
+        queued = ThreadCall(
+            lambda: sequencer.submit(
+                sequencer.issue(),
+                lambda: invoked.append("stale"),
+                timeout=1.0,
+            )
+        )
+        deadline = time.monotonic() + 1.0
         while sequencer.pending_count < 1 and time.monotonic() < deadline:
             time.sleep(0.005)
         assert sequencer.pending_count == 1
@@ -129,8 +128,10 @@ def test_latch_rejects_every_queued_command_without_invoking_it():
         assert result.code == "TRANSPORT_UNQUIESCED"
     finally:
         release.set()
-        active.result(1.0)
-        assert sequencer.close(1.0)
+        try:
+            active.result(1.0)
+        finally:
+            assert sequencer.close(1.0)
 
 
 def test_stale_and_foreign_permits_are_rejected():

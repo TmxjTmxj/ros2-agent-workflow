@@ -48,6 +48,16 @@ def test_release_workflow_validates_metadata_and_artifact_manifest():
     assert "verify_release_candidate.py --dist-dir dist" in workflow
 
 
+def test_patch_release_declares_bounded_ci_verification():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())
+    ci_workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    release_workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+
+    assert project["project"]["version"] == "0.1.1"
+    assert "timeout-minutes: 15" in ci_workflow
+    assert "timeout-minutes: 20" in release_workflow
+
+
 def test_container_declares_reference_ros_environment():
     dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
