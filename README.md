@@ -8,7 +8,7 @@
 
 医院送药是完整参考案例；产品本身是一套可迁移到其他 ROS2 机器人的标准工作流。
 
-[English](README.en.md) · [快速开始](#快速开始) · [验证证据](#验证与数字口径) · [真机适配](docs/REAL-ROBOT.md)
+[English](README.en.md) · [快速开始](#快速开始) · [验证证据](#验证与数字口径) · [v0.1.1 Release](https://github.com/TmxjTmxj/ros2-agent-workflow/releases/tag/v0.1.1) · [真机适配](docs/REAL-ROBOT.md)
 
 [![ROS2](https://img.shields.io/badge/ROS2-Lyrical-orange)](https://docs.ros.org)
 [![Gazebo](https://img.shields.io/badge/Gazebo-Sim%2010-blue)](https://gazebosim.org)
@@ -42,6 +42,24 @@ Profile → SafetyGateway → Adapter → evidence
 
 > 医院配送保留了完整的路线、机器人模型、控制器、验收器与证据；它验证工作流，
 > 但不限制工作流只能做“送药”。迁移到其他机器人时，替换经过审查的 Profile 和 Adapter。
+
+## 当前状态：v0.1.1（可交付）
+
+[`v0.1.1`](https://github.com/TmxjTmxj/ros2-agent-workflow/releases/tag/v0.1.1) 是当前正式版本：
+它对应不可变 Git 标签、成功的主分支 CI 和独立的 Release workflow；不是把仓库源码
+简单打包后上传。发布页提供以下可验证产物：
+
+| 产物 | 用途 | 如何建立信任 |
+|---|---|---|
+| `agent_ros-0.1.1-py3-none-any.whl` | 直接安装控制面 CLI/MCP | 在隔离环境安装后运行 smoke test |
+| `agent_ros-0.1.1.tar.gz` | 源码分发与二次构建 | 由固定 `v0.1.1` 标签构建 |
+| `SHA256SUMS.txt` | 下载后的完整性校验 | 与 Release 内的 wheel 和 sdist 一一对应 |
+
+<img src="assets/release-verification.svg" alt="从主分支验证到 GitHub Release 的 v0.1.1 发布闭环" width="100%">
+
+发布自动执行质量门禁、构建、元数据检查、SHA-256 清单和已安装产物 smoke test；
+可直接查看 [主分支 CI](https://github.com/TmxjTmxj/ros2-agent-workflow/actions/workflows/ci.yml)
+与 [v0.1.1 Release](https://github.com/TmxjTmxj/ros2-agent-workflow/releases/tag/v0.1.1)。
 
 ---
 
@@ -134,7 +152,23 @@ Profile → SafetyGateway → Adapter → evidence
 
 ## 快速开始
 
-### 只体验标准控制面（不需要 ROS/Gazebo）
+### 安装已发布的 v0.1.1（不需要 ROS/Gazebo）
+
+下面的命令不依赖仓库工作区，适合先体验已发布的受限控制面。它只读取打包的医院
+Profile，不连接 ROS，也不会控制机器人：
+
+```bash
+python3 -m venv .agent-ros-demo
+.agent-ros-demo/bin/pip install \
+  https://github.com/TmxjTmxj/ros2-agent-workflow/releases/download/v0.1.1/agent_ros-0.1.1-py3-none-any.whl
+
+.agent-ros-demo/bin/agent-ros --json status hospital-amr
+```
+
+下载后如需核验文件完整性，使用 Release 页面同附的 `SHA256SUMS.txt`；发布产物本身已由
+Release workflow 安装并完成 CLI/MCP smoke test。
+
+### 从源码开发或复现实验
 
 ```bash
 git clone https://github.com/TmxjTmxj/ros2-agent-workflow.git
@@ -143,7 +177,7 @@ cd ros2-agent-workflow
 python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 
-# 读取已打包的审查 Profile；不连接 ROS，不会控制机器人
+# 读取已安装的审查 Profile；不连接 ROS，不会控制机器人
 .venv/bin/agent-ros --json status hospital-amr
 
 # 运行控制面质量门禁

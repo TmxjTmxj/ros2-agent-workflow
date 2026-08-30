@@ -21,6 +21,14 @@ def test_readme_documents_the_installed_control_plane():
     assert "agent-ros --json status hospital-amr" in readme
     assert "agent-ros-mcp" in readme
     assert "make check" in readme
+    assert "releases/tag/v0.1.1" in readme
+    assert "安装已发布的 v0.1.1" in readme
+    assert "从源码开发或复现实验" in readme
+    assert '<img src="assets/release-verification.svg"' in readme
+    diagram = (ROOT / "assets" / "release-verification.svg").read_text(encoding="utf-8")
+    assert "v0.1.1 · 可验证发布闭环" in diagram
+    assert "GitHub Release" in diagram
+    assert 'filter="' not in diagram
 
 
 def test_project_declares_dev_quality_tools():
