@@ -12,3 +12,9 @@ __pycache__/
 /examples/hospital_delivery/log/
 /examples/hospital_delivery/logs/
 /.runtime/
+/build/
+/dist/
+/.mypy_cache/
+/.ruff_cache/
+/.pytest_cache/
+/coverage.xml
